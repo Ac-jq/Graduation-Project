@@ -316,7 +316,7 @@ public class DataInitializationRunner implements CommandLineRunner {
                 "https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=800&q=80",
                 List.of(stressTag.getId()));
 
-        breathingResource.getId();
+        breathingResource.getId();//?
     }
 
     private ResourceCategory saveCategoryIfAbsent(String name, String description, int sortNo) {
