@@ -1,0 +1,7 @@
+interface:
+  display_name: "PRD Writer"
+  short_description: "按JQPro标准结构撰写补全改写与扩展PRD需求文档"
+  default_prompt: "Use $write-prd to draft or rewrite a PRD in the JQPro standard structure."
+
+policy:
+  allow_implicit_invocation: true
