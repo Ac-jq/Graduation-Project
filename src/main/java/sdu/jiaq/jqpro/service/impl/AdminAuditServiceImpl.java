@@ -31,13 +31,17 @@ public class AdminAuditServiceImpl implements AdminAuditService {
 
     @Override
     public List<AuditLogResponse> listLogs(String actionCode, String keyword) {
-        List<SysAuditLog> logs = sysAuditLogMapper.selectList(new LambdaQueryWrapper<SysAuditLog>()
-                .eq(actionCode != null && !actionCode.isBlank(), SysAuditLog::getActionCode, actionCode)
-                .and(keyword != null && !keyword.isBlank(), wrapper -> wrapper
-                        .like(SysAuditLog::getActionName, keyword)
-                        .or()
-                        .like(SysAuditLog::getDetailText, keyword))
-                .orderByDesc(SysAuditLog::getCreatedAt, SysAuditLog::getId));
+        LambdaQueryWrapper<SysAuditLog> queryWrapper = new LambdaQueryWrapper<SysAuditLog>()
+                .eq(actionCode != null && !actionCode.isBlank(), SysAuditLog::getActionCode, actionCode);
+        if (keyword != null && !keyword.isBlank()) {
+            queryWrapper.nested(wrapper -> wrapper
+                    .like(SysAuditLog::getActionName, keyword)
+                    .or()
+                    .like(SysAuditLog::getDetailText, keyword));
+        }
+        queryWrapper.orderByDesc(SysAuditLog::getCreatedAt, SysAuditLog::getId);
+
+        List<SysAuditLog> logs = sysAuditLogMapper.selectList(queryWrapper);
         Map<Long, SysUser> userMap = sysUserMapper.selectBatchIds(logs.stream()
                         .map(SysAuditLog::getUserId)
                         .filter(Objects::nonNull)

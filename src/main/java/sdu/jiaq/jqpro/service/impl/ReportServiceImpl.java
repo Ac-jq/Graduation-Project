@@ -133,12 +133,12 @@ public class ReportServiceImpl implements ReportService {
 
     private String buildRecommendationNote(String levelCode) {
         if (ReportLevelConstants.HIGH.equals(levelCode)) {
-            return "Current result suggests that you should combine self-help resources with counselor support as soon as possible.";
+            return "当前结果提示你应尽快结合自助资源与咨询师支持共同干预。";
         }
         if (ReportLevelConstants.MEDIUM.equals(levelCode)) {
-            return "Current result suggests starting with self-help resources and considering an appointment if distress continues.";
+            return "当前结果建议先从自助资源开始，如果困扰持续存在，再尽快预约咨询师进一步支持。";
         }
-        return "Current result is relatively stable. You can keep following self-help resources for daily mental maintenance.";
+        return "当前结果相对稳定，你可以继续结合自助资源进行日常心理维护。";
     }
 
     private List<ResourceSummaryResponse> buildRecommendedResources(MentalScaleReport report) {
