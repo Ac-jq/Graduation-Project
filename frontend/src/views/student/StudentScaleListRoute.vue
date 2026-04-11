@@ -33,203 +33,346 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="scale-list-page">
-    <section class="scale-list-page__masthead">
-      <div>
-        <p class="scale-list-page__eyebrow">测评图谱</p>
-        <h1 class="scale-list-page__title">心理测评目录</h1>
+  <div class="gallery-layout">
+
+    <header class="gallery-header">
+      <div class="header-content">
+        <span class="eyebrow">ASSESSMENT GALLERY</span>
+        <h1 class="display-title">心理测评</h1>
+        <p class="narrative">
+          这里不是考场，而是认识自我的画廊。<br>
+          选择一份量表，开启一段向内探索的旅程。
+        </p>
       </div>
-      <div class="scale-list-page__aside">
-        <p>当前可用量表</p>
-        <strong>{{ scales.length }}</strong>
-      </div>
-    </section>
-
-    <section class="scale-list-page__narrative">
-      <p>
-        这里集中展示学生端当前可参与的全部心理测评。进入任意量表后，你可以查看介绍、开始作答，并在提交后获得对应报告。
-      </p>
-    </section>
-
-    <p v-if="errorMessage" class="scale-list-page__alert">
-      {{ errorMessage }}
-    </p>
-
-    <p v-if="loading" class="scale-list-page__status">
-      正在加载测评目录...
-    </p>
-
-    <section v-else class="scale-list-page__grid">
-      <article
-        v-for="(scale, index) in scales"
-        :key="scale.id"
-        class="scale-card"
-        @click="openScale(scale.id)"
-      >
-        <div class="scale-card__index">{{ String(index + 1).padStart(2, '0') }}</div>
-        <div class="scale-card__body">
-          <p class="scale-card__code">{{ scale.code }}</p>
-          <h2 class="scale-card__name">{{ scale.name }}</h2>
-          <p class="scale-card__desc">{{ scale.description || '暂无补充说明。' }}</p>
+      <div class="header-stats">
+        <div class="stat-circle">
+          <span class="stat-num">{{ String(scales.length).padStart(2, '0') }}</span>
+          <span class="stat-label">Scales</span>
         </div>
-        <dl class="scale-card__metrics">
-          <div>
-            <dt>题目数</dt>
-            <dd>{{ scale.totalQuestions }}</dd>
+      </div>
+    </header>
+
+    <main class="white-canvas">
+      <div v-if="loading" class="state-text">正在布置画廊...</div>
+      <div v-else-if="errorMessage" class="state-text error">{{ errorMessage }}</div>
+
+      <div v-else class="list-wrapper">
+        <article
+            v-for="(scale, index) in scales"
+            :key="scale.id"
+            class="list-item"
+            @click="openScale(scale.id)"
+        >
+          <div class="item-visual">
+            <span class="item-index">{{ String(index + 1).padStart(2, '0') }}.</span>
+            <span class="item-code">{{ scale.code }}</span>
           </div>
-          <div>
-            <dt>每页题数</dt>
-            <dd>{{ scale.pageSize }}</dd>
+
+          <div class="item-body">
+            <h2 class="item-name">{{ scale.name }}</h2>
+            <p class="item-desc">{{ scale.description || '探索内在状态，获取专属的结构化反馈。' }}</p>
           </div>
-        </dl>
-      </article>
-    </section>
-  </main>
+
+          <div class="item-tail">
+            <div class="tail-meta">
+              <div class="meta-item">
+                <span class="meta-val">{{ scale.totalQuestions }}</span>
+                <span class="meta-lbl">题数</span>
+              </div>
+              <div class="meta-divider"></div>
+              <div class="meta-item">
+                <span class="meta-val">{{ scale.pageSize }}</span>
+                <span class="meta-lbl">单页</span>
+              </div>
+            </div>
+            <div class="action-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+              </svg>
+            </div>
+          </div>
+        </article>
+      </div>
+    </main>
+  </div>
 </template>
+
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-
-.scale-list-page {
-  --paper: #f6f1e8;
-  --ink: #211d19;
-  --muted: #736b62;
-  --line: rgba(33, 29, 25, 0.12);
-  --accent: #7f8c80;
-  min-height: 100vh;
-  padding: 2rem;
-  background:
-    radial-gradient(circle at top left, rgba(188, 179, 158, 0.18), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.24), transparent 42%),
-    var(--paper);
-  color: var(--ink);
+/* =========================================
+   全局布局
+========================================= */
+.gallery-layout {
+  width: 100%;
+  animation: fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  /* 顶部不设 padding，让画布从下往上铺 */
 }
 
-.scale-list-page__masthead {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  gap: 1.5rem;
-  align-items: end;
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.scale-list-page__eyebrow,
-.scale-card__code,
-.scale-card__metrics dt,
-.scale-list-page__aside p {
-  margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.17em;
+/* =========================================
+   环境色头部 (Environment Header)
+========================================= */
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 4rem 4rem 6rem 4rem; /* 底部留足空间，与白色画布衔接 */
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  color: var(--text-secondary);
   text-transform: uppercase;
-  color: var(--muted);
+  display: block;
+  margin-bottom: 1.5rem;
 }
 
-.scale-list-page__title {
-  margin: 0.95rem 0 0;
-  font: 600 clamp(2.5rem, 4.6vw, 4.8rem)/1 'Noto Serif SC', 'Source Han Serif SC', serif;
+.display-title {
+  font-family: var(--font-serif);
+  font-size: clamp(3rem, 6vw, 5rem);
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-primary);
+  margin: 0 0 1.5rem 0;
+  letter-spacing: 0.02em;
 }
 
-.scale-list-page__aside {
+.narrative {
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.stat-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  backdrop-filter: blur(4px);
+}
+
+.stat-num {
+  font-family: var(--font-serif);
+  font-size: 2.5rem;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  margin-top: 0.3rem;
+}
+
+/* =========================================
+   纯白画布 (Pure White Canvas) - 核心突破点
+========================================= */
+.white-canvas {
+  background-color: #FFFFFF; /* 强制纯白 */
+  border-radius: 48px 48px 0 0; /* 巨大的顶部圆角 */
+  padding: 6rem 4rem;
+  min-height: 60vh;
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.03); /* 顶部的淡淡悬浮阴影 */
+  position: relative;
+  z-index: 10;
+}
+
+/* =========================================
+   列表样式 (List items on white background)
+========================================= */
+.list-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.list-item {
   display: grid;
-  gap: 0.55rem;
-  align-content: end;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line);
-  background: rgba(255, 251, 245, 0.66);
-  backdrop-filter: blur(18px);
-}
-
-.scale-list-page__aside strong {
-  font: 600 2.3rem/1 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.scale-list-page__narrative {
-  max-width: 48rem;
-  margin: 1.4rem 0 0;
-  color: var(--muted);
-  font: 400 1rem/1.95 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.scale-list-page__alert,
-.scale-list-page__status {
-  margin: 1.25rem 0 0;
-  font: 500 0.95rem/1.7 'Manrope', sans-serif;
-}
-
-.scale-list-page__alert {
-  color: #8a4747;
-}
-
-.scale-list-page__status {
-  color: var(--muted);
-}
-
-.scale-list-page__grid {
-  margin-top: 2rem;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.4rem;
-}
-
-.scale-card {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 1rem;
-  padding: 1.35rem;
-  border: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.38));
-  backdrop-filter: blur(18px);
+  grid-template-columns: 140px 1fr auto;
+  gap: 2rem;
+  padding: 3rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06); /* 在白底上使用极浅的黑线 */
   cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  align-items: center;
+  transition: padding-left 0.4s ease, padding-right 0.4s ease, background-color 0.4s ease;
 }
 
-.scale-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(127, 140, 128, 0.32);
-  box-shadow: 0 28px 46px rgba(83, 75, 66, 0.12);
+/* Hover 时的吸附反馈 */
+.list-item:hover {
+  background-color: #FAFAFA; /* 在白底上微微加深一层浅灰 */
+  padding-left: 2rem;
+  padding-right: 2rem;
+  border-bottom-color: transparent;
+  border-radius: 16px;
 }
 
-.scale-card__index {
-  font: 600 2.2rem/1 'Noto Serif SC', 'Source Han Serif SC', serif;
-  color: rgba(33, 29, 25, 0.46);
+.item-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.scale-card__name {
-  margin: 0.55rem 0 0;
-  font: 600 1.55rem/1.3 'Noto Serif SC', 'Source Han Serif SC', serif;
+.item-index {
+  font-family: var(--font-serif);
+  font-size: 1.8rem;
+  color: #111111;
+  transition: color 0.3s;
 }
 
-.scale-card__desc {
-  margin: 0.95rem 0 0;
-  color: var(--muted);
-  font: 400 0.98rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
+.item-code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: #888888;
+  letter-spacing: 0.05em;
 }
 
-.scale-card__metrics {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin: 0.5rem 0 0;
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
+.list-item:hover .item-index {
+  color: var(--accent-color);
 }
 
-.scale-card__metrics dd {
-  margin: 0.45rem 0 0;
-  font: 600 1rem/1.5 'Manrope', sans-serif;
+.item-body {
+  padding-right: 2rem;
 }
 
-@media (max-width: 900px) {
-  .scale-list-page {
-    padding: 1rem;
+.item-name {
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  font-weight: 500;
+  color: #111111;
+  margin: 0 0 0.5rem 0;
+}
+
+.item-desc {
+  font-size: 0.95rem;
+  color: #666666;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.item-tail {
+  display: flex;
+  align-items: center;
+  gap: 4rem;
+}
+
+.tail-meta {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.meta-val {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: #111111;
+}
+
+.meta-lbl {
+  font-size: 0.7rem;
+  color: #888888;
+  text-transform: uppercase;
+}
+
+.meta-divider {
+  width: 1px;
+  height: 24px;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.action-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111111;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.action-btn svg {
+  width: 20px;
+  height: 20px;
+  transition: transform 0.4s ease;
+}
+
+.list-item:hover .action-btn {
+  background-color: #111111;
+  color: #FFFFFF;
+  border-color: #111111;
+  transform: scale(1.05);
+}
+
+.list-item:hover .action-btn svg {
+  transform: translateX(4px);
+}
+
+/* =========================================
+   状态文本
+========================================= */
+.state-text {
+  text-align: center;
+  padding: 4rem 0;
+  color: #888888;
+  font-size: 0.95rem;
+}
+
+.state-text.error {
+  color: #D9534F;
+}
+
+/* =========================================
+   响应式
+========================================= */
+@media (max-width: 1024px) {
+  .gallery-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+    padding: 3rem 2rem 4rem 2rem;
   }
 
-  .scale-list-page__masthead,
-  .scale-list-page__grid {
-    grid-template-columns: 1fr;
+  .white-canvas {
+    padding: 4rem 2rem;
+    border-radius: 32px 32px 0 0;
+  }
+
+  .list-item {
+    grid-template-columns: 80px 1fr;
+    gap: 1.5rem;
+    padding: 2rem 0;
+  }
+
+  .item-tail {
+    display: none; /* 移动端隐藏过多的元数据和按钮，保持纯粹 */
+  }
+
+  .list-item:hover {
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 }
 </style>
-

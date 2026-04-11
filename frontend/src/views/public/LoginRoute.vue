@@ -15,7 +15,7 @@ const form = reactive({
 const submitting = ref(false)
 const submitError = ref('')
 
-async function submit登录(): Promise<void> {
+async function submitLogin(): Promise<void> {
   submitting.value = true
   submitError.value = ''
 
@@ -31,293 +31,394 @@ async function submit登录(): Promise<void> {
 </script>
 
 <template>
-  <main class="editorial-login">
-    <div class="editorial-login__grain" />
-    <section class="editorial-login__hero">
-      <p class="editorial-login__eyebrow">高校心理自助平台</p>
-      <h1 class="editorial-login__title">
-        高校心理自助服务平台
-      </h1>
-      <p class="editorial-login__lead">
-        以测评、倾诉、预约与资源支持为核心，为学生、咨询师和管理员提供统一的心理服务协作入口。
-      </p>
-      <dl class="editorial-login__facts">
-        <div>
-          <dt>系统</dt>
-          <dd>心理服务协作中枢</dd>
+  <div class="login-viewport">
+    <div class="noise-texture"></div>
+
+    <main class="login-frame">
+
+      <section class="visual-panel">
+        <div class="brand-header">
+          <div class="brand-logo"></div>
+          <span class="brand-eyebrow">JQPro Platform</span>
         </div>
-        <div>
-          <dt>聚焦</dt>
-          <dd>测评、反思与结构化支持流程</dd>
+
+        <div class="hero-content">
+          <h1 class="brand-headline">
+            构筑内心的<br />
+            <span>安全岛屿。</span>
+          </h1>
+          <p class="brand-lead">
+            以测评、倾诉与结构化支持为核心，为学生、咨询师和管理员提供统一的协作空间。
+          </p>
         </div>
-        <div>
-          <dt>模式</dt>
-          <dd>基于角色的安全访问控制</dd>
+
+        <div class="decorative-graphic">
+          <div class="shape shape-circle"></div>
+          <div class="shape shape-arch"></div>
         </div>
-      </dl>
-    </section>
+      </section>
 
-    <section class="editorial-login__panel">
-      <div class="editorial-login__panel-head">
-        <p class="editorial-login__panel-kicker">登录</p>
-        <p class="editorial-login__panel-copy">
-          输入账号与密码后进入对应工作台。学生、咨询师与管理员将自动跳转到各自首页。
-        </p>
-      </div>
+      <section class="interaction-panel">
+        <div class="form-wrapper">
+          <div class="form-header">
+            <h2>系统准入</h2>
+            <p>请输入您的身份凭证进入工作台</p>
+          </div>
 
-      <form class="editorial-login__form" @submit.prevent="submit登录">
-        <label class="field">
-          <span class="field__label">账号</span>
-          <input
-            v-model="form.account"
-            class="field__control"
-            type="text"
-            autocomplete="username"
-            placeholder="20230001 / teacher01 / admin"
-          >
-        </label>
+          <form class="login-form" @submit.prevent="submitLogin">
+            <div class="input-group">
+              <label for="account">识别码</label>
+              <input
+                  id="account"
+                  v-model="form.account"
+                  type="text"
+                  autocomplete="username"
+                  placeholder="学号 / 工号 / Admin"
+                  :disabled="submitting"
+              >
+            </div>
 
-        <label class="field">
-          <span class="field__label">密码</span>
-          <input
-            v-model="form.password"
-            class="field__control"
-            type="password"
-            autocomplete="current-password"
-            placeholder="请输入登录密码"
-          >
-        </label>
+            <div class="input-group">
+              <label for="password">安全密钥</label>
+              <input
+                  id="password"
+                  v-model="form.password"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder="请输入登录密码"
+                  :disabled="submitting"
+              >
+            </div>
 
-        <p v-if="submitError" class="editorial-login__error">
-          {{ submitError }}
-        </p>
+            <div v-if="submitError" class="error-banner" role="alert">
+              <span class="error-icon">!</span>
+              {{ submitError }}
+            </div>
 
-        <button class="editorial-login__submit" type="submit" :disabled="submitting">
-          <span>{{ submitting ? '登录中...' : '进入系统' }}</span>
-        </button>
-      </form>
+            <button class="submit-btn" type="submit" :disabled="submitting">
+              <span>{{ submitting ? '身份验证中...' : '进入系统' }}</span>
+              <span class="btn-arrow">→</span>
+            </button>
+          </form>
 
-      <div class="editorial-login__footer">
-        <p>登录失败时请先确认账号密码是否正确，或联系管理员检查当前账号状态。</p>
-      </div>
-    </section>
-  </main>
+          <div class="form-footer">
+            <p>遇到登录问题？请联系系统管理员获取帮助。</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
 </template>
+
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-:global(body) {
-  margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(185, 168, 140, 0.18), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(107, 127, 114, 0.16), transparent 28%),
-    #f5f0e8;
-  color: #1d1b18;
-}
+/* 全局视图背景 */
+.login-viewport {
+  --bg-viewport: #E8E5DF; /* 更深一点的外层底色，突显画板 */
+  --bg-frame: #F4F1EA;    /* 画板内部底色，呼应学生端主题 */
+  --text-main: #2C302B;
+  --text-muted: #7A7D75;
+  --border-color: rgba(44, 48, 43, 0.15); /* 明确的边框颜色 */
+  --accent: #6A7A6B;      /* 鼠尾草绿 */
 
-.editorial-login {
-  --paper: rgba(252, 248, 241, 0.84);
-  --ink: #201d19;
-  --muted: #71695e;
-  --line: rgba(32, 29, 25, 0.12);
-  --accent: #6a7a6b;
-  --accent-soft: rgba(106, 122, 107, 0.12);
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 520px);
-  overflow: hidden;
+  padding: 4vmin;
+  background-color: var(--bg-viewport);
+  color: var(--text-main);
+  font-family: 'Manrope', sans-serif;
+  position: relative;
 }
 
-.editorial-login__grain {
+.noise-texture {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.18;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.1)),
-    radial-gradient(rgba(38, 33, 28, 0.08) 0.7px, transparent 0.7px);
-  background-size: auto, 14px 14px;
+  opacity: 0.3;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
 }
 
-.editorial-login__hero,
-.editorial-login__panel {
+/* 核心：带边框的画板容器 */
+.login-frame {
+  display: flex;
+  width: 100%;
+  max-width: 1200px;
+  height: min(800px, 90vh);
+  background-color: var(--bg-frame);
+  border: 1px solid var(--border-color);
+  border-radius: 24px; /* 呼应学生端的圆角 */
+  overflow: hidden;
   position: relative;
   z-index: 1;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.04);
 }
 
-.editorial-login__hero {
-  padding: 5.5rem 5rem 4rem 6vw;
+/* 左侧陈述区 */
+.visual-panel {
+  flex: 1.2;
+  padding: 4rem;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  position: relative;
 }
 
-.editorial-login__eyebrow,
-.editorial-login__panel-kicker,
-.field__label,
-.editorial-login__facts dt {
-  margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.18em;
+.brand-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-logo {
+  width: 20px;
+  height: 20px;
+  background-color: var(--accent);
+  border-radius: 50%;
+}
+
+.brand-eyebrow {
+  font-size: 0.8rem;
+  letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
-.editorial-login__title {
-  max-width: 7em;
-  margin: 1.1rem 0 0;
-  font: 600 clamp(2.8rem, 5.6vw, 5.8rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
-  letter-spacing: 0.02em;
-  color: var(--ink);
+.hero-content {
+  margin-top: auto;
+  margin-bottom: auto;
+  position: relative;
+  z-index: 2;
 }
 
-.editorial-login__lead {
-  max-width: 34rem;
-  margin: 1.8rem 0 0;
-  font: 400 1.05rem/1.95 'Noto Serif SC', 'Source Han Serif SC', serif;
-  color: var(--muted);
+.brand-headline {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(2.5rem, 4vw, 4rem);
+  font-weight: 500;
+  line-height: 1.2;
+  margin: 0 0 1.5rem 0;
+  color: var(--text-main);
 }
 
-.editorial-login__facts {
-  margin: 4rem 0 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.4rem;
-  padding-top: 1.4rem;
-  border-top: 1px solid var(--line);
+.brand-headline span {
+  color: var(--accent);
 }
 
-.editorial-login__facts div {
-  padding-right: 1rem;
+.brand-lead {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--text-muted);
+  max-width: 32ch;
+  margin: 0;
 }
 
-.editorial-login__facts dd {
-  margin: 0.65rem 0 0;
-  font: 500 0.96rem/1.8 'Noto Serif SC', 'Source Han Serif SC', serif;
-  color: var(--ink);
+/* 用 CSS 绘制极简的有机图形装饰 */
+.decorative-graphic {
+  position: absolute;
+  right: 4rem;
+  bottom: 4rem;
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  opacity: 0.6;
 }
 
-.editorial-login__panel {
-  margin: 2rem 2rem 2rem 0;
-  padding: 2rem;
-  align-self: stretch;
+.shape {
+  border: 1px solid var(--border-color);
+}
+
+.shape-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+}
+
+.shape-arch {
+  width: 100px;
+  height: 160px;
+  border-radius: 100px 100px 0 0;
+  background-color: rgba(106, 122, 107, 0.05);
+}
+
+/* 右侧表单区：通过左边框与视觉区明确分割 */
+.interaction-panel {
+  flex: 1;
+  border-left: 1px solid var(--border-color); /* 明确的中轴线边框 */
+  background-color: #FFFFFF; /* 右侧微微提亮 */
+  padding: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.form-wrapper {
+  width: 100%;
+  max-width: 340px;
+}
+
+.form-header {
+  margin-bottom: 3rem;
+}
+
+.form-header h2 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.8rem;
+  font-weight: 500;
+  margin: 0 0 0.5rem 0;
+}
+
+.form-header p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.login-form {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  border-left: 1px solid var(--line);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.32)),
-    var(--paper);
-  backdrop-filter: blur(22px);
-  box-shadow: -24px 0 60px rgba(55, 48, 42, 0.08);
+  gap: 1.5rem;
 }
 
-.editorial-login__panel-head {
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.editorial-login__panel-copy {
-  margin: 1rem 0 0;
-  font: 400 0.98rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
-  color: var(--muted);
+.input-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  padding-left: 0.2rem;
 }
 
-.editorial-login__form {
-  display: grid;
-  gap: 1.35rem;
-  margin-top: 2rem;
+/* 带边框的输入框 */
+.input-group input {
+  background: var(--bg-frame);
+  border: 1px solid var(--border-color);
+  padding: 1rem 1.2rem;
+  border-radius: 12px; /* 柔和的边框内角 */
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: var(--text-main);
+  transition: all 0.3s ease;
 }
 
-.field {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.field__control {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 1rem 1.05rem;
-  border: 1px solid rgba(32, 29, 25, 0.16);
-  background: rgba(255, 252, 248, 0.88);
-  color: var(--ink);
-  font: 500 0.98rem/1.4 'Manrope', sans-serif;
-  transition: border-color 180ms ease, transform 180ms ease, background-color 180ms ease;
-}
-
-.field__control:focus {
+.input-group input:focus {
   outline: none;
   border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.96);
-  transform: translateY(-1px);
+  background: #FFFFFF;
+  box-shadow: 0 0 0 4px rgba(106, 122, 107, 0.1);
 }
 
-.field__control::placeholder {
-  color: rgba(113, 105, 94, 0.7);
+.input-group input::placeholder {
+  color: rgba(122, 125, 117, 0.5);
 }
 
-.editorial-login__error {
-  margin: 0;
-  padding: 0.85rem 1rem;
-  border: 1px solid rgba(143, 72, 72, 0.2);
-  background: rgba(143, 72, 72, 0.08);
-  color: #7a3f3f;
-  font: 500 0.92rem/1.6 'Manrope', sans-serif;
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #8C4A4A;
+  background: #FCF4F4;
+  border: 1px solid rgba(140, 74, 74, 0.2);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
 }
 
-.editorial-login__submit {
-  margin-top: 0.25rem;
-  min-height: 3.5rem;
-  border: 1px solid transparent;
-  background:
-    linear-gradient(135deg, rgba(106, 122, 107, 1), rgba(77, 92, 84, 1));
-  color: #f7f3ed;
-  font: 600 0.96rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.error-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: #8C4A4A;
+  color: white;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+
+/* 带边框的圆角按钮 */
+.submit-btn {
+  background: var(--text-main);
+  color: #FFFFFF;
+  border: 1px solid var(--text-main);
+  padding: 1.1rem;
+  border-radius: 12px;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
-  box-shadow: 0 18px 30px rgba(68, 83, 75, 0.2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  transition: all 0.3s ease;
 }
 
-.editorial-login__submit:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 34px rgba(68, 83, 75, 0.24);
+.submit-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
-.editorial-login__submit:disabled {
-  cursor: wait;
-  opacity: 0.74;
+.submit-btn:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
-.editorial-login__footer {
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-arrow {
+  transition: transform 0.3s ease;
+}
+
+.submit-btn:hover:not(:disabled) .btn-arrow {
+  transform: translateX(4px);
+}
+
+.form-footer {
   margin-top: 2rem;
-  padding-top: 1.4rem;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font: 400 0.9rem/1.8 'Noto Serif SC', 'Source Han Serif SC', serif;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
-@media (max-width: 1100px) {
-  .editorial-login {
-    grid-template-columns: 1fr;
+/* 响应式调整 */
+@media (max-width: 900px) {
+  .login-viewport {
+    padding: 0; /* 移动端去掉外围边距 */
   }
 
-  .editorial-login__hero {
-    padding: 4rem 1.5rem 2rem;
+  .login-frame {
+    flex-direction: column;
+    border-radius: 0;
+    border: none;
+    height: 100vh;
   }
 
-  .editorial-login__facts {
-    grid-template-columns: 1fr;
+  .visual-panel {
+    padding: 2rem;
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border-color);
   }
 
-  .editorial-login__panel {
-    margin: 0 1rem 1rem;
+  .decorative-graphic {
+    display: none; /* 移动端隐藏装饰图形节省空间 */
+  }
+
+  .interaction-panel {
     border-left: none;
-    border-top: 1px solid var(--line);
+    padding: 2rem;
+    align-items: flex-start;
   }
 }
 </style>
-
