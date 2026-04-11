@@ -1,0 +1,27 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::               (v3.2.12)
+
+2026-04-07T19:32:18.384+08:00  INFO 4196 --- [JQPro] [           main] sdu.jiaq.jqpro.JqProApplication          : Starting JqProApplication using Java 21.0.2 with PID 4196 (E:\Store\SDJZU\毕设\JQPro\target\classes started by JQ in E:\Store\SDJZU\毕设\JQPro)
+2026-04-07T19:32:18.387+08:00  INFO 4196 --- [JQPro] [           main] sdu.jiaq.jqpro.JqProApplication          : No active profile set, falling back to 1 default profile: "default"
+2026-04-07T19:32:19.919+08:00  INFO 4196 --- [JQPro] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Multiple Spring Data modules found, entering strict repository configuration mode
+2026-04-07T19:32:19.922+08:00  INFO 4196 --- [JQPro] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data Redis repositories in DEFAULT mode.
+2026-04-07T19:32:19.989+08:00  INFO 4196 --- [JQPro] [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 46 ms. Found 0 Redis repository interfaces.
+2026-04-07T19:32:20.985+08:00  INFO 4196 --- [JQPro] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat initialized with port 8080 (http)
+2026-04-07T19:32:21.029+08:00  INFO 4196 --- [JQPro] [           main] o.apache.catalina.core.StandardService   : Starting service [Tomcat]
+2026-04-07T19:32:21.030+08:00  INFO 4196 --- [JQPro] [           main] o.apache.catalina.core.StandardEngine    : Starting Servlet engine: [Apache Tomcat/10.1.33]
+2026-04-07T19:32:21.178+08:00  INFO 4196 --- [JQPro] [           main] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring embedded WebApplicationContext
+2026-04-07T19:32:21.180+08:00  INFO 4196 --- [JQPro] [           main] w.s.c.ServletWebServerApplicationContext : Root WebApplicationContext: initialization completed in 2742 ms
+2026-04-07T19:32:21.327+08:00  INFO 4196 --- [JQPro] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-04-07T19:32:21.348+08:00  INFO 4196 --- [JQPro] [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+____ ____    ___ ____ _  _ ____ _  _ 
+[__  |__| __  |  |  | |_/  |___ |\ | 
+___] |  |     |  |__| | \_ |___ | \| 
+https://sa-token.cc (v1.37.0)
+2026-04-07T19:32:26.457+08:00  INFO 4196 --- [JQPro] [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port 8080 (http) with context path ''
+2026-04-07T19:32:26.473+08:00  INFO 4196 --- [JQPro] [           main] sdu.jiaq.jqpro.JqProApplication          : Started JqProApplication in 8.572 seconds (process running for 9.239)

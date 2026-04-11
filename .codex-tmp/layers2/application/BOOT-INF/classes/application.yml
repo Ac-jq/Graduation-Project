@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: JQPro
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/jqpro?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      initialization-fail-timeout: -1
+  sql:
+    init:
+      mode: always
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      database: 0
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: 1800
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
