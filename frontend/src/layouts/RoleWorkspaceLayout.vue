@@ -1,41 +1,62 @@
 <template>
-  <div class="workspace-viewport" :class="themeClass">
+  <div class="workspace-shell" :class="themeClass">
     <aside class="workspace-sidebar">
       <div class="sidebar-brand">
-        <div class="brand-logo"></div>
-        <span class="brand-name">JQPro</span>
+        <div class="brand-mark"></div>
+        <div>
+          <p class="brand-eyebrow">Mental Service Hub</p>
+          <strong class="brand-name">JQPro</strong>
+        </div>
       </div>
 
-      <div class="user-profile">
-        <div class="avatar">
-          {{ currentUser?.displayName?.charAt(0) || 'U' }}
+      <div class="user-card">
+        <div class="user-avatar">
+          {{ currentUser?.displayName?.slice(0, 1) || 'U' }}
         </div>
-        <div class="info">
-          <strong>{{ currentUser?.displayName || '未登录' }}</strong>
+        <div class="user-copy">
+          <strong>{{ currentUser?.displayName || '未登录用户' }}</strong>
           <span>{{ roleLabel }}</span>
         </div>
       </div>
 
-      <nav class="sidebar-nav">
-        <button class="nav-item" :class="{ 'is-active': $route.path === homePath }" @click="goHome">
-          <span class="nav-icon">⌂</span>
-          工作台首页
-        </button>
-        <button class="nav-item" :class="{ 'is-active': $route.path === accountPath }" @click="goAccount">
-          <span class="nav-icon">⚙</span>
-          账户安全
+      <div class="sidebar-note">
+        <span class="sidebar-note-label">陪伴式心理支持</span>
+        <p>在每一次浏览、测评与咨询之间，保持温柔、清晰、值得信赖的体验。</p>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="工作台导航">
+        <button
+            v-for="item in navItems"
+            :key="item.path"
+            class="nav-item"
+            :class="{ 'is-active': isNavItemActive(item.path) }"
+            :aria-current="isNavItemActive(item.path) ? 'page' : undefined"
+            @click="router.push(item.path)"
+        >
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path
+                  v-for="segment in navIcons[item.icon]"
+                  :key="segment"
+                  :d="segment"
+              />
+            </svg>
+          </span>
+          <span class="nav-copy">
+            <span class="nav-title">{{ item.label }}</span>
+            <span class="nav-caption">{{ item.caption }}</span>
+          </span>
         </button>
       </nav>
 
       <div class="sidebar-footer">
-        <button class="logout-btn" @click="handleLogout">
-          退出登录
-        </button>
+        <button class="secondary-action" @click="router.push(accountPath)">账户安全</button>
+        <button class="primary-action" @click="handleLogout">退出登录</button>
       </div>
     </aside>
 
     <main class="workspace-main">
-      <div class="page-container">
+      <div class="workspace-stage">
         <router-view />
       </div>
     </main>
@@ -44,9 +65,71 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { resolveRoleHome } from '@/core/session'
+
+type NavIconName =
+    | 'home'
+    | 'heart'
+    | 'folder'
+    | 'calendar'
+    | 'users'
+    | 'bell'
+    | 'layers'
+    | 'chart'
+
+type NavItem = {
+  path: string
+  label: string
+  caption: string
+  icon: NavIconName
+}
+
+const navIcons: Record<NavIconName, string[]> = {
+  home: [
+    'M2.75 10.5L10.72 3.35a1.9 1.9 0 0 1 2.56 0l7.97 7.15',
+    'M5.5 9.25V18.25A1.75 1.75 0 0 0 7.25 20h9.5a1.75 1.75 0 0 0 1.75-1.75V9.25',
+    'M9.25 20V12.75h5.5V20'
+  ],
+  heart: [
+    'M12 20.25s-6.75-4.02-6.75-9.28A3.97 3.97 0 0 1 12 7.89a3.97 3.97 0 0 1 6.75 3.08c0 5.26-6.75 9.28-6.75 9.28Z'
+  ],
+  folder: [
+    'M3.5 6.75A1.75 1.75 0 0 1 5.25 5h4l1.8 1.8H18.75A1.75 1.75 0 0 1 20.5 8.55v8.7A1.75 1.75 0 0 1 18.75 19H5.25A1.75 1.75 0 0 1 3.5 17.25v-10.5Z',
+    'M3.5 10.25h17'
+  ],
+  calendar: [
+    'M7.25 3.5V6',
+    'M16.75 3.5V6',
+    'M3.5 9.25h17',
+    'M5.25 5.25h13.5A1.75 1.75 0 0 1 20.5 7v11.25A1.75 1.75 0 0 1 18.75 20H5.25A1.75 1.75 0 0 1 3.5 18.25V7A1.75 1.75 0 0 1 5.25 5.25Z',
+    'M8 13.25h3',
+    'M13 13.25h3',
+    'M8 16.5h3'
+  ],
+  users: [
+    'M9.5 11.25a2.75 2.75 0 1 0 0-5.5a2.75 2.75 0 0 0 0 5.5Z',
+    'M4.75 19.25v-1a3.75 3.75 0 0 1 3.75-3.75h2a3.75 3.75 0 0 1 3.75 3.75v1',
+    'M17 10.5a2.25 2.25 0 1 0 0-4.5',
+    'M18.75 19.25v-.75a3.4 3.4 0 0 0-2.5-3.27'
+  ],
+  bell: [
+    'M9.75 20a2.25 2.25 0 0 0 4.5 0',
+    'M6.5 15.25h11',
+    'M7.35 15.25a1.1 1.1 0 0 1-.95-1.64l.92-1.61c.21-.37.33-.79.33-1.21V9.75a4.35 4.35 0 1 1 8.7 0v1.04c0 .42.12.84.33 1.21l.92 1.61a1.1 1.1 0 0 1-.95 1.64'
+  ],
+  layers: [
+    'M12 4L19.25 8L12 12L4.75 8L12 4Z',
+    'M4.75 12L12 16L19.25 12',
+    'M4.75 16L12 20L19.25 16'
+  ],
+  chart: [
+    'M4.5 19.5h15',
+    'M7.5 17V11.5',
+    'M12 17V7.5',
+    'M16.5 17v-3.75'
+  ]
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -54,43 +137,75 @@ const authStore = useAuthStore()
 
 const currentUser = computed(() => authStore.currentUser)
 
-// 动态主题类名计算
 const themeClass = computed(() => {
-  const role = currentUser.value?.roleCode
-  if (role === 'STUDENT') return 'theme-student'
-  if (role === 'COUNSELOR') return 'theme-counselor'
-  if (role === 'ADMIN') return 'theme-admin'
-  return 'theme-default'
+  switch (currentUser.value?.roleCode) {
+    case 'STUDENT':
+      return 'theme-student'
+    case 'COUNSELOR':
+      return 'theme-counselor'
+    case 'ADMIN':
+      return 'theme-admin'
+    default:
+      return 'theme-default'
+  }
 })
 
 const roleLabel = computed(() => {
-  const role = currentUser.value?.roleCode
-  if (role === 'STUDENT') return '学生用户'
-  if (role === 'COUNSELOR') return '心理咨询师'
-  if (role === 'ADMIN') return '系统管理员'
-  return '游客'
-})
-
-const homePath = computed(() => {
-  const roleCode = currentUser.value?.roleCode
-  return roleCode ? resolveRoleHome(roleCode) : '/login'
+  switch (currentUser.value?.roleCode) {
+    case 'STUDENT':
+      return '学生工作台'
+    case 'COUNSELOR':
+      return '咨询师工作台'
+    case 'ADMIN':
+      return '管理员工作台'
+    default:
+      return '访客'
+  }
 })
 
 const accountPath = computed(() => {
   switch (currentUser.value?.roleCode) {
-    case 'STUDENT': return '/student/account'
-    case 'COUNSELOR': return '/counselor/account'
-    case 'ADMIN': return '/admin/account'
-    default: return '/login'
+    case 'STUDENT':
+      return '/student/account'
+    case 'COUNSELOR':
+      return '/counselor/account'
+    case 'ADMIN':
+      return '/admin/account'
+    default:
+      return '/login'
   }
 })
 
-async function goHome(): Promise<void> {
-  await router.push(homePath.value)
-}
+const navItems = computed<NavItem[]>(() => {
+  switch (currentUser.value?.roleCode) {
+    case 'STUDENT':
+      return [
+        { path: '/student', label: '首页概览', caption: '个人入口与状态概览', icon: 'home' },
+        { path: '/student/scales', label: '心理测评', caption: '量表列表、作答与结果', icon: 'heart' },
+        { path: '/student/reports', label: '报告归档', caption: '历史报告与详细解释', icon: 'folder' },
+        { path: '/student/appointments', label: '咨询预约', caption: '查看预约与进入沟通', icon: 'calendar' }
+      ]
+    case 'COUNSELOR':
+      return [
+        { path: '/counselor', label: '首页概览', caption: '学生与待处理事项', icon: 'home' },
+        { path: '/counselor/students', label: '学生名单', caption: '查看已绑定学生', icon: 'users' },
+        { path: '/counselor/appointments', label: '预约处理', caption: '接单、拒绝与跟进', icon: 'calendar' },
+        { path: '/counselor/notifications', label: '通知中心', caption: '查看系统流转消息', icon: 'bell' }
+      ]
+    case 'ADMIN':
+      return [
+        { path: '/admin', label: '管理首页', caption: '系统总览', icon: 'home' },
+        { path: '/admin/scales', label: '量表管理', caption: '量表与规则维护', icon: 'layers' },
+        { path: '/admin/resources', label: '资源管理', caption: '心理资源与分类', icon: 'folder' },
+        { path: '/admin/statistics', label: '统计分析', caption: '系统指标与趋势', icon: 'chart' }
+      ]
+    default:
+      return []
+  }
+})
 
-async function goAccount(): Promise<void> {
-  await router.push(accountPath.value)
+function isNavItemActive(path: string): boolean {
+  return route.path === path || route.path.startsWith(`${path}/`)
 }
 
 async function handleLogout(): Promise<void> {
@@ -100,227 +215,427 @@ async function handleLogout(): Promise<void> {
 </script>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* ==========================================
-   全局主题变量定义 (Theming System)
-   我们在外层容器定义变量，子页面将继承这些变量
-========================================== */
-
-.workspace-viewport {
-  display: flex;
+.workspace-shell {
+  --bg-sidebar: rgba(255, 250, 244, 0.88);
+  --sidebar-edge: rgba(255, 255, 255, 0.6);
+  --text-primary: #1f2220;
+  --text-secondary: #6f6a63;
+  --border-color: rgba(36, 34, 30, 0.08);
+  --accent: #617a69;
+  --accent-soft: rgba(97, 122, 105, 0.13);
+  --nav-hover-bg: #f3f4f6;
+  --active-text: #31443a;
   height: 100vh;
   width: 100vw;
+  display: flex;
   overflow: hidden;
-  transition: background-color 0.5s ease, color 0.5s ease;
-
-  /* 基础兜底变量 */
-  --bg-app: #f5f5f5;
-  --bg-sidebar: #ffffff;
-  --bg-surface: #ffffff;
-  --text-primary: #111111;
-  --text-secondary: #666666;
-  --border-color: rgba(0,0,0,0.1);
-  --accent-color: #000000;
-  --radius-base: 8px;
-  --font-sans: 'Manrope', sans-serif;
-  --font-serif: 'Noto Serif SC', serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  background-color: var(--bg-app);
+  background:
+      radial-gradient(circle at top right, rgba(126, 147, 132, 0.16), transparent 18%),
+      radial-gradient(circle at left 30%, rgba(211, 195, 173, 0.22), transparent 24%),
+      linear-gradient(180deg, #f5f0e7 0%, #f7f4ee 100%);
   color: var(--text-primary);
-  font-family: var(--font-sans);
+  font-family: 'Manrope', sans-serif;
 }
 
-/* 🌿 学生端：安静、疗愈、有机形态 */
-.theme-student {
-  --bg-app: #F4F1EA;
-  --bg-sidebar: #EBE7E0;
-  --bg-surface: #FFFFFF;
-  --text-primary: #2C302B;
-  --text-secondary: #7A7D75;
-  --border-color: rgba(44, 48, 43, 0.06);
-  --accent-color: #6A7A6B; /* 柔和的鼠尾草绿 */
-  --radius-base: 24px;     /* 夸张的圆角表现陪伴感 */
-}
-
-/* 📐 咨询师端：专业、秩序、严谨 */
 .theme-counselor {
-  --bg-app: #F0F4F8;
-  --bg-sidebar: #FFFFFF;
-  --bg-surface: #FFFFFF;
-  --text-primary: #1E293B;
-  --text-secondary: #64748B;
-  --border-color: #E2E8F0;
-  --accent-color: #3B82F6; /* 专业理性的蓝色 */
-  --radius-base: 6px;      /* 严谨的微圆角 */
+  --accent: #47687f;
+  --accent-soft: rgba(71, 104, 127, 0.14);
+  --active-text: #29465b;
+  background:
+      radial-gradient(circle at top right, rgba(88, 119, 142, 0.15), transparent 18%),
+      radial-gradient(circle at left 35%, rgba(208, 218, 230, 0.28), transparent 24%),
+      linear-gradient(180deg, #eff4f8 0%, #f7fafc 100%);
 }
 
-/* ⚙️ 管理员端：工业感、控制中枢、暗色/高反差 */
 .theme-admin {
-  --bg-app: #0F1115;
-  --bg-sidebar: #16181D;
-  --bg-surface: #1E2128;
-  --text-primary: #E2E8F0;
-  --text-secondary: #94A3B8;
-  --border-color: #2D313A;
-  --accent-color: #F59E0B; /* 警示/行动感的琥珀色 */
-  --radius-base: 0px;      /* 绝对的直角结构 */
+  --bg-sidebar: rgba(20, 24, 29, 0.88);
+  --sidebar-edge: rgba(255, 255, 255, 0.05);
+  --text-primary: #ebf0f5;
+  --text-secondary: #93a0af;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --accent: #e8a93e;
+  --accent-soft: rgba(232, 169, 62, 0.16);
+  --nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --active-text: #403117;
+  background:
+      radial-gradient(circle at top right, rgba(232, 169, 62, 0.12), transparent 18%),
+      linear-gradient(180deg, #11151b 0%, #171c23 100%);
 }
-
-/* ==========================================
-   布局与组件样式
-========================================== */
 
 .workspace-sidebar {
-  width: 260px;
-  background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
+  flex-shrink: 0;
+  width: 310px;
+  height: 100%;
+  padding: 1.6rem;
+  box-sizing: border-box; /* 核心修复：防止 padding 撑破高度 */
   display: flex;
   flex-direction: column;
-  padding: 2rem 1.5rem;
-  z-index: 10;
+  gap: 1rem;
+  overflow-y: auto;
+  background:
+      linear-gradient(180deg, var(--bg-sidebar), rgba(255, 255, 255, 0.52)),
+      linear-gradient(180deg, transparent, transparent);
+  border-right: 1px solid var(--sidebar-edge);
+  box-shadow: 24px 0 48px rgba(31, 34, 32, 0.06);
+  backdrop-filter: blur(26px);
+}
+
+.theme-admin .workspace-sidebar {
+  background:
+      linear-gradient(180deg, var(--bg-sidebar), rgba(17, 21, 27, 0.94)),
+      linear-gradient(180deg, transparent, transparent);
+  box-shadow: 24px 0 48px rgba(0, 0, 0, 0.22);
 }
 
 .sidebar-brand {
   display: flex;
+  gap: 0.9rem;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 3rem;
 }
 
-.brand-logo {
-  width: 24px;
-  height: 24px;
-  background-color: var(--accent-color);
-  border-radius: calc(var(--radius-base) / 2);
+.brand-mark {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.85));
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+}
+
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 10px;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  z-index: -1;
+}
+
+.brand-eyebrow {
+  margin: 0 0 0.2rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
 }
 
 .brand-name {
-  font-weight: 700;
-  font-size: 1.2rem;
-  letter-spacing: 0.05em;
-  color: var(--text-primary);
+  font-size: 1.28rem;
+  font-family: 'Noto Serif SC', serif;
 }
 
-.theme-admin .brand-name {
-  font-family: var(--font-mono);
-}
-
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 2rem;
-  padding: 1rem;
-  background: var(--bg-app);
-  border-radius: var(--radius-base);
+.user-card,
+.sidebar-note {
+  border-radius: 22px;
   border: 1px solid var(--border-color);
 }
 
-.avatar {
-  width: 36px;
-  height: 36px;
-  background: var(--accent-color);
-  color: var(--bg-surface);
-  display: flex;
+.user-card {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 0.9rem;
   align-items: center;
-  justify-content: center;
-  border-radius: calc(var(--radius-base) / 2);
-  font-weight: 600;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.48);
+  box-shadow: 0 18px 36px rgba(58, 52, 46, 0.06);
 }
 
-.theme-student .avatar { border-radius: 50%; }
-
-.info {
-  display: flex;
-  flex-direction: column;
+.theme-admin .user-card {
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: none;
 }
 
-.info strong {
-  font-size: 0.9rem;
-  color: var(--text-primary);
+.user-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.7));
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
 }
 
-.info span {
-  font-size: 0.75rem;
+.user-copy {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.user-copy strong {
+  font-size: 0.95rem;
+}
+
+.user-copy span {
   color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.sidebar-note {
+  padding: 1rem 1.05rem;
+  background: rgba(255, 255, 255, 0.36);
+}
+
+.theme-admin .sidebar-note {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-note-label {
+  display: inline-flex;
+  margin-bottom: 0.45rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-note p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.65;
 }
 
 .sidebar-nav {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
   gap: 0.5rem;
-  flex-grow: 1;
+  min-height: 0;
 }
 
 .nav-item {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  background: transparent;
-  border: none;
+  gap: 0.9rem;
   width: 100%;
+  min-height: 86px;
+  height: max-content;
+  padding: 0.95rem 1rem;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text-primary);
   text-align: left;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-  font-weight: 500;
-  border-radius: var(--radius-base);
   cursor: pointer;
-  transition: all 0.2s ease;
+  flex: 0 0 auto;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--accent-soft), rgba(255, 255, 255, 0));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.nav-item:hover:not(.is-active) {
+  border-color: var(--border-color);
+  background: var(--nav-hover-bg);
+  transform: translateX(4px);
+}
+
+.nav-item:hover:not(.is-active)::before {
+  opacity: 1;
+}
+
+.nav-item.is-active {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: #ffffff;
+  box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.05),
+      0 18px 28px rgba(40, 45, 42, 0.08);
+  transform: translateX(6px);
 }
 
 .nav-icon {
-  font-size: 1.2rem;
+  position: relative;
+  z-index: 1;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition: all 0.3s ease;
 }
 
-.nav-item:hover {
-  background: rgba(0,0,0,0.03);
-  color: var(--text-primary);
+.nav-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.theme-admin .nav-item:hover { background: rgba(255,255,255,0.05); }
+.nav-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
 
-.nav-item.is-active {
-  background: var(--accent-color);
-  color: var(--bg-sidebar);
+.nav-item.is-active .nav-icon {
+  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.68));
+  color: #ffffff;
+  box-shadow: 0 12px 22px rgba(97, 122, 105, 0.22);
+}
+
+.theme-counselor .nav-item.is-active .nav-icon {
+  box-shadow: 0 12px 22px rgba(71, 104, 127, 0.22);
+}
+
+.theme-admin .nav-item.is-active .nav-icon {
+  box-shadow: 0 12px 22px rgba(232, 169, 62, 0.28);
+}
+
+.nav-item.is-active .nav-title {
+  color: var(--active-text);
+}
+
+.nav-item.is-active .nav-caption {
+  color: #61707c;
+}
+
+.theme-admin .nav-item.is-active .nav-caption {
+  color: #6b6f76;
+}
+
+.nav-title {
+  font-size: 0.97rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.nav-caption {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.58;
 }
 
 .sidebar-footer {
-  margin-top: auto;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-color);
+  display: grid;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding-top: 0.2rem;
 }
 
-.logout-btn {
-  width: 100%;
-  padding: 0.85rem;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-primary);
-  border-radius: var(--radius-base);
-  font-weight: 500;
+.primary-action,
+.secondary-action {
+  min-height: 2.95rem;
+  border-radius: 16px;
+  border: none;
   cursor: pointer;
-  transition: all 0.2s ease;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: all 0.25s ease;
 }
 
-.logout-btn:hover {
-  border-color: var(--text-primary);
-  background: var(--text-primary);
-  color: var(--bg-sidebar);
+.primary-action:hover,
+.secondary-action:hover {
+  transform: translateY(-1px);
+}
+
+.primary-action {
+  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.2));
+  color: white;
+  box-shadow: 0 12px 24px rgba(97, 122, 105, 0.2);
+}
+
+.theme-counselor .primary-action {
+  box-shadow: 0 12px 24px rgba(71, 104, 127, 0.2);
+}
+
+.theme-admin .primary-action {
+  box-shadow: 0 12px 24px rgba(232, 169, 62, 0.18);
+}
+
+.secondary-action {
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.22);
+  color: var(--text-primary);
+}
+
+.theme-admin .secondary-action {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .workspace-main {
-  flex-grow: 1;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 1.75rem;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 2rem;
+  box-sizing: border-box;
 }
 
-.page-container {
-  max-width: 1200px;
-  margin: 0 auto;
+.workspace-stage {
   min-height: 100%;
-  /* 子页面可以通过 var(--bg-surface) 等变量来绘制卡片 */
+}
+
+@media (max-width: 1080px) {
+  .workspace-shell {
+    flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .workspace-sidebar {
+    min-height: auto;
+    width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--sidebar-edge);
+    overflow: visible;
+  }
+
+  .workspace-main {
+    height: auto;
+    min-height: 0;
+    padding: 1rem;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-sidebar {
+    padding: 1rem;
+  }
+
+  .nav-item {
+    grid-template-columns: 44px minmax(0, 1fr);
+    min-height: 78px;
+    padding: 0.85rem 0.9rem;
+  }
+
+  .nav-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .workspace-main {
+    padding: 0.85rem;
+  }
 }
 </style>

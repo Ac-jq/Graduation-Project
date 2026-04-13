@@ -77,8 +77,20 @@ public class ResourceServiceImpl implements ResourceService {
 
     @Override
     public List<ResourceCategoryResponse> listPublishedCategories() {
+        List<Long> publishedCategoryIds = mentalResourceMapper.selectList(new LambdaQueryWrapper<MentalResource>()
+                        .eq(MentalResource::getStatus, ResourceConstants.RESOURCE_PUBLISHED)
+                        .select(MentalResource::getCategoryId))
+                .stream()
+                .map(MentalResource::getCategoryId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (publishedCategoryIds.isEmpty()) {
+            return List.of();
+        }
         return resourceCategoryMapper.selectList(new LambdaQueryWrapper<ResourceCategory>()
                         .eq(ResourceCategory::getStatus, ResourceConstants.CATEGORY_ACTIVE)
+                        .in(ResourceCategory::getId, publishedCategoryIds)
                         .orderByAsc(ResourceCategory::getSortNo, ResourceCategory::getId))
                 .stream()
                 .map(this::toCategoryResponse)
@@ -87,7 +99,29 @@ public class ResourceServiceImpl implements ResourceService {
 
     @Override
     public List<ResourceTagResponse> listTags() {
+        List<Long> publishedResourceIds = mentalResourceMapper.selectList(new LambdaQueryWrapper<MentalResource>()
+                        .eq(MentalResource::getStatus, ResourceConstants.RESOURCE_PUBLISHED)
+                        .select(MentalResource::getId))
+                .stream()
+                .map(MentalResource::getId)
+                .distinct()
+                .toList();
+        if (publishedResourceIds.isEmpty()) {
+            return List.of();
+        }
+        List<Long> tagIds = resourceTagRelationMapper.selectList(new LambdaQueryWrapper<ResourceTagRelation>()
+                        .in(ResourceTagRelation::getResourceId, publishedResourceIds)
+                        .select(ResourceTagRelation::getTagId))
+                .stream()
+                .map(ResourceTagRelation::getTagId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (tagIds.isEmpty()) {
+            return List.of();
+        }
         return resourceTagMapper.selectList(new LambdaQueryWrapper<ResourceTag>()
+                        .in(ResourceTag::getId, tagIds)
                         .orderByAsc(ResourceTag::getName, ResourceTag::getId))
                 .stream()
                 .map(this::toTagResponse)

@@ -1,62 +1,87 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchScaleSessionQuestionsApi, saveScaleAnswersApi, submitScaleSessionApi } from '@/api/assessment'
-import type { AnswerSaveRequest, ScaleQuestionPage, SubmitScaleResponse } from '@/api/types'
+import {
+  fetchScaleSessionQuestionsApi,
+  saveScaleAnswersApi,
+  submitScaleSessionApi
+} from '@/api/assessment'
+import type { AnswerSaveRequest, Question, ScaleQuestionPage, SubmitScaleResponse } from '@/api/types'
+import { useAssessmentStore } from '@/stores/assessment'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
+const assessmentStore = useAssessmentStore()
+
 const loading = ref(false)
 const saving = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
 const pageData = ref<ScaleQuestionPage | null>(null)
-const submitResult = ref<SubmitScaleResponse | null>(null)
+
 const paging = reactive({
   pageNum: 1,
-  pageSize: 10
+  pageSize: 3
 })
-const answerDraft = ref<Record<number, number>>({})
 
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
+const questions = computed<Question[]>(() => pageData.value?.records ?? [])
 const totalPages = computed(() => {
   if (!pageData.value) {
     return 1
   }
   return Math.max(1, Math.ceil(pageData.value.totalQuestions / pageData.value.pageSize))
 })
-const currentPageAnsweredCount = computed(() =>
-    (pageData.value?.records ?? []).filter((question) => answerDraft.value[question.questionId] != null).length
-)
-const answeredRatio = computed(() => {
-  if (!pageData.value || pageData.value.totalQuestions === 0) return 0
-  return Math.round(( (pageData.value.answeredCount - (pageData.value?.records ?? []).filter(q => q.selectedOptionId != null).length + currentPageAnsweredCount.value) / pageData.value.totalQuestions) * 100)
+const answeredCount = computed(() => {
+  if (!pageData.value) {
+    return 0
+  }
+
+  const originalAnswered = questions.value.filter((item) => item.selectedOptionId != null).length
+  const currentAnswered = questions.value.filter((item) => assessmentStore.draftAnswers[item.questionId] != null).length
+  return pageData.value.answeredCount - originalAnswered + currentAnswered
+})
+const progressPercent = computed(() => {
+  if (!pageData.value || pageData.value.totalQuestions === 0) {
+    return 0
+  }
+  return Math.min(100, Math.round((answeredCount.value / pageData.value.totalQuestions) * 100))
 })
 
-const scrollArea = ref<HTMLElement | null>(null)
-
-function syncAnswersFromPage(): void {
-  const nextDraft: Record<number, number> = {}
-  for (const question of pageData.value?.records ?? []) {
-    if (question.selectedOptionId != null) {
-      nextDraft[question.questionId] = question.selectedOptionId
-    }
+function buildAnswerPayload(): AnswerSaveRequest {
+  return {
+    answers: Object.entries(assessmentStore.draftAnswers).map(([questionId, optionId]) => ({
+      questionId: Number(questionId),
+      optionId
+    }))
   }
-  answerDraft.value = nextDraft
+}
+
+function optionSelected(questionId: number, optionId: number): boolean {
+  return assessmentStore.draftAnswers[questionId] === optionId
+}
+
+function selectOption(questionId: number, optionId: number): void {
+  assessmentStore.setDraftAnswer(questionId, optionId)
 }
 
 async function loadQuestionPage(): Promise<void> {
-  if (!sessionId.value) return
+  if (!sessionId.value) {
+    errorMessage.value = '测评会话编号无效'
+    return
+  }
+
   loading.value = true
   errorMessage.value = ''
+
   try {
     const response = await fetchScaleSessionQuestionsApi(sessionId.value, { ...paging })
     pageData.value = response
     paging.pageNum = response.pageNum
-    syncAnswersFromPage()
-    // 换页时让中间区域回滚到顶
-    if (scrollArea.value) scrollArea.value.scrollTo({ top: 0, behavior: 'smooth' })
+    paging.pageSize = response.pageSize
+    assessmentStore.setCurrentQuestionPage(response)
+    assessmentStore.syncDraftAnswersFromPage()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -64,25 +89,18 @@ async function loadQuestionPage(): Promise<void> {
   }
 }
 
-function buildAnswerPayload(): AnswerSaveRequest {
-  return {
-    answers: Object.entries(answerDraft.value).map(([questionId, optionId]) => ({
-      questionId: Number(questionId),
-      optionId
-    }))
+async function persistAnswers(showReload = false): Promise<void> {
+  if (!sessionId.value) {
+    return
   }
-}
 
-function selectOption(questionId: number, optionId: number): void {
-  answerDraft.value = { ...answerDraft.value, [questionId]: optionId }
-}
-
-async function persistAnswers(reload: boolean): Promise<void> {
-  if (!sessionId.value) return
   saving.value = true
+
   try {
     await saveScaleAnswersApi(sessionId.value, buildAnswerPayload())
-    if (reload) await loadQuestionPage()
+    if (showReload) {
+      await loadQuestionPage()
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
     throw error
@@ -91,21 +109,36 @@ async function persistAnswers(reload: boolean): Promise<void> {
   }
 }
 
-async function changePage(next: number): Promise<void> {
-  if (next < 1 || next > totalPages.value || next === paging.pageNum) return
+async function changePage(nextPage: number): Promise<void> {
+  if (nextPage < 1 || nextPage > totalPages.value || nextPage === paging.pageNum) {
+    return
+  }
+
   try {
     await persistAnswers(false)
-    paging.pageNum = next
+    paging.pageNum = nextPage
     await loadQuestionPage()
-  } catch {}
+  } catch {
+    return
+  }
 }
 
 async function submitSession(): Promise<void> {
+  if (!sessionId.value) {
+    return
+  }
+
   submitting.value = true
+  errorMessage.value = ''
+
   try {
     await saveScaleAnswersApi(sessionId.value, buildAnswerPayload())
-    const result = await submitScaleSessionApi(sessionId.value!)
-    await router.push({ name: 'student-report-detail', params: { reportId: result.reportId } })
+    const result: SubmitScaleResponse = await submitScaleSessionApi(sessionId.value)
+    assessmentStore.setLatestSubmit(result)
+    await router.push({
+      name: 'student-assessment-result',
+      params: { reportId: result.reportId }
+    })
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -113,180 +146,346 @@ async function submitSession(): Promise<void> {
   }
 }
 
-onMounted(() => { void loadQuestionPage() })
+watch(
+  () => route.params.sessionId,
+  () => {
+    assessmentStore.resetSessionState()
+    void loadQuestionPage()
+  }
+)
+
+onMounted(() => {
+  void loadQuestionPage()
+})
 </script>
 
 <template>
-  <div class="healing-viewport">
-    <header class="progress-header">
-      <div class="header-inner">
-        <div class="info">
-          <span class="session-tag">SESSION #{{ sessionId }}</span>
-          <span class="ratio">{{ answeredRatio }}%</span>
-        </div>
-        <div class="bar-container">
-          <div class="bar-fill" :style="{ width: `${answeredRatio}%` }"></div>
-        </div>
+  <main class="assessment-session-page">
+    <header class="assessment-session-page__header">
+      <div>
+        <p class="assessment-session-page__eyebrow">Assessment Session</p>
+        <h1>按真实状态完成本次作答</h1>
+      </div>
+      <div class="assessment-session-page__progress-card">
+        <span>完成进度</span>
+        <strong>{{ progressPercent }}%</strong>
+        <p>{{ answeredCount }} / {{ pageData?.totalQuestions || '--' }} 题已作答</p>
       </div>
     </header>
 
-    <main class="assessment-scroll-area" ref="scrollArea">
-      <div class="content-limit">
-        <div v-if="loading" class="status-box">正在布置作答空间...</div>
-
-        <div v-else class="questions-list">
-          <article
-              v-for="(question, index) in pageData?.records"
-              :key="question.questionId"
-              class="question-card"
-          >
-            <div class="q-head">
-              <span class="q-num">Q{{ String((paging.pageNum - 1) * paging.pageSize + index + 1).padStart(2, '0') }}</span>
-              <span class="q-check" v-if="answerDraft[question.questionId]">已就绪</span>
-            </div>
-            <h2 class="q-text">{{ question.content }}</h2>
-            <div class="options-group">
-              <button
-                  v-for="opt in question.options"
-                  :key="opt.id"
-                  class="opt-item"
-                  :class="{ 'is-selected': answerDraft[question.questionId] === opt.id }"
-                  @click="selectOption(question.questionId, opt.id)"
-              >
-                <span class="opt-label">{{ opt.optionCode }}</span>
-                <span class="opt-val">{{ opt.content }}</span>
-              </button>
-            </div>
-          </article>
-        </div>
+    <section class="assessment-session-page__bar-panel">
+      <div class="assessment-session-page__bar-track">
+        <div class="assessment-session-page__bar-fill" :style="{ width: `${progressPercent}%` }"></div>
       </div>
-    </main>
+      <p>{{ pageData?.totalQuestions || '--' }} 题中，当前为第 {{ paging.pageNum }} / {{ totalPages }} 页。</p>
+    </section>
 
-    <footer class="controls-footer">
-      <div class="footer-inner">
-        <div class="page-info">
-          <strong>Page {{ paging.pageNum }}</strong> / {{ totalPages }}
+    <p v-if="errorMessage" class="assessment-session-page__alert">{{ errorMessage }}</p>
+
+    <section v-if="loading" class="assessment-session-page__status-panel">
+      <p>正在加载当前页题目...</p>
+    </section>
+
+    <section v-else class="assessment-session-page__question-list">
+      <article v-for="question in questions" :key="question.questionId" class="question-card">
+        <div class="question-card__head">
+          <p class="question-card__number">Q{{ String(question.questionNo).padStart(2, '0') }}</p>
+          <span v-if="assessmentStore.draftAnswers[question.questionId] != null" class="question-card__status">
+            已选择
+          </span>
         </div>
-        <div class="btn-group">
-          <button class="btn btn--ghost" :disabled="paging.pageNum <= 1" @click="changePage(paging.pageNum - 1)">上一页</button>
-          <button class="btn btn--ghost" @click="persistAnswers(true)">{{ saving ? '正在存入...' : '暂存' }}</button>
-          <button v-if="paging.pageNum < totalPages" class="btn btn--primary" @click="changePage(paging.pageNum + 1)">下一页</button>
-          <button v-else class="btn btn--submit" :disabled="submitting" @click="submitSession">{{ submitting ? '分析中...' : '提交结果' }}</button>
+        <h2>{{ question.content }}</h2>
+        <div class="question-card__options">
+          <button
+            v-for="option in question.options"
+            :key="option.id"
+            class="question-card__option"
+            :class="{ 'question-card__option--active': optionSelected(question.questionId, option.id) }"
+            type="button"
+            @click="selectOption(question.questionId, option.id)"
+          >
+            <span>{{ option.optionCode }}</span>
+            <strong>{{ option.content }}</strong>
+            <small>{{ option.score }} 分</small>
+          </button>
         </div>
+      </article>
+    </section>
+
+    <footer class="assessment-session-page__footer">
+      <div class="assessment-session-page__page-info">
+        第 {{ paging.pageNum }} 页，共 {{ totalPages }} 页
+      </div>
+
+      <div class="assessment-session-page__actions">
+        <button
+          class="assessment-session-page__ghost"
+          type="button"
+          :disabled="paging.pageNum <= 1 || saving || submitting"
+          @click="changePage(paging.pageNum - 1)"
+        >
+          上一页
+        </button>
+        <button
+          class="assessment-session-page__ghost"
+          type="button"
+          :disabled="saving || submitting"
+          @click="persistAnswers(true)"
+        >
+          {{ saving ? '正在暂存...' : '暂存进度' }}
+        </button>
+        <button
+          v-if="paging.pageNum < totalPages"
+          class="assessment-session-page__primary"
+          type="button"
+          :disabled="saving || submitting"
+          @click="changePage(paging.pageNum + 1)"
+        >
+          下一页
+        </button>
+        <button
+          v-else
+          class="assessment-session-page__submit"
+          type="button"
+          :disabled="saving || submitting"
+          @click="submitSession"
+        >
+          {{ submitting ? '正在提交并生成报告...' : '提交并生成报告' }}
+        </button>
       </div>
     </footer>
-  </div>
+  </main>
 </template>
 
 <style scoped>
-/* =========================================
-   核心：视口锁死布局
-========================================= */
-.healing-viewport {
-  --c-sage: #8DA393;
-  --c-sand: #F4F1EA;
-  --c-ink: #2C352D;
-  --c-white: #FFFFFF;
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-  height: 100dvh;
+.assessment-session-page {
+  --ink: #1f2620;
+  --muted: #6c665d;
+  --line: rgba(31, 38, 32, 0.1);
+  --card: rgba(255, 252, 247, 0.82);
+  min-height: 100%;
+  color: var(--ink);
+}
+
+.assessment-session-page__header,
+.assessment-session-page__footer {
   display: flex;
-  flex-direction: column;
-  overflow: hidden; /* 禁止浏览器级别滚动 */
-  background: var(--c-sand);
-  color: var(--c-ink);
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+}
+
+.assessment-session-page__eyebrow,
+.question-card__number {
+  margin: 0;
+  font: 700 0.74rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #756c60;
+}
+
+.assessment-session-page h1,
+.question-card h2 {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+}
+
+.assessment-session-page h1 {
+  margin-top: 0.85rem;
+  font-size: clamp(2.1rem, 4vw, 3.7rem);
+  line-height: 1.08;
+}
+
+.assessment-session-page__progress-card,
+.assessment-session-page__bar-panel,
+.question-card,
+.assessment-session-page__status-panel {
+  border: 1px solid var(--line);
+  background: var(--card);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 22px 52px rgba(76, 62, 46, 0.08);
+}
+
+.assessment-session-page__progress-card {
+  min-width: 220px;
+  padding: 1.15rem 1.2rem;
+}
+
+.assessment-session-page__progress-card span,
+.assessment-session-page__page-info,
+.question-card__status {
+  font: 700 0.78rem/1.4 'Manrope', sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #687466;
+}
+
+.assessment-session-page__progress-card strong {
+  display: block;
+  margin-top: 0.55rem;
+  font: 600 2rem/1 'Noto Serif SC', serif;
+}
+
+.assessment-session-page__progress-card p,
+.assessment-session-page__bar-panel p,
+.assessment-session-page__status-panel p {
+  margin: 0.7rem 0 0;
+  color: var(--muted);
+  font: 400 0.92rem/1.7 'Manrope', sans-serif;
+}
+
+.assessment-session-page__bar-panel {
+  margin-top: 1.2rem;
+  padding: 1rem 1.1rem;
+}
+
+.assessment-session-page__bar-track {
+  height: 10px;
+  overflow: hidden;
+  background: rgba(31, 38, 32, 0.08);
+}
+
+.assessment-session-page__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #718a79, #43584a);
+  transition: width 220ms ease;
+}
+
+.assessment-session-page__alert {
+  margin-top: 1rem;
+  color: #a24d4d;
+  font-weight: 600;
+}
+
+.assessment-session-page__status-panel {
+  margin-top: 1.2rem;
+  padding: 1.2rem;
+}
+
+.assessment-session-page__question-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.question-card {
+  padding: 1.35rem;
+}
+
+.question-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.question-card h2 {
+  margin-top: 0.8rem;
+  font-size: 1.4rem;
+  line-height: 1.55;
+}
+
+.question-card__options {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.question-card__option {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid rgba(31, 38, 32, 0.08);
+  background: rgba(255, 255, 255, 0.48);
+  cursor: pointer;
+  text-align: left;
+}
+
+.question-card__option span,
+.question-card__option small {
   font-family: 'Manrope', sans-serif;
 }
 
-/* =========================================
-   1. 固定顶部 (Header)
-========================================= */
-.progress-header {
-  flex: 0 0 auto;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(20px);
-  padding: 1.2rem 2rem;
-  border-bottom: 1px solid rgba(0,0,0,0.05);
+.question-card__option span {
+  font-weight: 700;
+  color: #7b7368;
 }
 
-.header-inner { max-width: 800px; margin: 0 auto; }
-.info { display: flex; justify-content: space-between; margin-bottom: 0.6rem; font-size: 0.8rem; font-weight: 700; color: #7A857B; }
-.bar-container { height: 6px; background: rgba(0,0,0,0.05); border-radius: 10px; overflow: hidden; }
-.bar-fill { height: 100%; background: var(--c-sage); transition: width 0.6s ease; }
-
-/* =========================================
-   2. 中间滚动区 (Main)
-========================================= */
-.assessment-scroll-area {
-  flex: 1 1 auto;
-  overflow-y: auto; /* 仅此处允许滚动 */
-  padding: 3rem 1.5rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--c-sage) transparent;
+.question-card__option strong {
+  font: 600 1rem/1.6 'Noto Serif SC', serif;
 }
 
-.content-limit { max-width: 720px; margin: 0 auto; }
-
-/* 题卡部分换成白色 */
-.question-card {
-  background: var(--c-white);
-  border-radius: 20px;
-  padding: 2.5rem;
-  margin-bottom: 2rem;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+.question-card__option small {
+  color: var(--muted);
 }
 
-.q-head { display: flex; justify-content: space-between; margin-bottom: 1rem; }
-.q-num { font-size: 1.8rem; font-family: serif; color: rgba(0,0,0,0.1); font-weight: 700; }
-.q-check { font-size: 0.75rem; color: var(--c-sage); font-weight: 700; }
-.q-text { font-size: 1.25rem; font-weight: 500; margin: 0 0 2rem 0; line-height: 1.6; }
-
-.options-group { display: flex; flex-direction: column; gap: 0.8rem; }
-.opt-item {
-  display: flex; align-items: center; gap: 1rem; padding: 1.1rem 1.5rem;
-  border-radius: 14px; border: 1px solid #F0F0F0; background: #FAFAFA;
-  cursor: pointer; transition: all 0.2s ease; text-align: left;
-}
-.opt-item:hover { background: #F5F5F5; transform: translateX(4px); }
-.opt-label { font-weight: 800; color: #AAA; width: 20px; }
-.opt-val { font-size: 1rem; }
-
-/* 选中状态 */
-.opt-item.is-selected {
-  background: #E8F0E9; border-color: var(--c-sage);
-}
-.opt-item.is-selected .opt-label { color: var(--c-sage); }
-
-/* =========================================
-   3. 固定底部 (Footer)
-========================================= */
-.controls-footer {
-  flex: 0 0 auto;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(20px);
-  padding: 1.2rem 2rem;
-  box-shadow: 0 -10px 30px rgba(0,0,0,0.03);
+.question-card__option--active {
+  border-color: rgba(97, 121, 105, 0.45);
+  background: linear-gradient(135deg, rgba(236, 244, 237, 0.95), rgba(246, 250, 246, 0.95));
 }
 
-.footer-inner { max-width: 800px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
-.page-info { font-size: 0.9rem; color: #999; }
-.page-info strong { color: var(--c-ink); }
+.assessment-session-page__footer {
+  margin-top: 1.25rem;
+  padding-bottom: 0.5rem;
+}
 
-.btn-group { display: flex; gap: 0.8rem; }
-.btn { padding: 0.8rem 1.5rem; border-radius: 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.assessment-session-page__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
 
-.btn--ghost { background: #F0F0F0; color: var(--c-ink); }
-.btn--ghost:hover:not(:disabled) { background: #E5E5E5; }
+.assessment-session-page__ghost,
+.assessment-session-page__primary,
+.assessment-session-page__submit {
+  min-height: 3rem;
+  padding: 0 1.15rem;
+  border: none;
+  font: 700 0.8rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
 
-.btn--primary { background: var(--c-ink); color: white; }
-.btn--primary:hover:not(:disabled) { background: #000; }
+.assessment-session-page__ghost {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+}
 
-.btn--submit { background: var(--c-sage); color: white; }
-.btn--submit:hover:not(:disabled) { transform: scale(1.05); }
+.assessment-session-page__primary,
+.assessment-session-page__submit {
+  color: #fffaf4;
+  background: linear-gradient(135deg, #627b69, #4d6454);
+  box-shadow: 0 18px 34px rgba(77, 100, 84, 0.24);
+}
 
-@media (max-width: 600px) {
-  .btn-group { width: 100%; }
-  .btn { flex: 1; padding: 0.8rem 0.5rem; font-size: 0.8rem; }
-  .page-info { display: none; }
+.assessment-session-page__ghost:disabled,
+.assessment-session-page__primary:disabled,
+.assessment-session-page__submit:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+}
+
+@media (max-width: 980px) {
+  .assessment-session-page__header,
+  .assessment-session-page__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .question-card__option {
+    grid-template-columns: 1fr;
+  }
+
+  .assessment-session-page__actions button {
+    flex: 1;
+  }
 }
 </style>

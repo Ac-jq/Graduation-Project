@@ -17,8 +17,24 @@ const favoriteButtonText = computed(() => {
   if (togglingFavorite.value) {
     return '处理中...'
   }
-
   return resourceDetail.value?.favorite ? '取消收藏' : '加入收藏'
+})
+
+const previewMode = computed<'video' | 'image' | 'article' | 'external'>(() => {
+  const url = resourceDetail.value?.contentUrl?.toLowerCase() ?? ''
+  if (!url) {
+    return 'external'
+  }
+  if (url.endsWith('.mp4') || url.endsWith('.webm') || resourceDetail.value?.resourceType === 'VIDEO') {
+    return 'video'
+  }
+  if (url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png') || url.endsWith('.webp')) {
+    return 'image'
+  }
+  if (url.endsWith('.html') || resourceDetail.value?.resourceType === 'ARTICLE') {
+    return 'article'
+  }
+  return 'external'
 })
 
 function formatDate(value: string | null): string {
@@ -38,7 +54,7 @@ function formatDate(value: string | null): string {
 function resolveResourceType(type: string): string {
   switch (type) {
     case 'ARTICLE':
-      return '文章'
+      return '图文卡片'
     case 'VIDEO':
       return '视频'
     case 'AUDIO':
@@ -92,7 +108,7 @@ async function toggleFavorite(): Promise<void> {
   }
 }
 
-async function jumpTo收藏数(): Promise<void> {
+async function jumpToFavorites(): Promise<void> {
   await router.push({ name: 'student-favorites' })
 }
 
@@ -122,10 +138,10 @@ onMounted(() => {
   <main class="resource-detail-page">
     <section class="resource-detail-page__masthead">
       <div class="resource-detail-page__heading">
-        <p class="resource-detail-page__eyebrow">资源详情</p>
+        <p class="resource-detail-page__eyebrow">Resource Detail</p>
         <h1 class="resource-detail-page__title">资源详情</h1>
         <p class="resource-detail-page__summary">
-          在这里查看单条资源的内容说明、标签与收藏状态，并决定是否把它纳入你的长期支持清单。
+          这里会直接展示资源封面、视频或图文内容。你不需要跳出系统，就能在当前页面完成浏览、收藏和回看。
         </p>
       </div>
 
@@ -133,11 +149,11 @@ onMounted(() => {
         <p class="resource-detail-page__label">Archive Entry</p>
         <dl>
           <div>
-            <dt>Type</dt>
+            <dt>资源类型</dt>
             <dd>{{ resolveResourceType(resourceDetail.resourceType) }}</dd>
           </div>
           <div>
-            <dt>Category</dt>
+            <dt>所属分类</dt>
             <dd>{{ resourceDetail.categoryName }}</dd>
           </div>
           <div>
@@ -168,48 +184,80 @@ onMounted(() => {
 
         <div class="resource-detail-page__hero-meta">
           <div>
-            <span>Views</span>
+            <span>浏览次数</span>
             <strong>{{ resourceDetail.viewCount }}</strong>
           </div>
           <div>
-            <span>收藏数</span>
+            <span>收藏人数</span>
             <strong>{{ resourceDetail.favoriteCount }}</strong>
           </div>
           <div>
-            <span>Updated</span>
+            <span>最近更新</span>
             <strong>{{ formatDate(resourceDetail.updatedAt) }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="resource-detail-page__media">
+        <img v-if="resourceDetail.coverUrl" class="resource-detail-page__cover" :src="resourceDetail.coverUrl" :alt="resourceDetail.title">
+
+        <div class="resource-detail-page__preview-frame">
+          <video
+            v-if="previewMode === 'video'"
+            class="resource-detail-page__video"
+            :src="resourceDetail.contentUrl"
+            controls
+            playsinline
+          />
+          <img
+            v-else-if="previewMode === 'image'"
+            class="resource-detail-page__inline-image"
+            :src="resourceDetail.contentUrl"
+            :alt="resourceDetail.title"
+          >
+          <iframe
+            v-else-if="previewMode === 'article'"
+            class="resource-detail-page__article"
+            :src="resourceDetail.contentUrl"
+            title="资源内容预览"
+          />
+          <div v-else class="resource-detail-page__external-tip">
+            <p>该资源适合在新窗口中查看。你仍然可以在下方按钮中直接打开原始内容。</p>
           </div>
         </div>
       </section>
 
       <section class="resource-detail-page__body-grid">
         <article class="resource-detail-page__panel">
-          <p class="resource-detail-page__label">Reading Notes</p>
+          <p class="resource-detail-page__label">Content Notes</p>
           <h3>内容说明</h3>
           <p>{{ resourceDetail.summaryText }}</p>
           <div class="resource-detail-page__tag-row">
             <span class="resource-detail-page__tag">{{ resourceDetail.categoryName }}</span>
             <span v-for="tag in resourceDetail.tags" :key="tag.tagId" class="resource-detail-page__tag">{{ tag.name }}</span>
           </div>
+          <div class="resource-detail-page__notice">
+            本资源用于高校场景下的自助支持与辅助整理，不替代医学诊断与专业治疗。
+          </div>
         </article>
 
         <article class="resource-detail-page__panel">
           <p class="resource-detail-page__label">Actions</p>
           <h3>收藏与跳转</h3>
-          <p>你可以把这条资源加入收藏，或直接跳转到原始内容地址继续阅读、观看或收听。</p>
+          <p>你可以把资源加入收藏，后续在收藏夹持续回看；如果想单独查看原始内容，也可以直接打开独立页面。</p>
           <div class="resource-detail-page__actions">
             <button class="resource-detail-page__primary" type="button" :disabled="togglingFavorite" @click="toggleFavorite">
               {{ favoriteButtonText }}
             </button>
             <button class="resource-detail-page__ghost" type="button" @click="openContent">打开原始内容</button>
-            <button class="resource-detail-page__ghost" type="button" @click="jumpTo收藏数">查看我的收藏</button>
+            <button class="resource-detail-page__ghost" type="button" @click="jumpToFavorites">查看我的收藏</button>
           </div>
         </article>
       </section>
 
       <section class="resource-detail-page__footer-actions">
         <button class="resource-detail-page__ghost" type="button" @click="jumpToResourceArchive">返回资源目录</button>
-        <button class="resource-detail-page__ghost" type="button" @click="jumpTo收藏数">前往收藏列表</button>
+        <button class="resource-detail-page__ghost" type="button" @click="jumpToFavorites">前往收藏列表</button>
       </section>
     </template>
 
@@ -228,7 +276,7 @@ onMounted(() => {
   --ink: #201c18;
   --muted: #6e665f;
   --line: rgba(32, 28, 24, 0.12);
-  --glass: rgba(255, 251, 245, 0.68);
+  --glass: rgba(255, 251, 245, 0.72);
   --accent: #647d6d;
   min-height: 100vh;
   padding: 2rem;
@@ -263,7 +311,7 @@ onMounted(() => {
 
 .resource-detail-page__title {
   margin: 0.95rem 0 0;
-  font: 600 clamp(2.8rem, 5vw, 5.1rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
+  font: 600 clamp(2.8rem, 5vw, 5rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
 .resource-detail-page__summary {
@@ -275,6 +323,7 @@ onMounted(() => {
 
 .resource-detail-page__snapshot,
 .resource-detail-page__hero,
+.resource-detail-page__media,
 .resource-detail-page__panel,
 .resource-detail-page__status-panel,
 .resource-detail-page__footer-actions {
@@ -337,6 +386,54 @@ onMounted(() => {
   font: 600 1.05rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
+.resource-detail-page__media {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+}
+
+.resource-detail-page__cover {
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  object-fit: cover;
+  border-radius: 20px;
+}
+
+.resource-detail-page__preview-frame {
+  min-height: 420px;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.resource-detail-page__video,
+.resource-detail-page__inline-image,
+.resource-detail-page__article {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  border: none;
+  display: block;
+  object-fit: cover;
+}
+
+.resource-detail-page__external-tip {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  padding: 1.5rem;
+}
+
+.resource-detail-page__external-tip p {
+  max-width: 28rem;
+  margin: 0;
+  text-align: center;
+}
+
 .resource-detail-page__body-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -360,6 +457,14 @@ onMounted(() => {
   padding: 0.45rem 0.7rem;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.42);
+}
+
+.resource-detail-page__notice {
+  padding: 0.85rem 1rem;
+  border-left: 3px solid var(--accent);
+  background: rgba(100, 125, 109, 0.08);
+  color: #46584e;
+  font: 500 0.9rem/1.8 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
 .resource-detail-page__actions,
@@ -411,13 +516,13 @@ onMounted(() => {
 }
 
 @media (max-width: 980px) {
-  .resource-detail-page,
-  .resource-list-page {
+  .resource-detail-page {
     padding: 1rem;
   }
 
   .resource-detail-page__masthead,
   .resource-detail-page__hero,
+  .resource-detail-page__media,
   .resource-detail-page__body-grid {
     grid-template-columns: 1fr;
   }
@@ -429,4 +534,3 @@ onMounted(() => {
   }
 }
 </style>
-

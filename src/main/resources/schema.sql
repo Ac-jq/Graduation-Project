@@ -76,6 +76,20 @@ CREATE TABLE IF NOT EXISTS mental_scale (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) COMMENT='心理量表表';
 
+CREATE TABLE IF NOT EXISTS mental_scale_rule (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
+    scale_id BIGINT NOT NULL COMMENT '量表ID',
+    level_code VARCHAR(32) NOT NULL COMMENT '等级编码',
+    min_score INT NOT NULL COMMENT '最小分值',
+    max_score INT NOT NULL COMMENT '最大分值',
+    summary_text VARCHAR(255) NOT NULL COMMENT '等级说明',
+    sort_no INT NOT NULL DEFAULT 1 COMMENT '排序号',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_scale_rule_level (scale_id, level_code),
+    CONSTRAINT fk_scale_rule_scale_id FOREIGN KEY (scale_id) REFERENCES mental_scale (id)
+) COMMENT='量表评分规则表';
+
 CREATE TABLE IF NOT EXISTS mental_scale_question (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
     scale_id BIGINT NOT NULL COMMENT '量表ID',

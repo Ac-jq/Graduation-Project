@@ -7,10 +7,13 @@ export interface ScaleSummary {
   description: string | null
   totalQuestions: number
   pageSize: number
+  productPositioning?: string | null
+  noticeText?: string | null
 }
 
 export interface ScaleDetail extends ScaleSummary {
   introduction: string | null
+  scoringRules?: string[]
 }
 
 export interface ScaleSession {
@@ -66,6 +69,7 @@ export interface SubmitScaleResponse {
   totalScore: number
   levelCode: string
   summaryText: string
+  noticeText?: string | null
 }
 
 export interface ReportSummary {
@@ -93,5 +97,6 @@ export interface ReportDetail {
   recommendationNote: string | null
   recommendAppointment: boolean
   recommendedResources: ResourceSummary[]
+  noticeText?: string | null
   createdAt: string
 }

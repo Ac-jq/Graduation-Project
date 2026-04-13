@@ -1,5 +1,6 @@
 package sdu.jiaq.jqpro.dto.assessment;
 
+import java.util.List;
 import lombok.Builder;
 import lombok.Data;
 
@@ -23,4 +24,10 @@ public class ScaleDetailResponse {
     private Integer totalQuestions;
 
     private Integer pageSize;
+
+    private String productPositioning;
+
+    private String noticeText;
+
+    private List<String> scoringRules;
 }

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>睡前降噪整理卡</title>
+  <style>
+    :root {
+      --bg: #f3eee6;
+      --panel: rgba(255, 251, 245, 0.82);
+      --text: #201b18;
+      --muted: #6c635a;
+      --accent: #526b5c;
+      --line: rgba(32, 27, 24, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(82, 107, 92, 0.18), transparent 22%),
+        linear-gradient(180deg, rgba(255,255,255,0.35), transparent 40%),
+        var(--bg);
+    }
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+    .hero,
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 20px 44px rgba(58, 47, 41, 0.08);
+    }
+    .hero {
+      display: grid;
+      gap: 20px;
+      padding: 20px;
+    }
+    .hero img {
+      width: 100%;
+      max-height: 420px;
+      object-fit: cover;
+      border-radius: 18px;
+    }
+    .eyebrow,
+    .chip {
+      font: 600 12px/1.4 "Segoe UI", sans-serif;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    h1, h2 {
+      margin: 0;
+      line-height: 1.15;
+    }
+    h1 { font-size: clamp(32px, 5vw, 54px); }
+    h2 { font-size: 24px; }
+    p, li {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.9;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .panel {
+      padding: 18px;
+    }
+    ul {
+      margin: 12px 0 0;
+      padding-left: 20px;
+    }
+    .notice {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: rgba(82, 107, 92, 0.08);
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.58);
+    }
+    @media (max-width: 760px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <img src="/assets/resources/images/sleep-cover.jpg" alt="睡前环境图">
+    <div>
+      <p class="eyebrow">Sleep Reset Card</p>
+      <h1>睡前降噪整理卡</h1>
+      <p>这份卡片适合放在宿舍或书桌旁。目标不是立刻“睡着”，而是先把身体和环境从高唤醒状态慢慢降下来，让大脑收到“今天准备收尾”的信号。</p>
+      <div class="chip-row">
+        <span class="chip">睡前放松</span>
+        <span class="chip">宿舍场景</span>
+        <span class="chip">可在 10 分钟内完成</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <p class="eyebrow">Step 01</p>
+      <h2>先把环境降一档</h2>
+      <ul>
+        <li>把顶灯切成台灯或暖色小灯，告诉自己今天进入收尾状态。</li>
+        <li>把手机调成免打扰，至少留出 15 分钟不再刷短视频。</li>
+        <li>如果宿舍声音偏杂，优先戴耳塞或用轻音乐替代硬扛。</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Step 02</p>
+      <h2>用呼吸把节奏带慢</h2>
+      <ul>
+        <li>吸气 4 秒，停 1 秒，呼气 6 秒，重复 6 轮。</li>
+        <li>呼气略长于吸气，会更容易把身体从紧绷里带出来。</li>
+        <li>如果脑子停不下来，不需要强迫清空，只要继续数节奏。</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Step 03</p>
+      <h2>把明天的焦虑写出去</h2>
+      <ul>
+        <li>把最担心的三件事写在纸上，不在脑内循环复盘。</li>
+        <li>每件事后只写一个明天能做的小动作，例如“9 点前回老师消息”。</li>
+        <li>写完就停，不再扩展成完整计划表。</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Step 04</p>
+      <h2>什么时候应该求助</h2>
+      <ul>
+        <li>如果连续多晚明显失眠、情绪低落或白天功能受影响，不建议只靠硬扛。</li>
+        <li>可以联系辅导员、心理老师或校医院做进一步支持。</li>
+        <li>如果出现明显风险信号，应优先求助身边可信任的大人和学校支持系统。</li>
+      </ul>
+    </article>
+  </section>
+
+  <div class="notice">
+    <strong>说明：</strong>
+    <p>本资源仅用于高校场景下的自助整理与辅助调节，不替代医学诊断和专业治疗。</p>
+  </div>
+</main>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>考试周节律调整手册</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --panel: rgba(255, 251, 246, 0.86);
+      --text: #221c18;
+      --muted: #6d645a;
+      --accent: #6f5a3a;
+      --line: rgba(34, 28, 24, 0.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at left top, rgba(111, 90, 58, 0.12), transparent 25%),
+        radial-gradient(circle at right center, rgba(75, 95, 82, 0.12), transparent 24%),
+        var(--bg);
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 20px 56px;
+    }
+    .hero,
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 18px 42px rgba(56, 47, 38, 0.08);
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+      gap: 20px;
+      padding: 20px;
+    }
+    .hero img {
+      width: 100%;
+      height: 100%;
+      min-height: 360px;
+      object-fit: cover;
+      border-radius: 18px;
+    }
+    .eyebrow,
+    .metric span {
+      font: 600 12px/1.4 "Segoe UI", sans-serif;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.14;
+    }
+    h1 { font-size: clamp(32px, 4vw, 48px); }
+    h2 { font-size: 24px; }
+    h3 { font-size: 18px; }
+    p, li {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.85;
+    }
+    .metrics {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .metric {
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.56);
+    }
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 24px;
+      color: var(--text);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .panel {
+      padding: 18px;
+    }
+    ul {
+      margin: 12px 0 0;
+      padding-left: 18px;
+    }
+    .notice {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-left: 4px solid var(--accent);
+      background: rgba(111, 90, 58, 0.08);
+    }
+    @media (max-width: 880px) {
+      .hero,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .hero img {
+        min-height: 240px;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <img src="/assets/resources/images/study-cover.jpg" alt="学习桌面图">
+    <div>
+      <p class="eyebrow">Exam Week Toolkit</p>
+      <h1>考试周节律调整手册</h1>
+      <p>考试周最容易出现的问题不是“任务太多”，而是节律被打散：睡得晚、吃得急、脑子停不下来。这个手册的目标是先把一天拉回可控，而不是一次解决全部压力。</p>
+      <div class="metrics">
+        <div class="metric">
+          <span>Daily Focus</span>
+          <strong>3 块任务</strong>
+        </div>
+        <div class="metric">
+          <span>Recovery Break</span>
+          <strong>每 90 分钟停 10 分钟</strong>
+        </div>
+        <div class="metric">
+          <span>Support Check</span>
+          <strong>至少保留 1 位联系人</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="panel">
+      <p class="eyebrow">Module 01</p>
+      <h2>任务切分</h2>
+      <ul>
+        <li>每天只留 3 块最关键任务，不把愿望清单当成当天计划。</li>
+        <li>每块任务前先写“开始动作”，例如打开真题、整理错题页。</li>
+        <li>完成一块就离开座位 5 到 10 分钟，做身体切换。</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Module 02</p>
+      <h2>身体补位</h2>
+      <ul>
+        <li>早上先喝水，再碰咖啡因，避免一上来把神经拉得过满。</li>
+        <li>午后如果头胀，先做 2 分钟慢呼吸或去走廊走一圈。</li>
+        <li>晚上复习不要无限拖长，超过 23 点通常收益已经下降。</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">Module 03</p>
+      <h2>求助提醒</h2>
+      <ul>
+        <li>如果已经出现明显失眠、胃口差、持续烦躁或情绪崩掉，不建议继续一个人扛。</li>
+        <li>可以主动联系辅导员、任课老师、心理老师或熟悉的同学，先把状态说出来。</li>
+        <li>一旦感觉风险升高，应立刻转向线下支持系统，而不是继续刷资料。</li>
+      </ul>
+    </article>
+  </section>
+
+  <div class="notice">
+    <strong>说明：</strong>
+    <p>本资源用于高校场景下的自助支持与节律整理，不替代专业心理评估、医学诊断与紧急处置。</p>
+  </div>
+</main>
+</body>
+</html>

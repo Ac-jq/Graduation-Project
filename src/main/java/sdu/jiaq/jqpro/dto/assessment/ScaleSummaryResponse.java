@@ -21,4 +21,8 @@ public class ScaleSummaryResponse {
     private Integer totalQuestions;
 
     private Integer pageSize;
+
+    private String productPositioning;
+
+    private String noticeText;
 }

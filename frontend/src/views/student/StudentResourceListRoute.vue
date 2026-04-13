@@ -40,7 +40,7 @@ function formatDate(value: string | null): string {
 function resolveResourceType(type: string): string {
   switch (type) {
     case 'ARTICLE':
-      return '文章'
+      return '图文卡片'
     case 'VIDEO':
       return '视频'
     case 'AUDIO':
@@ -50,6 +50,16 @@ function resolveResourceType(type: string): string {
     default:
       return type
   }
+}
+
+function buildResourceMemory(resource: ResourceSummary): string {
+  if (resource.resourceType === 'VIDEO') {
+    return '适合在高压与走神之间做短暂停顿。'
+  }
+  if (resource.resourceType === 'ARTICLE') {
+    return '适合保存后反复回看，做成自己的支持卡片。'
+  }
+  return '适合放进长期自助支持清单。'
 }
 
 async function loadResourceMeta(): Promise<void> {
@@ -107,10 +117,11 @@ onMounted(() => {
   <main class="resource-list-page">
     <section class="resource-list-page__masthead">
       <div class="resource-list-page__heading">
-        <p class="resource-list-page__eyebrow">Curated Wellbeing Library</p>
-        <h1 class="resource-list-page__title">心理资源目录</h1>
+        <p class="resource-list-page__eyebrow">Campus Resource Archive</p>
+        <h1 class="resource-list-page__title">图片与视频资源库</h1>
         <p class="resource-list-page__summary">
-          你可以按分类、标签与关键词筛选自助资源，在阅读、观看与收藏之间建立自己的长期支持清单。
+          这里集中放置可直接查看的本地图片、视频与图文卡片。你可以按分类、标签和关键词筛选，
+          把合适的内容沉淀成自己的稳定支持清单。
         </p>
       </div>
 
@@ -122,15 +133,15 @@ onMounted(() => {
             <dd>{{ resources.length }}</dd>
           </div>
           <div>
-            <dt>收藏数</dt>
+            <dt>收藏数量</dt>
             <dd>{{ favoriteCount }}</dd>
           </div>
           <div>
-            <dt>Category</dt>
+            <dt>当前分类</dt>
             <dd>{{ selectedCategoryName }}</dd>
           </div>
           <div>
-            <dt>Tag</dt>
+            <dt>当前标签</dt>
             <dd>{{ selectedTagName }}</dd>
           </div>
         </dl>
@@ -142,12 +153,17 @@ onMounted(() => {
     <section class="resource-list-page__filter-grid">
       <article class="resource-filter-panel">
         <div class="resource-filter-panel__head">
-          <p class="resource-list-page__label">关键词</p>
+          <p class="resource-list-page__label">关键词检索</p>
           <button class="resource-list-page__ghost" type="button" @click="resetFilters">重置筛选</button>
         </div>
         <label class="resource-filter-panel__field">
-          <span>搜索内容</span>
-          <input v-model="filters.keyword" type="text" placeholder="输入标题、摘要或关键字" @keyup.enter="applyFilters" />
+          <span>搜索标题、摘要</span>
+          <input
+            v-model="filters.keyword"
+            type="text"
+            placeholder="例如：睡前、考试周、呼吸"
+            @keyup.enter="applyFilters"
+          >
         </label>
         <button class="resource-list-page__primary" type="button" :disabled="loading" @click="applyFilters">
           {{ loading ? '筛选中...' : '应用筛选' }}
@@ -155,7 +171,7 @@ onMounted(() => {
       </article>
 
       <article class="resource-filter-panel">
-        <p class="resource-list-page__label">Categories</p>
+        <p class="resource-list-page__label">分类</p>
         <div class="resource-filter-panel__chips">
           <button
             type="button"
@@ -179,7 +195,7 @@ onMounted(() => {
       </article>
 
       <article class="resource-filter-panel">
-        <p class="resource-list-page__label">Tags</p>
+        <p class="resource-list-page__label">标签</p>
         <div class="resource-filter-panel__chips">
           <button
             type="button"
@@ -209,6 +225,11 @@ onMounted(() => {
 
     <section v-else-if="resources.length" class="resource-list-page__grid">
       <article v-for="resource in resources" :key="resource.resourceId" class="resource-card" @click="openResource(resource.resourceId)">
+        <div class="resource-card__cover">
+          <img v-if="resource.coverUrl" :src="resource.coverUrl" :alt="resource.title">
+          <div v-else class="resource-card__cover-fallback">{{ resolveResourceType(resource.resourceType) }}</div>
+        </div>
+
         <div class="resource-card__header">
           <p class="resource-card__type">{{ resolveResourceType(resource.resourceType) }}</p>
           <p class="resource-card__published">{{ formatDate(resource.publishedAt) }}</p>
@@ -217,6 +238,7 @@ onMounted(() => {
         <div class="resource-card__body">
           <h2>{{ resource.title }}</h2>
           <p>{{ resource.summaryText }}</p>
+          <p class="resource-card__memory">{{ buildResourceMemory(resource) }}</p>
         </div>
 
         <div class="resource-card__tags">
@@ -226,16 +248,16 @@ onMounted(() => {
 
         <dl class="resource-card__stats">
           <div>
-            <dt>Views</dt>
+            <dt>浏览</dt>
             <dd>{{ resource.viewCount }}</dd>
           </div>
           <div>
-            <dt>收藏数</dt>
+            <dt>收藏</dt>
             <dd>{{ resource.favoriteCount }}</dd>
           </div>
           <div>
-            <dt>收藏状态</dt>
-            <dd>{{ resource.favorite ? '已收藏' : '未收藏' }}</dd>
+            <dt>状态</dt>
+            <dd>{{ resource.favorite ? '已收藏' : '可收藏' }}</dd>
           </div>
         </dl>
       </article>
@@ -252,19 +274,19 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
 .resource-list-page {
-  --paper: #f4efe5;
-  --ink: #201c18;
-  --muted: #6e665f;
-  --line: rgba(32, 28, 24, 0.12);
-  --glass: rgba(255, 251, 245, 0.68);
-  --accent: #647d6d;
+  --paper: #f2ede4;
+  --ink: #1f1a17;
+  --muted: #6b6258;
+  --line: rgba(31, 26, 23, 0.12);
+  --glass: rgba(255, 251, 245, 0.72);
+  --accent: #5c7765;
   min-height: 100vh;
   padding: 2rem;
   color: var(--ink);
   background:
-    radial-gradient(circle at top right, rgba(114, 136, 121, 0.18), transparent 26%),
-    radial-gradient(circle at left center, rgba(198, 186, 168, 0.22), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 38%),
+    radial-gradient(circle at top right, rgba(92, 119, 101, 0.16), transparent 24%),
+    radial-gradient(circle at left center, rgba(205, 187, 161, 0.24), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 38%),
     var(--paper);
 }
 
@@ -294,7 +316,7 @@ onMounted(() => {
 
 .resource-list-page__title {
   margin: 0.95rem 0 0;
-  font: 600 clamp(2.8rem, 5vw, 5.1rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
+  font: 600 clamp(2.8rem, 5vw, 5rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
 .resource-list-page__summary {
@@ -364,7 +386,7 @@ onMounted(() => {
   min-height: 3rem;
   padding: 0 0.95rem;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.54);
+  background: rgba(255, 255, 255, 0.58);
   color: var(--ink);
   font: 500 0.95rem/1.5 'Manrope', sans-serif;
 }
@@ -390,18 +412,18 @@ onMounted(() => {
 .resource-chip,
 .resource-list-page__ghost {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.5);
   color: var(--ink);
 }
 
 .resource-chip--active {
-  border-color: rgba(100, 125, 109, 0.42);
-  background: rgba(100, 125, 109, 0.12);
+  border-color: rgba(92, 119, 101, 0.42);
+  background: rgba(92, 119, 101, 0.12);
 }
 
 .resource-list-page__primary {
   border: none;
-  background: linear-gradient(135deg, #6b8473, #4f6656);
+  background: linear-gradient(135deg, #6d8575, #4f6658);
   color: #faf6f0;
   box-shadow: 0 18px 36px rgba(79, 102, 86, 0.24);
 }
@@ -423,14 +445,39 @@ onMounted(() => {
 .resource-card {
   display: grid;
   gap: 1rem;
-  padding: 1.25rem;
+  padding: 1.1rem;
   cursor: pointer;
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .resource-card:hover {
-  border-color: rgba(100, 125, 109, 0.38);
+  border-color: rgba(92, 119, 101, 0.38);
   box-shadow: 0 26px 46px rgba(80, 70, 58, 0.12);
+}
+
+.resource-card__cover {
+  overflow: hidden;
+  border-radius: 20px;
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(135deg, rgba(92, 119, 101, 0.22), rgba(205, 187, 161, 0.26));
+}
+
+.resource-card__cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.resource-card__cover-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font: 600 1rem/1.4 'Manrope', sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .resource-card__header,
@@ -450,6 +497,10 @@ onMounted(() => {
   margin: 0.85rem 0 0;
   color: var(--muted);
   font: 400 0.96rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
+}
+
+.resource-card__memory {
+  color: #3d4f44;
 }
 
 .resource-card__tags {
@@ -506,4 +557,3 @@ onMounted(() => {
   }
 }
 </style>
-

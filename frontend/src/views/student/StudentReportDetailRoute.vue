@@ -3,18 +3,21 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchStudentReportDetailApi } from '@/api/assessment'
 import type { ReportDetail } from '@/api/types'
+import { useAssessmentStore } from '@/stores/assessment'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
+const assessmentStore = useAssessmentStore()
+
 const loading = ref(false)
 const errorMessage = ref('')
 const reportDetail = ref<ReportDetail | null>(null)
+
 const reportId = computed(() => toNumberParam(route.params.reportId))
 
-const recommendedResourceCount = computed(() => reportDetail.value?.recommendedResources.length ?? 0)
-const riskToneLabel = computed(() => {
-  switch (reportDetail.value?.levelCode) {
+function resolveLevelLabel(levelCode?: string | null): string {
+  switch (levelCode) {
     case 'LOW':
       return '低风险'
     case 'MEDIUM':
@@ -22,9 +25,9 @@ const riskToneLabel = computed(() => {
     case 'HIGH':
       return '高风险'
     default:
-      return reportDetail.value?.levelCode ?? '未评定'
+      return '待评估'
   }
-})
+}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -38,7 +41,7 @@ function formatDate(value: string): string {
 
 async function loadReportDetail(): Promise<void> {
   if (!reportId.value) {
-    errorMessage.value = '无效的报告编号'
+    errorMessage.value = '报告编号无效'
     reportDetail.value = null
     return
   }
@@ -47,24 +50,14 @@ async function loadReportDetail(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    reportDetail.value = await fetchStudentReportDetailApi(reportId.value)
+    const detail = await fetchStudentReportDetailApi(reportId.value)
+    reportDetail.value = detail
+    assessmentStore.setCurrentReport(detail)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
   }
-}
-
-async function jumpToRecommendedResource(resourceId: number): Promise<void> {
-  await router.push({ name: 'student-resource-detail', params: { resourceId } })
-}
-
-async function jumpToAppointment(): Promise<void> {
-  await router.push({ name: 'student-appointment-slots' })
-}
-
-async function jumpToReportArchive(): Promise<void> {
-  await router.push({ name: 'student-reports' })
 }
 
 watch(
@@ -80,18 +73,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="report-detail-page">
-    <section class="report-detail-page__masthead">
-      <div class="report-detail-page__heading">
-        <p class="report-detail-page__eyebrow">测评解读</p>
-        <h1 class="report-detail-page__title">报告详情</h1>
-        <p class="report-detail-page__summary">
-          这里汇总本次测评的分数、风险等级、AI 解读与后续建议，帮助你决定下一步是继续自助梳理还是进入人工支持。
+  <main class="student-report-detail-page">
+    <section class="student-report-detail-page__hero">
+      <div class="student-report-detail-page__copy">
+        <p class="student-report-detail-page__eyebrow">Assessment Report</p>
+        <h1>报告详情</h1>
+        <p class="student-report-detail-page__lead">
+          这里展示量表得分、风险等级、辅助解读与推荐资源。内容用于帮助你理解当前状态，不作为医学诊断依据。
         </p>
       </div>
 
-      <aside class="report-detail-page__overview" v-if="reportDetail">
-        <p class="report-detail-page__label">报告快照</p>
+      <aside v-if="reportDetail" class="student-report-detail-page__overview">
+        <p class="student-report-detail-page__meta-label">报告快照</p>
         <dl>
           <div>
             <dt>报告编号</dt>
@@ -102,8 +95,8 @@ onMounted(() => {
             <dd>{{ reportDetail.totalScore }}</dd>
           </div>
           <div>
-            <dt>风险等级</dt>
-            <dd>{{ riskToneLabel }}</dd>
+            <dt>等级</dt>
+            <dd>{{ resolveLevelLabel(reportDetail.levelCode) }}</dd>
           </div>
           <div>
             <dt>生成时间</dt>
@@ -113,21 +106,20 @@ onMounted(() => {
       </aside>
     </section>
 
-    <p v-if="errorMessage" class="report-detail-page__alert">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="student-report-detail-page__alert">{{ errorMessage }}</p>
 
-    <section v-if="loading" class="report-detail-page__status-panel">
+    <section v-if="loading" class="student-report-detail-page__status-panel">
       <p>正在加载报告详情...</p>
     </section>
 
     <template v-else-if="reportDetail">
-      <section class="report-detail-page__headline-card">
+      <section class="student-report-detail-page__headline-card">
         <div>
-          <p class="report-detail-page__label">量表</p>
+          <p class="student-report-detail-page__meta-label">量表信息</p>
           <h2>{{ reportDetail.scaleName }}</h2>
           <p>{{ reportDetail.summaryText }}</p>
         </div>
-
-        <div class="report-detail-page__headline-meta">
+        <div class="student-report-detail-page__headline-meta">
           <div>
             <span>学生姓名</span>
             <strong>{{ reportDetail.studentName || '匿名学生' }}</strong>
@@ -137,49 +129,60 @@ onMounted(() => {
             <strong>{{ reportDetail.studentNo || '未提供' }}</strong>
           </div>
           <div>
-            <span>建议</span>
-            <strong>{{ reportDetail.recommendAppointment ? '建议预约咨询师' : '先继续自助观察' }}</strong>
+            <span>咨询建议</span>
+            <strong>{{ reportDetail.recommendAppointment ? '建议预约咨询师' : '可先自助观察与调节' }}</strong>
           </div>
         </div>
       </section>
 
-      <section class="report-detail-page__body-grid">
-        <article class="report-detail-page__panel">
-          <p class="report-detail-page__label">AI 解读</p>
-          <h3>AI 解读摘要</h3>
-          <p>{{ reportDetail.aiInterpretation || '当前报告暂未生成更详细的 AI 解读。' }}</p>
+      <section class="student-report-detail-page__body-grid">
+        <article class="student-report-detail-page__panel">
+          <p class="student-report-detail-page__meta-label">AI 辅助解释</p>
+          <h3>如何理解本次结果</h3>
+          <p>{{ reportDetail.aiInterpretation || '当前报告暂无 AI 辅助解释。' }}</p>
         </article>
 
-        <article class="report-detail-page__panel">
-          <p class="report-detail-page__label">后续建议</p>
+        <article class="student-report-detail-page__panel">
+          <p class="student-report-detail-page__meta-label">后续建议</p>
           <h3>建议行动</h3>
           <p>{{ reportDetail.recommendationNote || '当前报告暂无额外建议。' }}</p>
           <button
             v-if="reportDetail.recommendAppointment"
-            class="report-detail-page__primary"
+            class="student-report-detail-page__primary"
             type="button"
-            @click="jumpToAppointment"
+            @click="router.push({ name: 'student-appointment-slots' })"
           >
-            立即预约人工咨询
+            预约人工咨询
           </button>
         </article>
       </section>
 
-      <section class="report-detail-page__resource-section">
-        <div class="report-detail-page__section-head">
+      <section class="student-report-detail-page__notice-panel">
+        <p class="student-report-detail-page__meta-label">重要声明</p>
+        <h3>结果仅用于辅助评估</h3>
+        <p>
+          {{
+            reportDetail.noticeText ||
+            '本结果仅用于心理状态辅助评估，不作为医学诊断依据。如有持续困扰，请联系专业老师或医疗机构。'
+          }}
+        </p>
+      </section>
+
+      <section class="student-report-detail-page__resource-section">
+        <div class="student-report-detail-page__section-head">
           <div>
-            <p class="report-detail-page__label">推荐资源</p>
-            <h3>匹配资源</h3>
+            <p class="student-report-detail-page__meta-label">推荐资源</p>
+            <h3>与你当前状态更相关的内容</h3>
           </div>
-          <strong>{{ recommendedResourceCount }} 项</strong>
+          <strong>{{ reportDetail.recommendedResources.length }} 项</strong>
         </div>
 
-        <div v-if="reportDetail.recommendedResources.length" class="report-detail-page__resource-grid">
+        <div v-if="reportDetail.recommendedResources.length" class="student-report-detail-page__resource-grid">
           <article
             v-for="resource in reportDetail.recommendedResources"
             :key="resource.resourceId"
             class="resource-card"
-            @click="jumpToRecommendedResource(resource.resourceId)"
+            @click="router.push({ name: 'student-resource-detail', params: { resourceId: resource.resourceId } })"
           >
             <div class="resource-card__header">
               <p class="resource-card__type">{{ resource.resourceType }}</p>
@@ -194,195 +197,218 @@ onMounted(() => {
           </article>
         </div>
 
-        <div v-else class="report-detail-page__status-panel">
+        <div v-else class="student-report-detail-page__status-panel">
           <p>当前报告暂未匹配到推荐资源。</p>
         </div>
       </section>
 
-      <section class="report-detail-page__footer-actions">
-        <button class="report-detail-page__ghost" type="button" @click="jumpToReportArchive">返回报告列表</button>
-        <button class="report-detail-page__ghost" type="button" @click="jumpToAppointment">前往预约时段</button>
+      <section class="student-report-detail-page__footer-actions">
+        <button class="student-report-detail-page__ghost" type="button" @click="router.push({ name: 'student-reports' })">
+          返回报告列表
+        </button>
+        <button class="student-report-detail-page__ghost" type="button" @click="router.push({ name: 'student-scales' })">
+          返回量表目录
+        </button>
       </section>
     </template>
 
-    <section v-else class="report-detail-page__status-panel">
-      <p>未找到对应报告，请返回报告列表重新选择。</p>
-      <button class="report-detail-page__ghost" type="button" @click="jumpToReportArchive">返回报告列表</button>
+    <section v-else class="student-report-detail-page__status-panel">
+      <p>没有找到对应报告，请返回报告列表重新选择。</p>
+      <button class="student-report-detail-page__ghost" type="button" @click="router.push({ name: 'student-reports' })">
+        返回报告列表
+      </button>
     </section>
   </main>
 </template>
+
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-.report-detail-page {
-  --paper: #f5efe5;
+.student-report-detail-page {
   --ink: #201c18;
   --muted: #6e665f;
   --line: rgba(32, 28, 24, 0.12);
-  --glass: rgba(255, 251, 245, 0.7);
-  --accent: #667f6f;
-  --danger: #8d4747;
-  min-height: 100vh;
-  padding: 2rem;
+  --glass: rgba(255, 251, 245, 0.72);
+  min-height: 100%;
   color: var(--ink);
-  background:
-    radial-gradient(circle at right top, rgba(114, 136, 121, 0.18), transparent 26%),
-    radial-gradient(circle at left center, rgba(197, 187, 169, 0.2), transparent 32%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 38%),
-    var(--paper);
 }
 
-.report-detail-page__masthead {
+.student-report-detail-page__hero {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
   gap: 1.5rem;
   align-items: end;
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
 }
 
-.report-detail-page__eyebrow,
-.report-detail-page__label,
-.report-detail-page__overview dt,
-.report-detail-page__headline-meta span,
+.student-report-detail-page__eyebrow,
+.student-report-detail-page__meta-label,
+.student-report-detail-page__overview dt,
+.student-report-detail-page__headline-meta span,
 .resource-card__type,
 .resource-card__metric,
 .resource-card__footer span {
   margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
+  font: 700 0.72rem/1.4 'Manrope', sans-serif;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
-.report-detail-page__title {
-  margin: 0.95rem 0 0;
-  font: 600 clamp(2.8rem, 5vw, 5.1rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
+.student-report-detail-page h1,
+.student-report-detail-page h2,
+.student-report-detail-page h3,
+.resource-card h4 {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
 }
 
-.report-detail-page__summary {
+.student-report-detail-page h1 {
+  margin-top: 0.95rem;
+  font-size: clamp(2.6rem, 5vw, 4.8rem);
+  line-height: 1.02;
+}
+
+.student-report-detail-page__lead,
+.student-report-detail-page__overview dd,
+.student-report-detail-page__headline-card p:last-child,
+.student-report-detail-page__panel p:last-child,
+.student-report-detail-page__notice-panel p,
+.resource-card p,
+.student-report-detail-page__status-panel p {
+  font-family: 'Manrope', sans-serif;
+  line-height: 1.88;
+}
+
+.student-report-detail-page__lead {
   max-width: 46rem;
   margin: 1rem 0 0;
   color: var(--muted);
-  font: 400 1rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
-.report-detail-page__overview,
-.report-detail-page__headline-card,
-.report-detail-page__panel,
+.student-report-detail-page__overview,
+.student-report-detail-page__headline-card,
+.student-report-detail-page__panel,
 .resource-card,
-.report-detail-page__status-panel,
-.report-detail-page__footer-actions {
+.student-report-detail-page__notice-panel,
+.student-report-detail-page__status-panel,
+.student-report-detail-page__footer-actions {
   border: 1px solid var(--line);
   background: var(--glass);
   backdrop-filter: blur(18px);
   box-shadow: 0 22px 48px rgba(80, 70, 58, 0.08);
 }
 
-.report-detail-page__overview {
-  padding: 1.2rem;
+.student-report-detail-page__overview,
+.student-report-detail-page__headline-card,
+.student-report-detail-page__panel,
+.student-report-detail-page__notice-panel,
+.student-report-detail-page__status-panel,
+.student-report-detail-page__footer-actions {
+  padding: 1.35rem;
 }
 
-.report-detail-page__overview dl {
+.student-report-detail-page__overview dl {
   display: grid;
   gap: 0.95rem;
   margin: 1rem 0 0;
 }
 
-.report-detail-page__overview dd {
+.student-report-detail-page__overview dd {
   margin: 0.35rem 0 0;
-  font: 600 1.06rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
-.report-detail-page__alert {
-  margin: 1.25rem 0 0;
-  color: var(--danger);
-  font: 600 0.9rem/1.6 'Manrope', sans-serif;
+.student-report-detail-page__alert {
+  margin-top: 1rem;
+  color: #8d4747;
+  font-weight: 600;
 }
 
-.report-detail-page__headline-card {
+.student-report-detail-page__headline-card {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.7fr);
   gap: 1.4rem;
   margin-top: 1.5rem;
-  padding: 1.4rem;
 }
 
-.report-detail-page__headline-card h2,
-.report-detail-page__section-head h3,
-.report-detail-page__panel h3 {
-  margin: 0.75rem 0 0;
-  font: 600 1.9rem/1.24 'Noto Serif SC', 'Source Han Serif SC', serif;
+.student-report-detail-page__headline-card h2,
+.student-report-detail-page__section-head h3,
+.student-report-detail-page__panel h3,
+.student-report-detail-page__notice-panel h3 {
+  margin-top: 0.75rem;
+  font-size: 1.9rem;
+  line-height: 1.24;
 }
 
-.report-detail-page__headline-card p:last-child,
-.report-detail-page__panel p:last-child {
+.student-report-detail-page__headline-card p:last-child,
+.student-report-detail-page__panel p:last-child {
   margin: 0.9rem 0 0;
   color: var(--muted);
-  font: 400 0.98rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
-.report-detail-page__headline-meta {
+.student-report-detail-page__headline-meta {
   display: grid;
   gap: 1rem;
 }
 
-.report-detail-page__headline-meta strong,
-.report-detail-page__section-head strong {
+.student-report-detail-page__headline-meta strong,
+.student-report-detail-page__section-head strong {
   display: block;
   margin-top: 0.35rem;
-  font: 600 1.04rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
+  font: 600 1.04rem/1.45 'Noto Serif SC', serif;
 }
 
-.report-detail-page__body-grid {
+.student-report-detail-page__body-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.2rem;
   margin-top: 1.5rem;
 }
 
-.report-detail-page__panel {
+.student-report-detail-page__panel {
   display: grid;
   gap: 0.9rem;
-  padding: 1.35rem;
 }
 
-.report-detail-page__primary,
-.report-detail-page__ghost {
+.student-report-detail-page__primary,
+.student-report-detail-page__ghost {
   min-height: 3rem;
   padding: 0 1.15rem;
-  font: 600 0.84rem/1 'Manrope', sans-serif;
+  font: 700 0.8rem/1 'Manrope', sans-serif;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
-.report-detail-page__primary {
+.student-report-detail-page__primary {
   justify-self: start;
   border: none;
   background: linear-gradient(135deg, #6b8473, #4f6656);
   color: #faf6f0;
-  box-shadow: 0 18px 36px rgba(79, 102, 86, 0.24);
 }
 
-.report-detail-page__ghost {
+.student-report-detail-page__ghost {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.5);
   color: var(--ink);
 }
 
-.report-detail-page__primary:hover,
-.report-detail-page__ghost:hover,
-.resource-card:hover {
-  transform: translateY(-2px);
-}
-
-.report-detail-page__resource-section {
+.student-report-detail-page__notice-panel {
+  display: grid;
+  gap: 0.8rem;
   margin-top: 1.5rem;
 }
 
-.report-detail-page__section-head {
+.student-report-detail-page__notice-panel p:last-child {
+  margin: 0;
+  color: #7b5648;
+}
+
+.student-report-detail-page__resource-section {
+  margin-top: 1.5rem;
+}
+
+.student-report-detail-page__section-head {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -391,7 +417,7 @@ onMounted(() => {
   border-bottom: 1px solid var(--line);
 }
 
-.report-detail-page__resource-grid {
+.student-report-detail-page__resource-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
@@ -403,17 +429,11 @@ onMounted(() => {
   gap: 0.85rem;
   padding: 1.15rem;
   cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.resource-card:hover {
-  border-color: rgba(102, 127, 111, 0.38);
-  box-shadow: 0 24px 44px rgba(80, 70, 58, 0.12);
 }
 
 .resource-card__header,
 .resource-card__footer,
-.report-detail-page__footer-actions {
+.student-report-detail-page__footer-actions {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -421,50 +441,34 @@ onMounted(() => {
 }
 
 .resource-card h4 {
-  margin: 0;
-  font: 600 1.28rem/1.35 'Noto Serif SC', 'Source Han Serif SC', serif;
+  font-size: 1.28rem;
+  line-height: 1.35;
 }
 
 .resource-card p {
   margin: 0;
   color: var(--muted);
-  font: 400 0.95rem/1.82 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
-.report-detail-page__status-panel,
-.report-detail-page__footer-actions {
+.student-report-detail-page__status-panel,
+.student-report-detail-page__footer-actions {
   margin-top: 1.5rem;
-  padding: 1.3rem;
-}
-
-.report-detail-page__status-panel p {
-  margin: 0;
-  color: var(--muted);
-  font: 400 0.98rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
 }
 
 @media (max-width: 980px) {
-  .report-detail-page,
-  .report-list-page {
-    padding: 1rem;
-  }
-
-  .report-detail-page__masthead,
-  .report-detail-page__headline-card,
-  .report-detail-page__body-grid,
-  .report-detail-page__resource-grid,
-  .report-detail-page__footer-actions {
+  .student-report-detail-page__hero,
+  .student-report-detail-page__headline-card,
+  .student-report-detail-page__body-grid,
+  .student-report-detail-page__resource-grid {
     grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: stretch;
   }
 
-  .report-detail-page__section-head,
+  .student-report-detail-page__section-head,
   .resource-card__header,
-  .resource-card__footer {
+  .resource-card__footer,
+  .student-report-detail-page__footer-actions {
     flex-direction: column;
     align-items: flex-start;
   }
 }
 </style>
-

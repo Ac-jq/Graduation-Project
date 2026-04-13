@@ -42,5 +42,7 @@ public class ReportDetailResponse {
 
     private List<ResourceSummaryResponse> recommendedResources;
 
+    private String noticeText;
+
     private LocalDateTime createdAt;
 }

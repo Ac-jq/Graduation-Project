@@ -1,24 +1,63 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { createScaleDraftSessionApi, fetchScaleDetailApi } from '@/api/assessment'
 import type { ScaleDetail, ScaleSession } from '@/api/types'
+import { useAssessmentStore } from '@/stores/assessment'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
+const assessmentStore = useAssessmentStore()
+
 const loading = ref(false)
 const creating = ref(false)
 const errorMessage = ref('')
 const scaleDetail = ref<ScaleDetail | null>(null)
 const draftSession = ref<ScaleSession | null>(null)
 
-async function loadScaleDetail(scaleId: number): Promise<void> {
+const scaleId = computed(() => toNumberParam(route.params.scaleId))
+
+const guideSteps = [
+  {
+    title: '按最近两周作答',
+    description: '请围绕最近两周的真实状态选择答案，不需要追求“理想答案”。'
+  },
+  {
+    title: '系统自动保存',
+    description: '切页或暂存都会保留当前进度，之后可以继续完成。'
+  },
+  {
+    title: '提交后生成报告',
+    description: '系统将输出分数、风险等级、辅助解释与后续建议。'
+  }
+]
+
+function resolvePositioning(detail: ScaleDetail | null): string {
+  return detail?.productPositioning || '标准化心理状态辅助评估'
+}
+
+function resolveNotice(detail: ScaleDetail | null): string {
+  return (
+    detail?.noticeText ||
+    '本结果仅用于心理状态辅助评估，不作为医学诊断依据。如有持续困扰，请联系专业老师或医疗机构。'
+  )
+}
+
+async function loadScaleDetail(): Promise<void> {
+  if (!scaleId.value) {
+    errorMessage.value = '量表编号无效'
+    scaleDetail.value = null
+    return
+  }
+
   loading.value = true
   errorMessage.value = ''
 
   try {
-    scaleDetail.value = await fetchScaleDetailApi(scaleId)
+    const detail = await fetchScaleDetailApi(scaleId.value)
+    scaleDetail.value = detail
+    assessmentStore.setCurrentScale(detail)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -27,9 +66,8 @@ async function loadScaleDetail(scaleId: number): Promise<void> {
 }
 
 async function startAssessment(): Promise<void> {
-  const scaleId = toNumberParam(route.params.scaleId)
-  if (!scaleId) {
-    errorMessage.value = '无效的量表编号'
+  if (!scaleId.value) {
+    errorMessage.value = '量表编号无效'
     return
   }
 
@@ -37,9 +75,15 @@ async function startAssessment(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    const session = await createScaleDraftSessionApi(scaleId)
+    const session = await createScaleDraftSessionApi(scaleId.value)
     draftSession.value = session
-    await router.push({ name: 'student-assessment-session', params: { sessionId: session.sessionId } })
+    assessmentStore.resetSessionState()
+    assessmentStore.setCurrentScale(scaleDetail.value)
+    assessmentStore.setCurrentSession(session)
+    await router.push({
+      name: 'student-assessment-session',
+      params: { sessionId: session.sessionId }
+    })
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -47,507 +91,302 @@ async function startAssessment(): Promise<void> {
   }
 }
 
-async function syncByRoute(): Promise<void> {
-  const scaleId = toNumberParam(route.params.scaleId)
-  if (!scaleId) {
-    errorMessage.value = '无效的量表编号'
-    scaleDetail.value = null
-    return
+watch(
+  () => route.params.scaleId,
+  () => {
+    void loadScaleDetail()
   }
-
-  await loadScaleDetail(scaleId)
-}
-
-watch(() => route.params.scaleId, () => {
-  void syncByRoute()
-})
+)
 
 onMounted(() => {
-  void syncByRoute()
+  void loadScaleDetail()
 })
 </script>
 
 <template>
-  <div class="healing-viewport">
-    <div class="ambient-background"></div>
-    <div class="noise-texture"></div>
-
-    <main class="intro-container">
-
-      <nav class="top-nav">
-        <button class="glass-btn back-btn" @click="router.push({ name: 'student-scales' })">
-          <span class="arrow">←</span>
-          <span>返回目录</span>
-        </button>
-      </nav>
-
-      <div v-if="loading" class="status-card">
-        <div class="loader-pulse"></div>
-        <p>正在为您准备测评空间...</p>
+  <main class="scale-intro-page">
+    <section class="scale-intro-page__hero">
+      <div class="scale-intro-page__copy">
+        <p class="scale-intro-page__eyebrow">Assessment Brief</p>
+        <h1>{{ scaleDetail?.name || '心理测评说明' }}</h1>
+        <p class="scale-intro-page__lead">
+          {{ scaleDetail?.description || '本测评基于标准量表，用于帮助你理解当下的情绪状态与压力体验。' }}
+        </p>
       </div>
 
-      <div v-else-if="errorMessage" class="status-card error">
-        <p>{{ errorMessage }}</p>
-      </div>
-
-      <article v-else class="glass-card main-content">
-
-        <header class="scale-header">
-          <div class="header-tags">
-            <span class="tag">心理测评</span>
-            <span class="tag code">NO. {{ scaleDetail?.code || '...' }}</span>
+      <aside class="scale-intro-page__summary-card">
+        <p class="scale-intro-page__meta-label">量表参数</p>
+        <dl>
+          <div>
+            <dt>量表编码</dt>
+            <dd>{{ scaleDetail?.code || '--' }}</dd>
           </div>
-          <h1 class="scale-title">{{ scaleDetail?.name || '载入中...' }}</h1>
-          <p class="scale-summary">{{ scaleDetail?.description || '一份帮助你了解当下内心状态的心理学量表。' }}</p>
-
-          <div class="metrics-row">
-            <div class="metric-item">
-              <span class="val">{{ scaleDetail?.totalQuestions || '--' }}</span>
-              <span class="lbl">总题数</span>
-            </div>
-            <div class="metric-divider"></div>
-            <div class="metric-item">
-              <span class="val">{{ scaleDetail?.pageSize || '--' }}</span>
-              <span class="lbl">每页题数</span>
-            </div>
+          <div>
+            <dt>总题数</dt>
+            <dd>{{ scaleDetail?.totalQuestions || '--' }}</dd>
           </div>
-        </header>
+          <div>
+            <dt>每页题数</dt>
+            <dd>{{ scaleDetail?.pageSize || '--' }}</dd>
+          </div>
+          <div>
+            <dt>产品定位</dt>
+            <dd>{{ resolvePositioning(scaleDetail) }}</dd>
+          </div>
+        </dl>
+      </aside>
+    </section>
 
-        <div class="scale-body">
-          <section class="info-section">
-            <h2 class="section-title">导言与说明</h2>
-            <div class="text-content">
-              <p v-if="scaleDetail?.introduction">{{ scaleDetail.introduction }}</p>
-              <p v-else class="placeholder-text">深呼吸，找一个安静的角落。请根据你最近一周的真实感受进行选择，答案没有对错之分。</p>
-            </div>
-          </section>
+    <p v-if="errorMessage" class="scale-intro-page__alert">{{ errorMessage }}</p>
 
-          <section class="info-section">
-            <h2 class="section-title">作答流程</h2>
-            <div class="steps-grid">
-              <div class="step-card">
-                <span class="step-num">01</span>
-                <p>如实作答，遵从第一直觉</p>
-              </div>
-              <div class="step-card">
-                <span class="step-num">02</span>
-                <p>系统将自动保存您的草稿</p>
-              </div>
-              <div class="step-card">
-                <span class="step-num">03</span>
-                <p>完成后获取专业解读报告</p>
-              </div>
-            </div>
-          </section>
+    <section v-if="loading" class="scale-intro-page__status-panel">
+      <p>正在加载量表说明...</p>
+    </section>
+
+    <template v-else-if="scaleDetail">
+      <section class="scale-intro-page__content-grid">
+        <article class="scale-intro-page__panel">
+          <p class="scale-intro-page__meta-label">作答导语</p>
+          <h2>开始前请先确认这三件事</h2>
+          <p class="scale-intro-page__body-text">
+            {{
+              scaleDetail.introduction ||
+              '请在相对安静的环境中完成作答，尽量基于最近两周的真实感受来选择答案，不需要反复纠结。'
+            }}
+          </p>
+          <ul class="scale-intro-page__guide-list">
+            <li v-for="step in guideSteps" :key="step.title">
+              <strong>{{ step.title }}</strong>
+              <span>{{ step.description }}</span>
+            </li>
+          </ul>
+        </article>
+
+        <article class="scale-intro-page__panel">
+          <p class="scale-intro-page__meta-label">评分说明</p>
+          <h2>系统会如何解释你的结果</h2>
+          <ul class="scale-intro-page__rule-list">
+            <li v-for="rule in scaleDetail.scoringRules || []" :key="rule">{{ rule }}</li>
+          </ul>
+          <p v-if="!(scaleDetail.scoringRules || []).length" class="scale-intro-page__body-text">
+            提交后系统会根据标准规则自动计算总分与等级，并生成结构化报告。
+          </p>
+        </article>
+      </section>
+
+      <section class="scale-intro-page__notice-panel">
+        <div>
+          <p class="scale-intro-page__meta-label">重要声明</p>
+          <h2>本模块只提供辅助评估，不提供诊断结论</h2>
         </div>
+        <p>{{ resolveNotice(scaleDetail) }}</p>
+      </section>
 
-        <footer class="scale-footer">
-          <div v-if="draftSession" class="draft-alert">
-            <span class="icon">📝</span>
-            <span>您有一个未完成的会话，点击继续作答。</span>
-          </div>
-
-          <button
-              class="primary-action-btn"
-              :class="{ 'is-loading': creating }"
-              :disabled="creating"
-              @click="startAssessment"
-          >
-            <span class="btn-text">{{ creating ? '正在开启...' : '开始测评' }}</span>
-            <div class="btn-arrow-circle">→</div>
-          </button>
-        </footer>
-
-      </article>
-
-    </main>
-  </div>
+      <section class="scale-intro-page__actions">
+        <button class="scale-intro-page__ghost" type="button" @click="router.push({ name: 'student-scales' })">
+          返回量表目录
+        </button>
+        <button
+          class="scale-intro-page__primary"
+          type="button"
+          :disabled="creating"
+          @click="startAssessment"
+        >
+          {{ creating ? '正在创建测评会话...' : '开始本次测评' }}
+        </button>
+      </section>
+    </template>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-/* =========================================
-   底层环境：莫兰迪色系与柔和渐变
-========================================= */
-.healing-viewport {
-  --color-sage: #8DA393;     /* 莫兰迪绿 */
-  --color-sand: #E8E5DF;     /* 温柔米白 */
-  --color-ink: #2C352D;      /* 深灰绿（代替纯黑文字） */
-  --color-muted: #7A857B;    /* 浅灰绿（次级文字） */
-  --glass-bg: rgba(255, 255, 255, 0.65);
-  --glass-border: rgba(255, 255, 255, 0.8);
-  --shadow-soft: 0 24px 48px rgba(141, 163, 147, 0.15);
-
-  position: relative;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 4rem 2rem;
-  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
-  color: var(--color-ink);
-  overflow-x: hidden;
+.scale-intro-page {
+  --ink: #212720;
+  --muted: #6d675f;
+  --line: rgba(33, 39, 32, 0.1);
+  --glass: rgba(255, 251, 246, 0.74);
+  min-height: 100%;
+  color: var(--ink);
 }
 
-.ambient-background {
-  position: absolute;
-  inset: 0;
-  background:
-      radial-gradient(circle at 15% 0%, rgba(206, 214, 201, 0.8) 0%, transparent 40%),
-      radial-gradient(circle at 85% 100%, rgba(224, 216, 203, 0.8) 0%, transparent 40%),
-      var(--color-sand);
-  z-index: 0;
-}
-
-.noise-texture {
-  position: absolute;
-  inset: 0;
-  opacity: 0.03;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  z-index: 1;
-}
-
-/* =========================================
-   主容器布局
-========================================= */
-.intro-container {
-  position: relative;
-  z-index: 10;
-  width: 100%;
-  max-width: 860px; /* 限制阅读宽度，增加留白 */
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  animation: float-up 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes float-up {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* =========================================
-   通用毛玻璃组件 (Glassmorphism)
-========================================= */
-.glass-btn {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  padding: 0.6rem 1.2rem;
-  border-radius: 12px; /* 柔和圆角 */
-  color: var(--color-ink);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.02);
-}
-
-.glass-btn:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 8px 16px rgba(141, 163, 147, 0.1);
-}
-
-.glass-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border-radius: 24px; /* 更大的圆角体现包裹感 */
-  box-shadow: var(--shadow-soft), inset 0 0 0 1px rgba(255,255,255,0.5); /* 内发光增强质感 */
-  padding: 4rem;
-}
-
-/* =========================================
-   卡片内部：头部区
-========================================= */
-.scale-header {
-  text-align: center;
-  border-bottom: 1px solid rgba(122, 133, 123, 0.15);
-  padding-bottom: 3rem;
-  margin-bottom: 3rem;
-}
-
-.header-tags {
-  display: flex;
-  justify-content: center;
-  gap: 0.8rem;
-  margin-bottom: 1.5rem;
-}
-
-.tag {
-  background: rgba(141, 163, 147, 0.15);
-  color: var(--color-sage);
-  padding: 0.4rem 1rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-}
-
-.tag.code {
-  font-family: 'Manrope', sans-serif;
-  background: transparent;
-  border: 1px solid rgba(141, 163, 147, 0.3);
-}
-
-.scale-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: clamp(2rem, 4vw, 2.8rem);
-  font-weight: 500;
-  color: var(--color-ink);
-  margin: 0 0 1rem 0;
-  line-height: 1.2;
-}
-
-.scale-summary {
-  font-size: 1.05rem;
-  color: var(--color-muted);
-  line-height: 1.8;
-  max-width: 80%;
-  margin: 0 auto 2.5rem auto;
-}
-
-.metrics-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 3rem;
-}
-
-.metric-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.metric-item .val {
-  font-size: 1.8rem;
-  font-weight: 600;
-  font-family: 'Manrope', sans-serif;
-  color: var(--color-ink);
-}
-
-.metric-item .lbl {
-  font-size: 0.75rem;
-  color: var(--color-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.metric-divider {
-  width: 1px;
-  height: 30px;
-  background: rgba(122, 133, 123, 0.2);
-}
-
-/* =========================================
-   卡片内部：正文区
-========================================= */
-.scale-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3rem;
-}
-
-.section-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin: 0 0 1.5rem 0;
-  color: var(--color-ink);
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-}
-
-.section-title::before {
-  content: '';
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-sage);
-}
-
-.text-content p {
-  font-size: 1rem;
-  line-height: 1.9;
-  color: var(--color-ink);
-  opacity: 0.85;
-  margin: 0;
-}
-
-.placeholder-text {
-  font-style: italic;
-  color: var(--color-muted) !important;
-}
-
-/* 流程卡片网格 */
-.steps-grid {
+.scale-intro-page__hero,
+.scale-intro-page__content-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  gap: 1.4rem;
 }
 
-.step-card {
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  padding: 1.5rem;
-  border-radius: 16px; /* 统一 16px 圆角 */
-  transition: transform 0.3s ease, background 0.3s ease;
+.scale-intro-page__hero {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
+  align-items: end;
 }
 
-.step-card:hover {
-  transform: translateY(-4px);
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.step-num {
-  font-family: 'Manrope', sans-serif;
-  font-size: 1.2rem;
-  font-weight: 600;
-  color: var(--color-sage);
-  display: block;
-  margin-bottom: 0.5rem;
-}
-
-.step-card p {
+.scale-intro-page__eyebrow,
+.scale-intro-page__meta-label,
+.scale-intro-page__summary-card dt {
   margin: 0;
-  font-size: 0.9rem;
-  line-height: 1.5;
-  color: var(--color-muted);
+  font: 700 0.74rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #72695e;
 }
 
-/* =========================================
-   卡片内部：底部操作区
-========================================= */
-.scale-footer {
-  margin-top: 4rem;
+.scale-intro-page h1,
+.scale-intro-page h2 {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+}
+
+.scale-intro-page h1 {
+  margin-top: 0.9rem;
+  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  line-height: 1.04;
+}
+
+.scale-intro-page__lead,
+.scale-intro-page__body-text,
+.scale-intro-page__notice-panel p,
+.scale-intro-page__guide-list span,
+.scale-intro-page__rule-list li,
+.scale-intro-page__summary-card dd,
+.scale-intro-page__status-panel p {
+  font-family: 'Manrope', sans-serif;
+  line-height: 1.85;
+}
+
+.scale-intro-page__lead {
+  max-width: 42rem;
+  margin: 1rem 0 0;
+  color: var(--muted);
+}
+
+.scale-intro-page__summary-card,
+.scale-intro-page__panel,
+.scale-intro-page__notice-panel,
+.scale-intro-page__status-panel {
+  border: 1px solid var(--line);
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 56px rgba(74, 61, 48, 0.08);
+}
+
+.scale-intro-page__summary-card,
+.scale-intro-page__panel,
+.scale-intro-page__notice-panel {
+  padding: 1.35rem;
+}
+
+.scale-intro-page__summary-card dl {
+  display: grid;
+  gap: 0.95rem;
+  margin: 1rem 0 0;
+}
+
+.scale-intro-page__summary-card dd {
+  margin: 0.35rem 0 0;
+}
+
+.scale-intro-page__content-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1.5rem;
+}
+
+.scale-intro-page__panel h2,
+.scale-intro-page__notice-panel h2 {
+  margin-top: 0.8rem;
+  font-size: 1.65rem;
+  line-height: 1.32;
+}
+
+.scale-intro-page__body-text {
+  margin: 0.9rem 0 0;
+  color: var(--muted);
+}
+
+.scale-intro-page__guide-list,
+.scale-intro-page__rule-list {
+  display: grid;
+  gap: 0.9rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scale-intro-page__guide-list li,
+.scale-intro-page__rule-list li {
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(33, 39, 32, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.scale-intro-page__guide-list strong {
+  display: block;
+  margin-bottom: 0.4rem;
+  font: 600 1rem/1.5 'Noto Serif SC', serif;
+}
+
+.scale-intro-page__notice-panel {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1.5rem;
+}
+
+.scale-intro-page__notice-panel p {
+  margin: 0;
+  color: #7c574a;
+}
+
+.scale-intro-page__alert {
+  margin-top: 1rem;
+  color: #9f4d4d;
+  font-weight: 600;
+}
+
+.scale-intro-page__status-panel {
+  margin-top: 1.5rem;
+  padding: 1.2rem;
+}
+
+.scale-intro-page__actions {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
 }
 
-.draft-alert {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid #E8D3C5;
-  color: #B57B59;
-  padding: 0.8rem 1.5rem;
-  border-radius: 12px;
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-/* 核心高亮按钮 */
-.primary-action-btn {
-  background: linear-gradient(135deg, #8DA393 0%, #6B8071 100%); /* 莫兰迪绿渐变 */
-  color: #FFFFFF;
+.scale-intro-page__ghost,
+.scale-intro-page__primary {
+  min-height: 3.2rem;
+  padding: 0 1.2rem;
   border: none;
-  padding: 0.6rem 0.6rem 0.6rem 2.5rem;
-  border-radius: 100px; /* 胶囊型圆角，极具亲和力 */
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
+  font: 700 0.8rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   cursor: pointer;
-  box-shadow: 0 12px 24px rgba(107, 128, 113, 0.25);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.primary-action-btn:hover:not(:disabled) {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 32px rgba(107, 128, 113, 0.35);
-  background: linear-gradient(135deg, #9CB3A3 0%, #768C7D 100%);
+.scale-intro-page__ghost {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
 }
 
-.primary-action-btn:active:not(:disabled) {
-  transform: scale(0.98);
+.scale-intro-page__primary {
+  background: linear-gradient(135deg, #607968, #4d6454);
+  color: #fffaf4;
+  box-shadow: 0 18px 34px rgba(77, 100, 84, 0.24);
 }
 
-.primary-action-btn.is-loading {
-  opacity: 0.7;
-  cursor: wait;
-}
-
-.btn-text {
-  font-size: 1.1rem;
-  font-weight: 500;
-  letter-spacing: 0.05em;
-}
-
-.btn-arrow-circle {
-  width: 44px;
-  height: 44px;
-  background: #FFFFFF;
-  color: #6B8071;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2rem;
-  transition: transform 0.3s ease;
-}
-
-.primary-action-btn:hover:not(:disabled) .btn-arrow-circle {
-  transform: translateX(4px);
-}
-
-/* =========================================
-   状态加载
-========================================= */
-.status-card {
-  background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  border-radius: 24px;
-  padding: 4rem;
-  text-align: center;
-  color: var(--color-muted);
-}
-
-.loader-pulse {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--color-sage);
-  margin: 0 auto 1.5rem auto;
-  animation: pulse-glow 1.5s infinite;
-}
-
-@keyframes pulse-glow {
-  0% { transform: scale(0.8); opacity: 0.5; }
-  50% { transform: scale(1.2); opacity: 0.2; }
-  100% { transform: scale(0.8); opacity: 0.5; }
-}
-
-/* =========================================
-   响应式调整
-========================================= */
-@media (max-width: 768px) {
-  .healing-viewport {
-    padding: 1rem;
-  }
-
-  .glass-card {
-    padding: 2.5rem 1.5rem;
-    border-radius: 20px;
-  }
-
-  .metrics-row {
-    gap: 1.5rem;
-  }
-
-  .steps-grid {
+@media (max-width: 980px) {
+  .scale-intro-page__hero,
+  .scale-intro-page__content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .scale-intro-page__actions {
+    flex-direction: column;
   }
 }
 </style>

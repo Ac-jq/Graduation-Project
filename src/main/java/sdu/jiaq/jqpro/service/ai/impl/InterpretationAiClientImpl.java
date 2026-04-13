@@ -2,6 +2,9 @@ package sdu.jiaq.jqpro.service.ai.impl;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -16,10 +19,6 @@ import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.config.ai.InterpretationAiProperties;
 import sdu.jiaq.jqpro.service.ai.InterpretationAiClient;
 import sdu.jiaq.jqpro.service.ai.InterpretationAiRequest;
-
-import java.net.URI;
-import java.time.Duration;
-import java.util.List;
 
 /**
  * OpenAI 兼容协议客户端。
@@ -62,34 +61,34 @@ public class InterpretationAiClientImpl implements InterpretationAiClient {
             throw exception;
         } catch (ResourceAccessException exception) {
             log.error("AI interpretation request timed out or network is unavailable", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读生成失败，请稍后重试");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读生成失败，请稍后重试");
         } catch (RestClientException exception) {
             log.error("AI interpretation API invocation failed", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读生成失败，请稍后重试");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读生成失败，请稍后重试");
         } catch (Exception exception) {
             log.error("AI interpretation response parsing failed", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务返回格式无法解析，请检查模型接口兼容性");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务返回格式无法解析，请检查模型接口兼容性");
         }
     }
 
     private void validateConfiguration() {
         if (!properties.isEnabled()) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未启用，请联系管理员配置");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未启用，请联系管理员配置");
         }
         if (!StringUtils.hasText(properties.getBaseUrl())) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未配置完整：缺少 base-url");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未配置完整：缺少 base-url");
         }
         if (!StringUtils.hasText(properties.getApiKey())) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未配置完整：缺少 api-key");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未配置完整：缺少 api-key");
         }
         if (!StringUtils.hasText(properties.getModel())) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未配置完整：缺少 model");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未配置完整：缺少 model");
         }
         if (!StringUtils.hasText(properties.getPath())) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未配置完整：缺少 path");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未配置完整：缺少 path");
         }
         if (!StringUtils.hasText(properties.getAuthHeaderName())) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务未配置完整：缺少 auth-header-name");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务未配置完整：缺少 auth-header-name");
         }
     }
 
@@ -135,13 +134,13 @@ public class InterpretationAiClientImpl implements InterpretationAiClient {
 
     private String extractContent(JsonNode responseBody) {
         if (responseBody == null || responseBody.isNull()) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务返回格式无法解析，请检查模型接口兼容性");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务返回格式无法解析，请检查模型接口兼容性");
         }
 
         JsonNode contentNode = responseBody.at("/choices/0/message/content");
         String content = extractTextContent(contentNode);
         if (!StringUtils.hasText(content)) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI解读服务返回空内容，请检查模型配置");
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 解读服务返回空内容，请检查模型配置");
         }
         return content.trim();
     }

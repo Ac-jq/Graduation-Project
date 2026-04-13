@@ -5,6 +5,7 @@ import StudentAiSessionRoute from '@/views/student/StudentAiSessionRoute.vue'
 import StudentAppointmentListRoute from '@/views/student/StudentAppointmentListRoute.vue'
 import StudentAppointmentSlotRoute from '@/views/student/StudentAppointmentSlotRoute.vue'
 import StudentAssessmentSessionRoute from '@/views/student/StudentAssessmentSessionRoute.vue'
+import StudentAssessmentResultRoute from '@/views/student/StudentAssessmentResultRoute.vue'
 import StudentConsultChatRoute from '@/views/student/StudentConsultChatRoute.vue'
 import StudentFavoriteRoute from '@/views/student/StudentFavoriteRoute.vue'
 import StudentHomeRoute from '@/views/student/StudentHomeRoute.vue'
@@ -43,6 +44,7 @@ export const studentRoutes: RouteRecordRaw[] = [
       { path: 'scales', name: 'student-scales', component: StudentScaleListRoute, meta: studentMeta },
       { path: 'scales/:scaleId', name: 'student-scale-detail', component: StudentScaleIntroRoute, meta: studentMeta },
       { path: 'assessment-sessions/:sessionId', name: 'student-assessment-session', component: StudentAssessmentSessionRoute, meta: studentMeta },
+      { path: 'assessment-results/:reportId', name: 'student-assessment-result', component: StudentAssessmentResultRoute, meta: studentMeta },
       { path: 'reports', name: 'student-reports', component: StudentReportListRoute, meta: studentMeta },
       { path: 'reports/:reportId', name: 'student-report-detail', component: StudentReportDetailRoute, meta: studentMeta },
       { path: 'ai-sessions', name: 'student-ai-sessions', component: StudentAiSessionListRoute, meta: studentMeta },

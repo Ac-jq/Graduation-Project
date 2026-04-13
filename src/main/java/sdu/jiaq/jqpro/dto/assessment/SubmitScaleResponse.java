@@ -19,4 +19,6 @@ public class SubmitScaleResponse {
     private String levelCode;
 
     private String summaryText;
+
+    private String noticeText;
 }
