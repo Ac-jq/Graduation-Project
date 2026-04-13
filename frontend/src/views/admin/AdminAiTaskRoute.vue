@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { cancelAdminAiTaskApi, confirmAdminAiTaskApi, fetchAdminAiTaskDetailApi, fetchAdminAiTasksApi, parseAdminAiTaskApi } from '@/api/admin-ai-task'
-import type { AdminAiTaskDetail, AdminAiTaskSummary, ParseAdminAiTaskResponse } from '@/api/types'
+import {
+  cancelAdminAiTaskApi,
+  confirmAdminAiTaskApi,
+  fetchAdminAiTaskDetailApi,
+  fetchAdminAiTasksApi,
+  parseAdminAiTaskApi
+} from '@/api/admin-ai-task'
+import type { AdminAiTaskDetail, AdminAiTaskItem, AdminAiTaskSummary, ParseAdminAiTaskResponse } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
 const loading = ref(false)
@@ -14,14 +20,32 @@ const form = reactive({
   instruction: ''
 })
 
-const pendingTasks = computed(() => tasks.value.filter((task) => task.confirmStatus !== 'CONFIRMED' && task.executeStatus !== 'EXECUTED'))
-const executedTasks = computed(() => tasks.value.filter((task) => task.executeStatus === 'EXECUTED'))
+const examples = [
+  'Disable student accounts inactive for 3 months',
+  'Create a counselor named Zhang San with counselorNo T009',
+  'Take resource id 23 offline',
+  'Enable account: 20209998'
+]
+
+const pendingTasks = computed(() =>
+  tasks.value.filter((task) => task.confirmStatus === 'PENDING' && task.executeStatus === 'WAITING')
+)
+
+const finishedTasks = computed(() =>
+  tasks.value.filter((task) => task.confirmStatus !== 'PENDING' || task.executeStatus !== 'WAITING')
+)
+
+const canReviewCurrent = computed(() => {
+  if (!currentTask.value) {
+    return false
+  }
+  return currentTask.value.parseStatus === 'READY' && currentTask.value.confirmStatus === 'PENDING'
+})
 
 function formatDate(value: string | null): string {
   if (!value) {
     return '未记录'
   }
-
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
@@ -35,24 +59,57 @@ function resolveTaskState(task: AdminAiTaskSummary | AdminAiTaskDetail): string 
   if (task.executeStatus === 'EXECUTED') {
     return '已执行'
   }
-  if (task.confirmStatus === 'CONFIRMED') {
-    return '已确认待执行'
-  }
-  if (task.confirmStatus === 'CANCELLED') {
+  if (task.confirmStatus === 'CANCELED') {
     return '已取消'
   }
   if (task.parseStatus === 'READY') {
     return '待确认'
   }
-  return task.parseStatus
+  return '需补充信息'
+}
+
+function resolveTaskType(taskType: string | null | undefined): string {
+  switch (taskType) {
+    case 'ACCOUNT_STATUS':
+      return '账号状态变更'
+    case 'COUNSELOR_CREATE':
+      return '咨询师创建'
+    case 'RESOURCE_STATUS':
+      return '资源上下架'
+    default:
+      return '待识别任务'
+  }
+}
+
+function resolveItemAction(item: AdminAiTaskItem): string {
+  if (item.operationType === 'CREATE') {
+    return '创建字段'
+  }
+  if (item.operationType === 'OFFLINE') {
+    return '下架资源'
+  }
+  if (item.operationType === 'PUBLISH') {
+    return '上架资源'
+  }
+  return '更新字段'
+}
+
+function formatValue(value: string | null | undefined): string {
+  return value && value.trim() ? value : '空'
+}
+
+function useExample(example: string): void {
+  form.instruction = example
 }
 
 async function loadTasks(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
-
   try {
     tasks.value = await fetchAdminAiTasksApi()
+    if (!currentTask.value && tasks.value.length > 0) {
+      await loadTaskDetail(tasks.value[0].taskId)
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -63,7 +120,6 @@ async function loadTasks(): Promise<void> {
 async function loadTaskDetail(taskId: number): Promise<void> {
   processing.value = true
   errorMessage.value = ''
-
   try {
     currentTask.value = await fetchAdminAiTaskDetailApi(taskId)
   } catch (error) {
@@ -75,13 +131,12 @@ async function loadTaskDetail(taskId: number): Promise<void> {
 
 async function parseInstruction(): Promise<void> {
   if (!form.instruction.trim()) {
-    errorMessage.value = '请输入管理员指令。'
+    errorMessage.value = '请输入管理员指令'
     return
   }
 
   processing.value = true
   errorMessage.value = ''
-
   try {
     parseResult.value = await parseAdminAiTaskApi({ instruction: form.instruction.trim() })
     currentTask.value = parseResult.value.task
@@ -96,7 +151,6 @@ async function parseInstruction(): Promise<void> {
 async function confirmTask(taskId: number): Promise<void> {
   processing.value = true
   errorMessage.value = ''
-
   try {
     currentTask.value = await confirmAdminAiTaskApi(taskId)
     await loadTasks()
@@ -110,7 +164,6 @@ async function confirmTask(taskId: number): Promise<void> {
 async function cancelTask(taskId: number): Promise<void> {
   processing.value = true
   errorMessage.value = ''
-
   try {
     currentTask.value = await cancelAdminAiTaskApi(taskId)
     await loadTasks()
@@ -127,113 +180,108 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="admin-ai-page">
-    <section class="admin-ai-page__masthead">
-      <div class="admin-ai-page__heading">
-        <p class="admin-ai-page__eyebrow">管理员 AI 运维台</p>
-        <h1 class="admin-ai-page__title">管理员 AI 运维</h1>
-        <p class="admin-ai-page__summary">
-          在这里输入自然语言指令，让系统先解析为待确认任务，再决定执行或取消。所有动作都保留审计轨迹。
+  <main class="admin-ai-ops-page">
+    <section class="admin-ai-ops-page__hero">
+      <div>
+        <p class="admin-ai-ops-page__eyebrow">Admin AI Ops</p>
+        <h1>自然语言运维确认台</h1>
+        <p class="admin-ai-ops-page__lead">
+          管理员先输入指令，AI 只负责生成待执行计划。真正的数据变更必须经过人工复核并点击确认执行后才会落库。
         </p>
       </div>
-
-      <aside class="admin-ai-page__snapshot">
-        <p class="admin-ai-page__label">任务快照</p>
-        <dl>
-          <div>
-            <dt>总数</dt>
-            <dd>{{ tasks.length }}</dd>
-          </div>
-          <div>
-            <dt>待处理</dt>
-            <dd>{{ pendingTasks.length }}</dd>
-          </div>
-          <div>
-            <dt>已执行</dt>
-            <dd>{{ executedTasks.length }}</dd>
-          </div>
-        </dl>
-      </aside>
-    </section>
-
-    <p v-if="errorMessage" class="admin-ai-page__alert">{{ errorMessage }}</p>
-
-    <section class="admin-ai-page__composer">
-      <div class="admin-ai-page__composer-copy">
-        <p class="admin-ai-page__label">指令解析</p>
-        <h2>输入管理指令</h2>
-        <p>例如：将资源 20 下线，或把量表 8 设为启用状态。</p>
+      <div class="admin-ai-ops-page__stats">
+        <article>
+          <span>待确认</span>
+          <strong>{{ pendingTasks.length }}</strong>
+        </article>
+        <article>
+          <span>已完成</span>
+          <strong>{{ finishedTasks.length }}</strong>
+        </article>
       </div>
-      <textarea v-model="form.instruction" placeholder="输入管理员自然语言指令" />
-      <button class="admin-ai-page__primary" type="button" :disabled="processing" @click="parseInstruction">
-        {{ processing ? '解析中...' : '解析指令' }}
-      </button>
     </section>
 
-    <section v-if="parseResult" class="admin-ai-page__parse-result">
-      <p class="admin-ai-page__label">最近一次解析结果</p>
-      <h2>{{ parseResult.ready ? '任务已准备就绪' : '任务未就绪' }}</h2>
-      <p>{{ parseResult.message }}</p>
+    <section class="admin-ai-ops-page__composer">
+      <div class="admin-ai-ops-page__composer-copy">
+        <p class="admin-ai-ops-page__section-label">输入指令</p>
+        <h2>先生成执行计划，再人工确认</h2>
+        <p>建议用清晰的对象、状态和编号描述指令，解析结果会拆成可审查的字段级清单。</p>
+      </div>
+
+      <div class="admin-ai-ops-page__example-list">
+        <button v-for="example in examples" :key="example" type="button" class="example-chip" @click="useExample(example)">
+          {{ example }}
+        </button>
+      </div>
+
+      <textarea
+        v-model="form.instruction"
+        class="admin-ai-ops-page__textarea"
+        placeholder="例如：Disable student accounts inactive for 3 months"
+      />
+
+      <div class="admin-ai-ops-page__composer-actions">
+        <button class="primary-button" type="button" :disabled="processing" @click="parseInstruction">
+          {{ processing ? '正在解析...' : '生成待执行计划' }}
+        </button>
+        <p v-if="parseResult" class="admin-ai-ops-page__result-copy">
+          {{ parseResult.message }}
+        </p>
+      </div>
     </section>
 
-    <section v-if="loading" class="admin-ai-page__status-panel">
-      <p>正在加载任务列表...</p>
-    </section>
+    <p v-if="errorMessage" class="admin-ai-ops-page__alert">{{ errorMessage }}</p>
 
-    <section v-else class="admin-ai-page__grid">
-      <article class="admin-ai-page__panel admin-ai-page__panel--queue">
-        <div class="admin-ai-page__panel-head">
+    <section class="admin-ai-ops-page__grid">
+      <article class="panel">
+        <div class="panel__head">
           <div>
-            <p class="admin-ai-page__label">任务队列</p>
-            <h2>待处理任务</h2>
+            <p class="admin-ai-ops-page__section-label">任务队列</p>
+            <h2>最近解析记录</h2>
           </div>
-          <span>{{ tasks.length }} 项</span>
+          <span>{{ tasks.length }} 条</span>
         </div>
 
-        <div v-if="tasks.length" class="admin-ai-page__task-list admin-ai-page__task-list--scroll">
+        <div v-if="loading" class="panel__empty">正在加载任务队列...</div>
+        <div v-else-if="tasks.length" class="task-list">
           <button
             v-for="task in tasks"
             :key="task.taskId"
             type="button"
-            class="admin-task-card"
-            :class="{ 'admin-task-card--active': currentTask?.taskId === task.taskId }"
+            class="task-card"
+            :class="{ 'task-card--active': currentTask?.taskId === task.taskId }"
             @click="loadTaskDetail(task.taskId)"
           >
-            <div class="admin-task-card__header">
-              <p class="admin-task-card__serial">任务 #{{ task.taskId }}</p>
-              <span>{{ resolveTaskState(task) }}</span>
+            <div class="task-card__topline">
+              <span>{{ resolveTaskType(task.taskType) }}</span>
+              <strong>{{ resolveTaskState(task) }}</strong>
             </div>
-            <h3>{{ task.taskType }}</h3>
+            <h3>#{{ task.taskId }} {{ task.summaryText || '待补充解析信息' }}</h3>
             <p>{{ task.instructionText }}</p>
-            <footer class="admin-task-card__footer">
-              <span>{{ formatDate(task.createdAt) }}</span>
-              <strong>{{ task.summaryText || '待生成摘要' }}</strong>
-            </footer>
+            <small>{{ formatDate(task.createdAt) }}</small>
           </button>
         </div>
-
-        <p v-else class="admin-ai-page__empty">当前没有 AI 运维任务。</p>
+        <div v-else class="panel__empty">当前还没有管理员 AI 运维任务。</div>
       </article>
 
-      <article class="admin-ai-page__panel admin-ai-page__panel--detail">
-        <div class="admin-ai-page__panel-head">
+      <article class="panel panel--detail">
+        <div class="panel__head">
           <div>
-            <p class="admin-ai-page__label">任务详情</p>
-            <h2>任务详情</h2>
+            <p class="admin-ai-ops-page__section-label">执行清单</p>
+            <h2>人工复核后才能落库</h2>
           </div>
           <span>{{ currentTask ? `#${currentTask.taskId}` : '未选择' }}</span>
         </div>
 
-        <div v-if="currentTask" class="admin-ai-page__detail-body">
-          <section class="admin-ai-page__detail-summary">
-            <div>
-              <p class="admin-ai-page__label">指令内容</p>
-              <h3>{{ currentTask.instructionText }}</h3>
-            </div>
+        <div v-if="currentTask" class="detail">
+          <section class="detail__summary">
+            <div class="summary-badge">{{ resolveTaskState(currentTask) }}</div>
+            <h3>{{ resolveTaskType(currentTask.taskType) }}</h3>
+            <p>{{ currentTask.summaryText || currentTask.failureReason || '当前任务还没有可执行摘要。' }}</p>
             <dl>
               <div>
-                <dt>状态</dt>
-                <dd>{{ resolveTaskState(currentTask) }}</dd>
+                <dt>原始指令</dt>
+                <dd>{{ currentTask.instructionText }}</dd>
               </div>
               <div>
                 <dt>创建时间</dt>
@@ -248,340 +296,388 @@ onMounted(() => {
                 <dd>{{ formatDate(currentTask.executedAt) }}</dd>
               </div>
             </dl>
-            <p class="admin-ai-page__detail-note">{{ currentTask.summaryText || currentTask.failureReason || '当前任务暂无额外摘要。' }}</p>
           </section>
 
-          <section class="admin-ai-page__detail-items">
-            <p class="admin-ai-page__label">执行项</p>
-            <div v-if="currentTask.items.length" class="admin-ai-page__item-list">
-              <article v-for="item in currentTask.items" :key="item.itemId" class="admin-task-item">
+          <section class="detail__items">
+            <div class="detail__items-head">
+              <p class="admin-ai-ops-page__section-label">待执行操作清单</p>
+              <span>{{ currentTask.items.length }} 项</span>
+            </div>
+
+            <div v-if="currentTask.items.length" class="detail__item-list">
+              <article v-for="item in currentTask.items" :key="item.itemId" class="review-item">
                 <header>
-                  <strong>{{ item.operationType }}</strong>
-                  <span>{{ item.targetType }} / {{ item.targetLabel || item.targetId || '未命名目标' }}</span>
+                  <div>
+                    <strong>{{ resolveItemAction(item) }}</strong>
+                    <span>{{ item.targetLabel || item.targetId || '未命名目标' }}</span>
+                  </div>
+                  <em>{{ item.executeStatus || 'WAITING' }}</em>
                 </header>
-                <p>字段：{{ item.fieldName || '无' }}</p>
-                <p>旧值：{{ item.oldValue || '无' }}</p>
-                <p>新值：{{ item.newValue || '无' }}</p>
-                <p>执行状态：{{ item.executeStatus || '待执行' }}</p>
+                <div class="review-item__compare">
+                  <div>
+                    <label>字段</label>
+                    <p>{{ item.fieldName || '未指定' }}</p>
+                  </div>
+                  <div>
+                    <label>旧值</label>
+                    <p>{{ formatValue(item.oldValue) }}</p>
+                  </div>
+                  <div>
+                    <label>新值</label>
+                    <p>{{ formatValue(item.newValue) }}</p>
+                  </div>
+                </div>
               </article>
             </div>
-            <p v-else class="admin-ai-page__empty">当前任务没有拆解项。</p>
+            <div v-else class="panel__empty">当前任务没有拆解出可执行明细。</div>
           </section>
 
-          <section class="admin-ai-page__detail-actions">
-            <button
-              class="admin-ai-page__primary"
-              type="button"
-              :disabled="processing || currentTask.executeStatus === 'EXECUTED' || currentTask.confirmStatus === 'CANCELLED'"
-              @click="confirmTask(currentTask.taskId)"
-            >
+          <section class="detail__actions">
+            <button class="primary-button" type="button" :disabled="processing || !canReviewCurrent" @click="confirmTask(currentTask.taskId)">
               确认执行
             </button>
-            <button
-              class="admin-ai-page__ghost"
-              type="button"
-              :disabled="processing || currentTask.executeStatus === 'EXECUTED' || currentTask.confirmStatus === 'CANCELLED'"
-              @click="cancelTask(currentTask.taskId)"
-            >
+            <button class="ghost-button" type="button" :disabled="processing || currentTask.confirmStatus !== 'PENDING'" @click="cancelTask(currentTask.taskId)">
               取消任务
             </button>
           </section>
         </div>
-
-        <p v-else class="admin-ai-page__empty">请选择左侧任务查看详情。</p>
+        <div v-else class="panel__empty">请先从左侧选择一个解析任务。</div>
       </article>
     </section>
   </main>
 </template>
-<style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
 
-.admin-ai-page {
-  --paper: #f2ede4;
-  --ink: #201b17;
-  --muted: #6b645d;
-  --line: rgba(32, 27, 23, 0.12);
-  --glass: rgba(255, 251, 245, 0.72);
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+
+.admin-ai-ops-page {
+  --bg: #131820;
+  --panel: rgba(20, 28, 37, 0.78);
+  --panel-soft: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.08);
+  --text: #edf2f7;
+  --muted: #8d99a8;
+  --accent: #e2a84b;
+  --accent-soft: rgba(226, 168, 75, 0.14);
   min-height: 100vh;
   padding: 2rem;
-  color: var(--ink);
+  color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(110, 128, 118, 0.18), transparent 24%),
-    radial-gradient(circle at right center, rgba(198, 186, 166, 0.2), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 38%),
-    var(--paper);
+    radial-gradient(circle at top right, rgba(226, 168, 75, 0.15), transparent 18%),
+    radial-gradient(circle at left center, rgba(76, 112, 146, 0.16), transparent 24%),
+    linear-gradient(180deg, #121820 0%, #181f28 100%);
+  font-family: 'Manrope', sans-serif;
 }
 
-.admin-ai-page__masthead {
+.admin-ai-ops-page__hero,
+.admin-ai-ops-page__composer,
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--panel);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(20px);
+}
+
+.admin-ai-ops-page__hero,
+.admin-ai-ops-page__composer {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
-  gap: 1.5rem;
-  align-items: end;
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
+  gap: 1rem;
+  padding: 1.5rem;
 }
 
-.admin-ai-page__eyebrow,
-.admin-ai-page__label,
-.admin-ai-page__snapshot dt,
-.admin-task-card__serial,
-.admin-task-card__header span,
-.admin-task-item header span,
-.admin-ai-page__detail-summary dt {
+.admin-ai-ops-page__hero {
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.6fr);
+  align-items: end;
+}
+
+.admin-ai-ops-page__eyebrow,
+.admin-ai-ops-page__section-label,
+.summary-badge,
+.task-card__topline span,
+.review-item header em,
+.detail__items-head span,
+.detail__summary dt {
   margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--muted);
 }
 
-.admin-ai-page__title {
-  margin: 0.95rem 0 0;
-  font: 600 clamp(2.7rem, 4.8vw, 5rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
+.admin-ai-ops-page h1,
+.admin-ai-ops-page h2,
+.admin-ai-ops-page h3 {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
 }
 
-.admin-ai-page__summary,
-.admin-ai-page__composer-copy p:last-child,
-.admin-task-card p,
-.admin-ai-page__detail-note,
-.admin-task-item p,
-.admin-ai-page__empty,
-.admin-ai-page__status-panel p,
-.admin-ai-page__parse-result p {
+.admin-ai-ops-page h1 {
+  font-size: clamp(2.5rem, 4vw, 4rem);
+  line-height: 1;
+}
+
+.admin-ai-ops-page__lead,
+.admin-ai-ops-page__composer-copy p:last-child,
+.task-card p,
+.detail__summary p,
+.admin-ai-ops-page__result-copy,
+.panel__empty {
   margin: 0;
   color: var(--muted);
-  font: 400 0.98rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
+  line-height: 1.8;
 }
 
-.admin-ai-page__snapshot,
-.admin-ai-page__composer,
-.admin-ai-page__parse-result,
-.admin-ai-page__panel,
-.admin-ai-page__status-panel,
-.admin-task-card,
-.admin-task-item {
-  border: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 22px 48px rgba(80, 70, 58, 0.08);
-}
-
-.admin-ai-page__snapshot,
-.admin-ai-page__composer,
-.admin-ai-page__parse-result,
-.admin-ai-page__status-panel {
-  margin-top: 1.5rem;
-  padding: 1.2rem;
-}
-
-.admin-ai-page__snapshot dl {
+.admin-ai-ops-page__stats {
   display: grid;
   gap: 0.9rem;
-  margin: 1rem 0 0;
 }
 
-.admin-ai-page__snapshot dd,
-.admin-ai-page__detail-summary dd {
-  margin: 0.35rem 0 0;
-  font: 600 1.04rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.admin-ai-page__alert {
-  margin: 1.25rem 0 0;
-  color: #8d4747;
-  font: 600 0.9rem/1.6 'Manrope', sans-serif;
-}
-
-.admin-ai-page__composer {
-  display: grid;
-  gap: 1rem;
-}
-
-.admin-ai-page__composer h2,
-.admin-ai-page__panel-head h2,
-.admin-ai-page__parse-result h2,
-.admin-ai-page__detail-summary h3 {
-  margin: 0.7rem 0 0;
-  font: 600 1.72rem/1.28 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.admin-ai-page__composer textarea {
-  min-height: 8.5rem;
-  resize: vertical;
-  padding: 1rem;
+.admin-ai-ops-page__stats article,
+.review-item,
+.task-card {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.52);
-  color: var(--ink);
-  font: 400 1rem/1.72 'Noto Serif SC', 'Source Han Serif SC', serif;
+  border-radius: 18px;
+  background: var(--panel-soft);
 }
 
-.admin-ai-page__primary,
-.admin-ai-page__ghost {
-  min-height: 3rem;
-  padding: 0 1.15rem;
-  font: 600 0.84rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+.admin-ai-ops-page__stats article {
+  padding: 1rem 1.1rem;
 }
 
-.admin-ai-page__primary {
-  justify-self: start;
-  border: none;
-  background: linear-gradient(135deg, #64806e, #4d6657);
-  color: #faf6f0;
-  box-shadow: 0 18px 36px rgba(77, 102, 87, 0.24);
+.admin-ai-ops-page__stats strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 2rem;
 }
 
-.admin-ai-page__ghost {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--ink);
-}
-
-.admin-ai-page__primary:hover:not(:disabled),
-.admin-ai-page__ghost:hover:not(:disabled),
-.admin-task-card:hover {
-  transform: translateY(-2px);
-}
-
-.admin-ai-page__primary:disabled,
-.admin-ai-page__ghost:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.admin-ai-page__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr);
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.admin-ai-page__panel {
-  display: grid;
-  gap: 1rem;
-  padding: 1.2rem;
-}
-
-.admin-ai-page__panel--queue {
-  align-self: start;
-}
-
-.admin-ai-page__panel--detail {
-  position: sticky;
-  top: 1rem;
-  align-self: start;
-}
-
-.admin-ai-page__panel-head {
+.admin-ai-ops-page__example-list {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: end;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.admin-ai-page__task-list,
-.admin-ai-page__item-list {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.admin-ai-page__task-list--scroll {
-  max-height: calc(100vh - 14rem);
-  overflow-y: auto;
-  padding-right: 0.4rem;
-}
-
-.admin-task-card,
-.admin-task-item {
-  display: grid;
+  flex-wrap: wrap;
   gap: 0.75rem;
-  padding: 1rem;
-  text-align: left;
 }
 
-.admin-task-card--active {
-  border-color: rgba(100, 128, 110, 0.42);
-  background: linear-gradient(180deg, rgba(100, 128, 110, 0.12), rgba(255, 251, 245, 0.74));
+.example-chip,
+.primary-button,
+.ghost-button,
+.task-card {
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-.admin-task-card__header,
-.admin-task-card__footer,
-.admin-task-item header,
-.admin-ai-page__detail-actions {
+.example-chip {
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.example-chip:hover,
+.task-card:hover,
+.primary-button:hover:not(:disabled),
+.ghost-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.admin-ai-ops-page__textarea {
+  min-height: 9rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  resize: vertical;
+}
+
+.admin-ai-ops-page__composer-actions,
+.detail__actions,
+.panel__head,
+.task-card__topline,
+.review-item header,
+.detail__items-head {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   align-items: center;
 }
 
-.admin-task-card h3 {
-  margin: 0;
-  font: 600 1.28rem/1.3 'Noto Serif SC', 'Source Han Serif SC', serif;
+.primary-button,
+.ghost-button {
+  min-height: 3rem;
+  padding: 0 1.1rem;
+  border-radius: 16px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
 }
 
-.admin-task-card__footer strong {
-  font: 600 0.92rem/1.6 'Noto Serif SC', 'Source Han Serif SC', serif;
-  color: var(--ink);
+.primary-button {
+  border: none;
+  background: linear-gradient(135deg, #e2a84b, #b57f2a);
+  color: #1e1710;
 }
 
-.admin-ai-page__detail-body,
-.admin-ai-page__detail-summary {
+.ghost-button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+.primary-button:disabled,
+.ghost-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-ai-ops-page__alert {
+  margin: 1rem 0 0;
+  color: #ffb4b4;
+}
+
+.admin-ai-ops-page__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.panel {
   display: grid;
   gap: 1rem;
+  padding: 1.25rem;
 }
 
-.admin-ai-page__detail-summary dl {
+.task-list,
+.detail__item-list,
+.detail {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.task-card {
+  padding: 1rem;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.task-card--active {
+  border-color: rgba(226, 168, 75, 0.45);
+  background: linear-gradient(180deg, rgba(226, 168, 75, 0.14), rgba(255, 255, 255, 0.03));
+  box-shadow: 0 18px 30px rgba(226, 168, 75, 0.12);
+}
+
+.task-card__topline strong {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.task-card h3 {
+  font-size: 1.06rem;
+  line-height: 1.45;
+}
+
+.task-card small {
+  color: var(--muted);
+}
+
+.panel--detail {
+  align-self: start;
+}
+
+.detail__summary,
+.detail__items {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel-soft);
+}
+
+.summary-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.detail__summary dl {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.9rem 1rem;
+  gap: 0.85rem 1rem;
+  margin: 0;
   padding-top: 1rem;
-  border-top: 1px solid var(--line);
 }
 
-.admin-task-item header strong {
-  font: 700 0.92rem/1.4 'Manrope', sans-serif;
-  color: var(--ink);
+.detail__summary dd {
+  margin: 0.35rem 0 0;
+  line-height: 1.6;
 }
 
-@media (max-width: 980px) {
-  .admin-ai-page {
+.review-item {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.review-item header strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.review-item header span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.review-item__compare {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.review-item__compare label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.review-item__compare p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .admin-ai-ops-page {
     padding: 1rem;
   }
 
-  .admin-ai-page__masthead,
-  .admin-ai-page__grid,
-  .admin-ai-page__detail-summary dl {
+  .admin-ai-ops-page__hero,
+  .admin-ai-ops-page__grid,
+  .detail__summary dl,
+  .review-item__compare {
     grid-template-columns: 1fr;
   }
 
-  .admin-ai-page__panel--detail {
-    position: static;
-  }
-
-  .admin-ai-page__task-list--scroll {
-    max-height: none;
-    overflow-y: visible;
-    padding-right: 0;
-  }
-
-  .admin-ai-page__panel-head,
-  .admin-task-card__header,
-  .admin-task-card__footer,
-  .admin-task-item header,
-  .admin-ai-page__detail-actions {
+  .panel__head,
+  .detail__actions,
+  .admin-ai-ops-page__composer-actions,
+  .detail__items-head,
+  .review-item header,
+  .task-card__topline {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .admin-ai-page__primary {
+  .primary-button,
+  .ghost-button {
     width: 100%;
-    justify-self: stretch;
   }
 }
 </style>
-

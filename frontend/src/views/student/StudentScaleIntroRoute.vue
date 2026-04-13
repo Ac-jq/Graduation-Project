@@ -18,30 +18,21 @@ const draftSession = ref<ScaleSession | null>(null)
 
 const scaleId = computed(() => toNumberParam(route.params.scaleId))
 
-const guideSteps = [
-  {
-    title: '按最近两周作答',
-    description: '请围绕最近两周的真实状态选择答案，不需要追求“理想答案”。'
-  },
-  {
-    title: '系统自动保存',
-    description: '切页或暂存都会保留当前进度，之后可以继续完成。'
-  },
-  {
-    title: '提交后生成报告',
-    description: '系统将输出分数、风险等级、辅助解释与后续建议。'
+const estimatedMinutes = computed(() => {
+  const totalQuestions = scaleDetail.value?.totalQuestions ?? 0
+  if (!totalQuestions) return '--'
+  return Math.max(3, Math.ceil(totalQuestions / 4))
+})
+
+function resolveScaleAccent(code?: string | null): string {
+  switch (code) {
+    case 'GAD7':
+      return '焦虑感受梳理'
+    case 'PHQ9':
+      return '情绪状态梳理'
+    default:
+      return '温和自我觉察'
   }
-]
-
-function resolvePositioning(detail: ScaleDetail | null): string {
-  return detail?.productPositioning || '标准化心理状态辅助评估'
-}
-
-function resolveNotice(detail: ScaleDetail | null): string {
-  return (
-    detail?.noticeText ||
-    '本结果仅用于心理状态辅助评估，不作为医学诊断依据。如有持续困扰，请联系专业老师或医疗机构。'
-  )
 }
 
 async function loadScaleDetail(): Promise<void> {
@@ -50,10 +41,8 @@ async function loadScaleDetail(): Promise<void> {
     scaleDetail.value = null
     return
   }
-
   loading.value = true
   errorMessage.value = ''
-
   try {
     const detail = await fetchScaleDetailApi(scaleId.value)
     scaleDetail.value = detail
@@ -70,10 +59,8 @@ async function startAssessment(): Promise<void> {
     errorMessage.value = '量表编号无效'
     return
   }
-
   creating.value = true
   errorMessage.value = ''
-
   try {
     const session = await createScaleDraftSessionApi(scaleId.value)
     draftSession.value = session
@@ -92,10 +79,10 @@ async function startAssessment(): Promise<void> {
 }
 
 watch(
-  () => route.params.scaleId,
-  () => {
-    void loadScaleDetail()
-  }
+    () => route.params.scaleId,
+    () => {
+      void loadScaleDetail()
+    }
 )
 
 onMounted(() => {
@@ -104,289 +91,277 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="scale-intro-page">
-    <section class="scale-intro-page__hero">
-      <div class="scale-intro-page__copy">
-        <p class="scale-intro-page__eyebrow">Assessment Brief</p>
-        <h1>{{ scaleDetail?.name || '心理测评说明' }}</h1>
-        <p class="scale-intro-page__lead">
-          {{ scaleDetail?.description || '本测评基于标准量表，用于帮助你理解当下的情绪状态与压力体验。' }}
-        </p>
+  <main class="premium-intro-page">
+    <div class="premium-card">
+
+      <div v-if="errorMessage" class="state-container">
+        <h2 class="error-text">{{ errorMessage }}</h2>
+        <button class="ghost-btn" @click="router.push({ name: 'student-scales' })">返回目录</button>
       </div>
 
-      <aside class="scale-intro-page__summary-card">
-        <p class="scale-intro-page__meta-label">量表参数</p>
-        <dl>
-          <div>
-            <dt>量表编码</dt>
-            <dd>{{ scaleDetail?.code || '--' }}</dd>
+      <div v-else-if="loading" class="state-container">
+        <div class="loading-orb"></div>
+        <p class="meta-text">正在准备情绪画卷...</p>
+      </div>
+
+      <div v-else-if="scaleDetail" class="content-container">
+
+        <div class="top-section">
+          <div class="tags-row">
+            <span class="premium-tag">{{ resolveScaleAccent(scaleDetail?.code) }}</span>
+            <span class="premium-tag tag-light">预计 {{ estimatedMinutes }} 分钟</span>
           </div>
-          <div>
-            <dt>总题数</dt>
-            <dd>{{ scaleDetail?.totalQuestions || '--' }}</dd>
-          </div>
-          <div>
-            <dt>每页题数</dt>
-            <dd>{{ scaleDetail?.pageSize || '--' }}</dd>
-          </div>
-          <div>
-            <dt>产品定位</dt>
-            <dd>{{ resolvePositioning(scaleDetail) }}</dd>
-          </div>
-        </dl>
-      </aside>
-    </section>
-
-    <p v-if="errorMessage" class="scale-intro-page__alert">{{ errorMessage }}</p>
-
-    <section v-if="loading" class="scale-intro-page__status-panel">
-      <p>正在加载量表说明...</p>
-    </section>
-
-    <template v-else-if="scaleDetail">
-      <section class="scale-intro-page__content-grid">
-        <article class="scale-intro-page__panel">
-          <p class="scale-intro-page__meta-label">作答导语</p>
-          <h2>开始前请先确认这三件事</h2>
-          <p class="scale-intro-page__body-text">
-            {{
-              scaleDetail.introduction ||
-              '请在相对安静的环境中完成作答，尽量基于最近两周的真实感受来选择答案，不需要反复纠结。'
-            }}
-          </p>
-          <ul class="scale-intro-page__guide-list">
-            <li v-for="step in guideSteps" :key="step.title">
-              <strong>{{ step.title }}</strong>
-              <span>{{ step.description }}</span>
-            </li>
-          </ul>
-        </article>
-
-        <article class="scale-intro-page__panel">
-          <p class="scale-intro-page__meta-label">评分说明</p>
-          <h2>系统会如何解释你的结果</h2>
-          <ul class="scale-intro-page__rule-list">
-            <li v-for="rule in scaleDetail.scoringRules || []" :key="rule">{{ rule }}</li>
-          </ul>
-          <p v-if="!(scaleDetail.scoringRules || []).length" class="scale-intro-page__body-text">
-            提交后系统会根据标准规则自动计算总分与等级，并生成结构化报告。
-          </p>
-        </article>
-      </section>
-
-      <section class="scale-intro-page__notice-panel">
-        <div>
-          <p class="scale-intro-page__meta-label">重要声明</p>
-          <h2>本模块只提供辅助评估，不提供诊断结论</h2>
         </div>
-        <p>{{ resolveNotice(scaleDetail) }}</p>
-      </section>
 
-      <section class="scale-intro-page__actions">
-        <button class="scale-intro-page__ghost" type="button" @click="router.push({ name: 'student-scales' })">
-          返回量表目录
-        </button>
-        <button
-          class="scale-intro-page__primary"
-          type="button"
-          :disabled="creating"
-          @click="startAssessment"
-        >
-          {{ creating ? '正在创建测评会话...' : '开始本次测评' }}
-        </button>
-      </section>
-    </template>
+        <div class="middle-section">
+          <h1 class="main-title">{{ scaleDetail?.name || '探索内在的平静' }}</h1>
+          <p class="sub-title">
+            先让心绪落地，再开始回答。<br>
+            不需要追求完美的答案，只需如实记录此刻的感受。
+          </p>
+        </div>
+
+        <div class="bottom-section">
+          <button
+              class="start-action-btn"
+              :disabled="creating"
+              @click="startAssessment"
+          >
+            {{ creating ? '正在进入...' : '开始本次测评' }}
+          </button>
+          <button class="ghost-link" @click="router.push({ name: 'student-scales' })">
+            暂不开始，返回目录
+          </button>
+        </div>
+
+      </div>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.scale-intro-page {
-  --ink: #212720;
-  --muted: #6d675f;
-  --line: rgba(33, 39, 32, 0.1);
-  --glass: rgba(255, 251, 246, 0.74);
-  min-height: 100%;
-  color: var(--ink);
-}
-
-.scale-intro-page__hero,
-.scale-intro-page__content-grid {
-  display: grid;
-  gap: 1.4rem;
-}
-
-.scale-intro-page__hero {
-  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.8fr);
-  align-items: end;
-}
-
-.scale-intro-page__eyebrow,
-.scale-intro-page__meta-label,
-.scale-intro-page__summary-card dt {
-  margin: 0;
-  font: 700 0.74rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #72695e;
-}
-
-.scale-intro-page h1,
-.scale-intro-page h2 {
-  margin: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-}
-
-.scale-intro-page h1 {
-  margin-top: 0.9rem;
-  font-size: clamp(2.4rem, 5vw, 4.6rem);
-  line-height: 1.04;
-}
-
-.scale-intro-page__lead,
-.scale-intro-page__body-text,
-.scale-intro-page__notice-panel p,
-.scale-intro-page__guide-list span,
-.scale-intro-page__rule-list li,
-.scale-intro-page__summary-card dd,
-.scale-intro-page__status-panel p {
-  font-family: 'Manrope', sans-serif;
-  line-height: 1.85;
-}
-
-.scale-intro-page__lead {
-  max-width: 42rem;
-  margin: 1rem 0 0;
-  color: var(--muted);
-}
-
-.scale-intro-page__summary-card,
-.scale-intro-page__panel,
-.scale-intro-page__notice-panel,
-.scale-intro-page__status-panel {
-  border: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 24px 56px rgba(74, 61, 48, 0.08);
-}
-
-.scale-intro-page__summary-card,
-.scale-intro-page__panel,
-.scale-intro-page__notice-panel {
-  padding: 1.35rem;
-}
-
-.scale-intro-page__summary-card dl {
-  display: grid;
-  gap: 0.95rem;
-  margin: 1rem 0 0;
-}
-
-.scale-intro-page__summary-card dd {
-  margin: 0.35rem 0 0;
-}
-
-.scale-intro-page__content-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 1.5rem;
-}
-
-.scale-intro-page__panel h2,
-.scale-intro-page__notice-panel h2 {
-  margin-top: 0.8rem;
-  font-size: 1.65rem;
-  line-height: 1.32;
-}
-
-.scale-intro-page__body-text {
-  margin: 0.9rem 0 0;
-  color: var(--muted);
-}
-
-.scale-intro-page__guide-list,
-.scale-intro-page__rule-list {
-  display: grid;
-  gap: 0.9rem;
-  margin: 1.25rem 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scale-intro-page__guide-list li,
-.scale-intro-page__rule-list li {
-  padding: 0.95rem 1rem;
-  border: 1px solid rgba(33, 39, 32, 0.08);
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.scale-intro-page__guide-list strong {
-  display: block;
-  margin-bottom: 0.4rem;
-  font: 600 1rem/1.5 'Noto Serif SC', serif;
-}
-
-.scale-intro-page__notice-panel {
-  display: grid;
-  gap: 0.8rem;
-  margin-top: 1.5rem;
-}
-
-.scale-intro-page__notice-panel p {
-  margin: 0;
-  color: #7c574a;
-}
-
-.scale-intro-page__alert {
-  margin-top: 1rem;
-  color: #9f4d4d;
-  font-weight: 600;
-}
-
-.scale-intro-page__status-panel {
-  margin-top: 1.5rem;
-  padding: 1.2rem;
-}
-
-.scale-intro-page__actions {
+/* 全屏背景，营造大空间的呼吸感 */
+.premium-intro-page {
+  min-height: 100vh;
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  /* 页面底色：极度干净的冷调米色/浅灰绿 */
+  background: #f4f6f4;
+  padding: 5vw 2rem;
+  box-sizing: border-box;
 }
 
-.scale-intro-page__ghost,
-.scale-intro-page__primary {
-  min-height: 3.2rem;
-  padding: 0 1.2rem;
+/* 居中的高级感卡片 */
+.premium-card {
+  width: 100%;
+  max-width: 680px;
+  min-height: 560px;
+  /* 背景色：提取之前的氛围色调，加透明度 */
+  background: linear-gradient(
+      145deg,
+      rgba(219, 230, 222, 0.65) 0%,
+      rgba(238, 228, 218, 0.55) 100%
+  );
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 40px;
+  padding: 4rem;
+  box-sizing: border-box;
+  /* 柔和深邃的弥散阴影 */
+  box-shadow:
+      0 40px 80px rgba(54, 66, 58, 0.08),
+      inset 0 2px 0 rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 上下结构容器 */
+.content-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex: 1;
+  height: 100%;
+}
+
+.top-section {
+  display: flex;
+  justify-content: center;
+}
+
+.tags-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.premium-tag {
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  color: #4a5c51;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.6rem 1.2rem;
+  border-radius: 100px;
+  font-weight: 600;
+}
+
+.tag-light {
+  background: transparent;
+  border: 1px solid rgba(130, 150, 138, 0.3);
+  color: #6a7c70;
+}
+
+.middle-section {
+  text-align: center;
+  margin: 4rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.main-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(2.5rem, 5vw, 3.8rem);
+  font-weight: 600;
+  color: #1e2821;
+  line-height: 1.2;
+  margin: 0 0 1.5rem 0;
+  letter-spacing: 0.05em;
+}
+
+.sub-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.15rem;
+  color: #5c6b60;
+  line-height: 2;
+  max-width: 80%;
+  margin: 0;
+}
+
+.bottom-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* 夸张而精致的按钮 */
+.start-action-btn {
+  width: 100%;
+  max-width: 320px;
+  height: 4.2rem;
+  border-radius: 100px;
   border: none;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  background: #2a362e;
+  color: #ffffff;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.2);
+}
+
+.start-action-btn:hover:not(:disabled) {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(42, 54, 46, 0.3);
+  background: #1c2620;
+}
+
+.start-action-btn:active:not(:disabled) {
+  transform: translateY(2px) scale(0.98);
+}
+
+.start-action-btn:disabled {
+  background: #7a8c80;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ghost-link {
+  background: none;
+  border: none;
+  color: #7b8c80;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  padding: 0.5rem;
+}
+
+.ghost-link:hover {
+  color: #2a362e;
+}
+
+/* 状态样式 */
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  flex: 1;
+}
+
+.error-text {
+  color: #8c4a4a;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.ghost-btn {
+  padding: 0.8rem 2rem;
+  border-radius: 100px;
+  border: 1px solid #8c4a4a;
+  background: transparent;
+  color: #8c4a4a;
   cursor: pointer;
 }
 
-.scale-intro-page__ghost {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.56);
-  color: var(--ink);
+.loading-orb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(130, 150, 138, 0.2);
+  border: 2px solid rgba(130, 150, 138, 0.8);
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1.5rem;
 }
 
-.scale-intro-page__primary {
-  background: linear-gradient(135deg, #607968, #4d6454);
-  color: #fffaf4;
-  box-shadow: 0 18px 34px rgba(77, 100, 84, 0.24);
+.meta-text {
+  color: #6a7c70;
+  font-family: 'Noto Serif SC', serif;
 }
 
-@media (max-width: 980px) {
-  .scale-intro-page__hero,
-  .scale-intro-page__content-grid {
-    grid-template-columns: 1fr;
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .premium-card {
+    padding: 2.5rem 1.5rem;
+    min-height: 80vh;
+    border-radius: 32px;
   }
-
-  .scale-intro-page__actions {
-    flex-direction: column;
+  .main-title {
+    font-size: 2.2rem;
+  }
+  .sub-title {
+    max-width: 100%;
+    font-size: 1rem;
   }
 }
 </style>

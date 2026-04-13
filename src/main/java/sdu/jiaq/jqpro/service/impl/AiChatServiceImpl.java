@@ -1,9 +1,12 @@
 package sdu.jiaq.jqpro.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.beans.factory.ObjectProvider;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.AiChatConstants;
@@ -25,38 +28,34 @@ import sdu.jiaq.jqpro.mapper.AiChatSessionMapper;
 import sdu.jiaq.jqpro.mapper.CounselorStudentMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.AiChatService;
-
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import sdu.jiaq.jqpro.service.ai.AiChatAiClient;
+import sdu.jiaq.jqpro.service.ai.AiChatAiRequest;
 
 /**
- * AI 会话服务实现。
+ * Student AI mentor session service implementation.
  */
 @Service
 public class AiChatServiceImpl implements AiChatService {
 
     private static final List<String> HIGH_RISK_KEYWORDS = List.of("自杀", "轻生", "活不下去", "结束生命", "伤害自己", "不想活了");
+    private static final int MAX_HISTORY_MESSAGES = 10;
 
     private final AiChatSessionMapper aiChatSessionMapper;
     private final AiChatMessageMapper aiChatMessageMapper;
     private final CounselorStudentMapper counselorStudentMapper;
     private final SysUserMapper sysUserMapper;
-    private final ObjectProvider<ChatModel> chatModelProvider;
+    private final AiChatAiClient aiChatAiClient;
 
     public AiChatServiceImpl(AiChatSessionMapper aiChatSessionMapper,
                              AiChatMessageMapper aiChatMessageMapper,
                              CounselorStudentMapper counselorStudentMapper,
                              SysUserMapper sysUserMapper,
-                             ObjectProvider<ChatModel> chatModelProvider) {
+                             AiChatAiClient aiChatAiClient) {
         this.aiChatSessionMapper = aiChatSessionMapper;
         this.aiChatMessageMapper = aiChatMessageMapper;
         this.counselorStudentMapper = counselorStudentMapper;
         this.sysUserMapper = sysUserMapper;
-        this.chatModelProvider = chatModelProvider;
+        this.aiChatAiClient = aiChatAiClient;
     }
 
     @Override
@@ -65,9 +64,10 @@ public class AiChatServiceImpl implements AiChatService {
         Long studentUserId = SecurityUtil.getCurrentUserId();
         AiChatSession session = new AiChatSession();
         session.setStudentUserId(studentUserId);
-        session.setTitle(resolveTitle(request.getTitle()));
+        session.setTitle(resolveTitle(request == null ? null : request.getTitle()));
         session.setStatus(AiChatConstants.SESSION_ACTIVE);
         session.setRiskFlag(0);
+        session.setRiskLevel(ReportLevelConstants.LOW);
         session.setLastActiveAt(LocalDateTime.now());
         aiChatSessionMapper.insert(session);
         return buildSessionResponse(session, getUserMap(studentUserId));
@@ -78,7 +78,7 @@ public class AiChatServiceImpl implements AiChatService {
         Long studentUserId = SecurityUtil.getCurrentUserId();
         return buildSessionResponses(aiChatSessionMapper.selectList(new LambdaQueryWrapper<AiChatSession>()
                 .eq(AiChatSession::getStudentUserId, studentUserId)
-                .orderByDesc(AiChatSession::getLastActiveAt)));
+                .orderByDesc(AiChatSession::getLastActiveAt, AiChatSession::getId)));
     }
 
     @Override
@@ -91,17 +91,26 @@ public class AiChatServiceImpl implements AiChatService {
     @Transactional(rollbackFor = Exception.class)
     public SendAiChatMessageResponse sendMessage(Long sessionId, SendAiChatMessageRequest request) {
         AiChatSession session = getOwnedStudentSession(sessionId);
-        RiskAnalysis risk = analyzeRisk(request.getContent());
+        String content = request.getContent().trim();
+        RiskAnalysis risk = analyzeRisk(content);
+        List<AiChatAiRequest.ConversationMessage> historyMessages = loadConversationHistory(sessionId);
 
         AiChatMessage studentMessage = new AiChatMessage();
         studentMessage.setSessionId(sessionId);
         studentMessage.setSenderType(AiChatConstants.SENDER_STUDENT);
-        studentMessage.setContentText(ChatCryptoUtil.encryptWithPrefix(request.getContent()));
+        studentMessage.setContentText(ChatCryptoUtil.encryptWithPrefix(content));
         studentMessage.setRiskLevel(risk.level());
         studentMessage.setHitKeywords(risk.hitKeywords());
         aiChatMessageMapper.insert(studentMessage);
 
-        String aiReplyText = generateAiReply(request.getContent(), risk.level());
+        String aiReplyText = aiChatAiClient.generateReply(new AiChatAiRequest(
+                session.getTitle(),
+                risk.level(),
+                risk.riskFlag(),
+                historyMessages,
+                content
+        ));
+
         AiChatMessage aiMessage = new AiChatMessage();
         aiMessage.setSessionId(sessionId);
         aiMessage.setSenderType(AiChatConstants.SENDER_AI);
@@ -110,7 +119,7 @@ public class AiChatServiceImpl implements AiChatService {
         aiMessage.setHitKeywords(risk.hitKeywords());
         aiChatMessageMapper.insert(aiMessage);
 
-        session.setSummaryText(request.getContent().length() > 60 ? request.getContent().substring(0, 60) : request.getContent());
+        session.setSummaryText(content.length() > 80 ? content.substring(0, 80) : content);
         session.setRiskFlag(risk.riskFlag() ? 1 : 0);
         session.setRiskLevel(risk.level());
         session.setLastActiveAt(LocalDateTime.now());
@@ -129,7 +138,7 @@ public class AiChatServiceImpl implements AiChatService {
         verifyCounselorStudentOwnership(studentUserId);
         return buildSessionResponses(aiChatSessionMapper.selectList(new LambdaQueryWrapper<AiChatSession>()
                 .eq(AiChatSession::getStudentUserId, studentUserId)
-                .orderByDesc(AiChatSession::getLastActiveAt)));
+                .orderByDesc(AiChatSession::getLastActiveAt, AiChatSession::getId)));
     }
 
     @Override
@@ -147,8 +156,9 @@ public class AiChatServiceImpl implements AiChatService {
             return List.of();
         }
         List<Long> studentIds = sessions.stream().map(AiChatSession::getStudentUserId).distinct().toList();
+        Map<Long, SysUser> userMap = getUserMap(studentIds);
         return sessions.stream()
-                .map(session -> buildSessionResponse(session, getUserMap(studentIds)))
+                .map(session -> buildSessionResponse(session, userMap))
                 .toList();
     }
 
@@ -174,6 +184,22 @@ public class AiChatServiceImpl implements AiChatService {
                         .orderByAsc(AiChatMessage::getCreatedAt, AiChatMessage::getId))
                 .stream()
                 .map(this::buildMessageResponse)
+                .toList();
+    }
+
+    private List<AiChatAiRequest.ConversationMessage> loadConversationHistory(Long sessionId) {
+        return aiChatMessageMapper.selectList(new LambdaQueryWrapper<AiChatMessage>()
+                        .eq(AiChatMessage::getSessionId, sessionId)
+                        .orderByDesc(AiChatMessage::getCreatedAt, AiChatMessage::getId)
+                        .last("limit " + MAX_HISTORY_MESSAGES))
+                .stream()
+                .sorted(Comparator
+                        .comparing(AiChatMessage::getCreatedAt)
+                        .thenComparing(AiChatMessage::getId))
+                .map(message -> new AiChatAiRequest.ConversationMessage(
+                        AiChatConstants.SENDER_AI.equals(message.getSenderType()) ? "AI导师" : "学生",
+                        ChatCryptoUtil.decryptCompat(message.getContentText())
+                ))
                 .toList();
     }
 
@@ -209,30 +235,6 @@ public class AiChatServiceImpl implements AiChatService {
         }
     }
 
-    private String generateAiReply(String content, String riskLevel) {
-        if (ReportLevelConstants.HIGH.equals(riskLevel)) {
-            return "我注意到你刚刚提到的内容可能说明你正处在非常辛苦的状态。现在最重要的是先保证你的人身安全，请立刻联系学校心理老师、辅导员、家人或身边可信任的人，不要独自承受。";
-        }
-
-        ChatModel chatModel = chatModelProvider.getIfAvailable();
-        if (chatModel != null) {
-            try {
-                String prompt = """
-                        你是高校心理自助平台中的AI导师。
-                        请用温和、倾听、非诊断性的方式回复学生。
-                        不要下医学诊断，不要夸张承诺，先共情，再给2条简单建议。
-                        学生消息：%s
-                        """.formatted(content);
-                String reply = ChatClient.create(chatModel).prompt().user(prompt).call().content();
-                if (reply != null && !reply.isBlank()) {
-                    return reply;
-                }
-            } catch (Exception ignored) {
-            }
-        }
-        return "我听到了你的压力和不舒服。你可以先把最困扰你的那件事拆成一个最小问题，再试着给自己留出一小段休息时间；如果这种状态持续影响到学习和睡眠，建议尽快预约咨询师进一步聊一聊。";
-    }
-
     private RiskAnalysis analyzeRisk(String content) {
         List<String> hitKeywords = HIGH_RISK_KEYWORDS.stream()
                 .filter(content::contains)
@@ -247,7 +249,7 @@ public class AiChatServiceImpl implements AiChatService {
         if (title == null || title.isBlank()) {
             return "新的倾诉会话";
         }
-        return title;
+        return title.trim();
     }
 
     private Map<Long, SysUser> getUserMap(Long userId) {

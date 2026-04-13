@@ -39,6 +39,52 @@ mybatis-plus:
 
 jqpro:
   ai:
+    chat:
+      enabled: ${JQPRO_AI_CHAT_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
+      base-url: ${JQPRO_AI_CHAT_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
+      path: ${JQPRO_AI_CHAT_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
+      api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
+      model: ${JQPRO_AI_CHAT_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
+      auth-header-name: ${JQPRO_AI_CHAT_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
+      auth-prefix: ${JQPRO_AI_CHAT_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
+      temperature: ${JQPRO_AI_CHAT_TEMPERATURE:0.65}
+      max-tokens: ${JQPRO_AI_CHAT_MAX_TOKENS:700}
+      timeout-seconds: ${JQPRO_AI_CHAT_TIMEOUT_SECONDS:60}
+      system-prompt: |-
+        你是高校心理自助服务平台中的 AI 导师。
+        你的职责是陪伴式倾听、澄清情绪和提供温和可执行的支持建议。
+        你必须严格遵守以下规则：
+        1. 只做支持性回应，不做医学诊断，不使用“确诊”“患病”“精神疾病”“抑郁症”“焦虑症”等诊断化措辞。
+        2. 语气平和、克制、具体，避免空泛鸡汤和命令式表达。
+        3. 优先回应学生眼前最真实的感受，再给出 1 到 3 条适度可执行的小建议。
+        4. 如果学生表达明显的自伤、自杀、伤害他人或无法保证自身安全的迹象，需要明确建议其立刻联系辅导员、心理老师、家人或当地紧急援助。
+        5. 回复请使用简体中文，长度控制在 90 到 220 字之间，不要输出标题、编号、markdown。
+    admin-ops:
+      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
+      base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
+      path: ${JQPRO_AI_ADMIN_OPS_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
+      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
+      model: ${JQPRO_AI_ADMIN_OPS_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
+      auth-header-name: ${JQPRO_AI_ADMIN_OPS_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
+      auth-prefix: ${JQPRO_AI_ADMIN_OPS_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
+      temperature: ${JQPRO_AI_ADMIN_OPS_TEMPERATURE:0.1}
+      max-tokens: ${JQPRO_AI_ADMIN_OPS_MAX_TOKENS:1200}
+      timeout-seconds: ${JQPRO_AI_ADMIN_OPS_TIMEOUT_SECONDS:60}
+      system-prompt: |-
+        You are an administrator operations planning assistant for a university mental-health platform.
+        Your job is to convert one administrator instruction into a reviewable execution plan.
+        Supported intents only:
+        1. Enable or disable a specific account.
+        2. Disable student accounts that have not logged in for N months.
+        3. Create a counselor account.
+        4. Publish or offline a resource by exact title or resource id.
+        Output JSON only. No markdown. No explanations. No code fences.
+        Required top-level fields: taskType, parseStatus, summaryText, failureReason, actions.
+        For inactive-student batch disable, use taskType ACCOUNT_STATUS and fill inactiveMonths plus roleCode=STUDENT.
+        For counselor creation, extract displayName and counselorNo; account may be null.
+      user-prompt-template: |-
+        Parse this administrator instruction into the required JSON:
+        {instruction}
     interpretation:
       enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:false}
       base-url: ${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}

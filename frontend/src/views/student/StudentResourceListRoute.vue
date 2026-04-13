@@ -17,49 +17,33 @@ const filters = reactive<ResourceQuery>({
   keyword: ''
 })
 
-const favoriteCount = computed(() => resources.value.filter((resource) => resource.favorite).length)
 const selectedCategoryName = computed(() =>
-  categories.value.find((category) => category.categoryId === filters.categoryId)?.name ?? '全部分类'
+    categories.value.find((category) => category.categoryId === filters.categoryId)?.name ?? '所有分类'
 )
 const selectedTagName = computed(() =>
-  tags.value.find((tag) => tag.tagId === filters.tagId)?.name ?? '全部标签'
+    tags.value.find((tag) => tag.tagId === filters.tagId)?.name ?? '所有标签'
 )
 
 function formatDate(value: string | null): string {
-  if (!value) {
-    return '未发布'
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(new Date(value))
+  if (!value) return '未发布'
+  const date = new Date(value)
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }
 
 function resolveResourceType(type: string): string {
   switch (type) {
-    case 'ARTICLE':
-      return '图文卡片'
-    case 'VIDEO':
-      return '视频'
-    case 'AUDIO':
-      return '音频'
-    case 'LINK':
-      return '外部链接'
-    default:
-      return type
+    case 'ARTICLE': return '图文阅览'
+    case 'VIDEO': return '视频影像'
+    case 'AUDIO': return '声音片段'
+    case 'LINK': return '外部指引'
+    default: return type
   }
 }
 
 function buildResourceMemory(resource: ResourceSummary): string {
-  if (resource.resourceType === 'VIDEO') {
-    return '适合在高压与走神之间做短暂停顿。'
-  }
-  if (resource.resourceType === 'ARTICLE') {
-    return '适合保存后反复回看，做成自己的支持卡片。'
-  }
-  return '适合放进长期自助支持清单。'
+  if (resource.resourceType === 'VIDEO') return '适合在高压与走神之间做短暂停顿。'
+  if (resource.resourceType === 'ARTICLE') return '适合保存后反复回看，做成支持卡片。'
+  return '适合放进长期自助清单。'
 }
 
 async function loadResourceMeta(): Promise<void> {
@@ -71,7 +55,6 @@ async function loadResourceMeta(): Promise<void> {
 async function loadResources(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
-
   try {
     await loadResourceMeta()
     resources.value = await fetchResourcesApi({
@@ -114,446 +97,585 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="resource-list-page">
-    <section class="resource-list-page__masthead">
-      <div class="resource-list-page__heading">
-        <p class="resource-list-page__eyebrow">Campus Resource Archive</p>
-        <h1 class="resource-list-page__title">图片与视频资源库</h1>
-        <p class="resource-list-page__summary">
-          这里集中放置可直接查看的本地图片、视频与图文卡片。你可以按分类、标签和关键词筛选，
-          把合适的内容沉淀成自己的稳定支持清单。
+  <main class="magazine-library-page">
+
+    <header class="library-hero">
+      <div class="hero-content">
+        <h1 class="hero-title">寻找安定的力量</h1>
+        <p class="hero-summary">
+          这里收录了可供随时查看的图文与影像。你可以自由探索，把有共鸣的片段沉淀为自己的支持清单。
         </p>
       </div>
+    </header>
 
-      <aside class="resource-list-page__snapshot">
-        <p class="resource-list-page__label">Current Slice</p>
-        <dl>
-          <div>
-            <dt>资源数量</dt>
-            <dd>{{ resources.length }}</dd>
+    <div class="library-layout">
+
+      <aside class="sidebar-filter">
+        <div class="sidebar-sticky">
+
+          <div class="filter-group">
+            <h3 class="filter-title">关键词探索</h3>
+            <input
+                v-model="filters.keyword"
+                type="text"
+                class="sleek-input"
+                placeholder="如：睡前、考试周、呼吸..."
+                @keyup.enter="applyFilters"
+            />
           </div>
-          <div>
-            <dt>收藏数量</dt>
-            <dd>{{ favoriteCount }}</dd>
+
+          <div class="filter-group">
+            <h3 class="filter-title">内容领域</h3>
+            <ul class="category-list">
+              <li
+                  class="category-item"
+                  :class="{ 'is-active': filters.categoryId == null }"
+                  @click="toggleCategory(undefined)"
+              >
+                所有分类
+              </li>
+              <li
+                  v-for="category in categories"
+                  :key="category.categoryId"
+                  class="category-item"
+                  :class="{ 'is-active': filters.categoryId === category.categoryId }"
+                  @click="toggleCategory(category.categoryId)"
+              >
+                {{ category.name }}
+              </li>
+            </ul>
           </div>
-          <div>
-            <dt>当前分类</dt>
-            <dd>{{ selectedCategoryName }}</dd>
+
+          <div class="filter-group">
+            <h3 class="filter-title">情绪标签</h3>
+            <div class="tags-cloud">
+              <button
+                  class="minimal-tag"
+                  :class="{ 'is-active': filters.tagId == null }"
+                  @click="toggleTag(undefined)"
+              >
+                全部
+              </button>
+              <button
+                  v-for="tag in tags"
+                  :key="tag.tagId"
+                  class="minimal-tag"
+                  :class="{ 'is-active': filters.tagId === tag.tagId }"
+                  @click="toggleTag(tag.tagId)"
+              >
+                {{ tag.name }}
+              </button>
+            </div>
           </div>
-          <div>
-            <dt>当前标签</dt>
-            <dd>{{ selectedTagName }}</dd>
+
+          <div class="filter-actions">
+            <button class="btn-apply" :disabled="loading" @click="applyFilters">
+              {{ loading ? '检索中...' : '开始探索' }}
+            </button>
+            <button class="btn-reset" @click="resetFilters">清空条件</button>
           </div>
-        </dl>
+
+        </div>
       </aside>
-    </section>
 
-    <p v-if="errorMessage" class="resource-list-page__alert">{{ errorMessage }}</p>
+      <section class="main-content">
 
-    <section class="resource-list-page__filter-grid">
-      <article class="resource-filter-panel">
-        <div class="resource-filter-panel__head">
-          <p class="resource-list-page__label">关键词检索</p>
-          <button class="resource-list-page__ghost" type="button" @click="resetFilters">重置筛选</button>
+        <div v-if="errorMessage" class="error-text">{{ errorMessage }}</div>
+
+        <div class="content-header">
+          <span class="view-status">
+            当前：{{ selectedCategoryName }} <span class="dot">·</span> {{ selectedTagName }}
+          </span>
+          <span class="result-count">共 {{ resources.length }} 份内容</span>
         </div>
-        <label class="resource-filter-panel__field">
-          <span>搜索标题、摘要</span>
-          <input
-            v-model="filters.keyword"
-            type="text"
-            placeholder="例如：睡前、考试周、呼吸"
-            @keyup.enter="applyFilters"
+
+        <div v-if="loading" class="loading-state">
+          <div class="spinner"></div>
+          <p>正在展卷...</p>
+        </div>
+
+        <div v-else-if="!resources.length" class="empty-state">
+          <h2>未找到相关内容</h2>
+          <p>尝试放宽关键词，或在左侧切换其他领域看看。</p>
+        </div>
+
+        <div v-else class="resource-grid">
+          <article
+              v-for="resource in resources"
+              :key="resource.resourceId"
+              class="media-block"
+              @click="openResource(resource.resourceId)"
           >
-        </label>
-        <button class="resource-list-page__primary" type="button" :disabled="loading" @click="applyFilters">
-          {{ loading ? '筛选中...' : '应用筛选' }}
-        </button>
-      </article>
+            <div class="media-cover">
+              <img
+                  :src="(resource as any).coverUrl || 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=600&auto=format&fit=crop'"
+                  class="cover-img"
+                  alt="cover"
+              />
+              <span class="type-badge">{{ resolveResourceType(resource.resourceType) }}</span>
+              <div v-if="resource.favorite" class="favorite-mark">已收藏</div>
+            </div>
 
-      <article class="resource-filter-panel">
-        <p class="resource-list-page__label">分类</p>
-        <div class="resource-filter-panel__chips">
-          <button
-            type="button"
-            class="resource-chip"
-            :class="{ 'resource-chip--active': filters.categoryId == null }"
-            @click="toggleCategory(undefined)"
-          >
-            全部分类
-          </button>
-          <button
-            v-for="category in categories"
-            :key="category.categoryId"
-            type="button"
-            class="resource-chip"
-            :class="{ 'resource-chip--active': filters.categoryId === category.categoryId }"
-            @click="toggleCategory(category.categoryId)"
-          >
-            {{ category.name }}
-          </button>
-        </div>
-      </article>
+            <div class="media-text">
+              <div class="meta-line">
+                <span class="category-name">{{ resource.categoryName }}</span>
+                <span class="publish-date">{{ formatDate(resource.publishedAt) }}</span>
+              </div>
 
-      <article class="resource-filter-panel">
-        <p class="resource-list-page__label">标签</p>
-        <div class="resource-filter-panel__chips">
-          <button
-            type="button"
-            class="resource-chip"
-            :class="{ 'resource-chip--active': filters.tagId == null }"
-            @click="toggleTag(undefined)"
-          >
-            全部标签
-          </button>
-          <button
-            v-for="tag in tags"
-            :key="tag.tagId"
-            type="button"
-            class="resource-chip"
-            :class="{ 'resource-chip--active': filters.tagId === tag.tagId }"
-            @click="toggleTag(tag.tagId)"
-          >
-            {{ tag.name }}
-          </button>
-        </div>
-      </article>
-    </section>
+              <h2 class="media-title">{{ resource.title }}</h2>
+              <p class="media-summary">{{ resource.summaryText }}</p>
 
-    <section v-if="loading" class="resource-list-page__status-panel">
-      <p>正在加载资源目录...</p>
-    </section>
+              <blockquote class="media-memory">
+                “{{ buildResourceMemory(resource) }}”
+              </blockquote>
 
-    <section v-else-if="resources.length" class="resource-list-page__grid">
-      <article v-for="resource in resources" :key="resource.resourceId" class="resource-card" @click="openResource(resource.resourceId)">
-        <div class="resource-card__cover">
-          <img v-if="resource.coverUrl" :src="resource.coverUrl" :alt="resource.title">
-          <div v-else class="resource-card__cover-fallback">{{ resolveResourceType(resource.resourceType) }}</div>
+              <div class="stats-line">
+                <span>浏览 {{ resource.viewCount }}</span>
+                <span>收藏 {{ resource.favoriteCount }}</span>
+              </div>
+            </div>
+          </article>
         </div>
 
-        <div class="resource-card__header">
-          <p class="resource-card__type">{{ resolveResourceType(resource.resourceType) }}</p>
-          <p class="resource-card__published">{{ formatDate(resource.publishedAt) }}</p>
-        </div>
-
-        <div class="resource-card__body">
-          <h2>{{ resource.title }}</h2>
-          <p>{{ resource.summaryText }}</p>
-          <p class="resource-card__memory">{{ buildResourceMemory(resource) }}</p>
-        </div>
-
-        <div class="resource-card__tags">
-          <span>{{ resource.categoryName }}</span>
-          <span v-for="tag in resource.tags" :key="tag.tagId">{{ tag.name }}</span>
-        </div>
-
-        <dl class="resource-card__stats">
-          <div>
-            <dt>浏览</dt>
-            <dd>{{ resource.viewCount }}</dd>
-          </div>
-          <div>
-            <dt>收藏</dt>
-            <dd>{{ resource.favoriteCount }}</dd>
-          </div>
-          <div>
-            <dt>状态</dt>
-            <dd>{{ resource.favorite ? '已收藏' : '可收藏' }}</dd>
-          </div>
-        </dl>
-      </article>
-    </section>
-
-    <section v-else class="resource-list-page__status-panel">
-      <p>当前筛选条件下没有资源，尝试放宽关键词或切换分类与标签。</p>
-      <button class="resource-list-page__ghost" type="button" @click="resetFilters">清空筛选条件</button>
-    </section>
+      </section>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.resource-list-page {
-  --paper: #f2ede4;
-  --ink: #1f1a17;
-  --muted: #6b6258;
-  --line: rgba(31, 26, 23, 0.12);
-  --glass: rgba(255, 251, 245, 0.72);
-  --accent: #5c7765;
+/* 页面基调：大面积呼吸感 */
+.magazine-library-page {
   min-height: 100vh;
-  padding: 2rem;
-  color: var(--ink);
-  background:
-    radial-gradient(circle at top right, rgba(92, 119, 101, 0.16), transparent 24%),
-    radial-gradient(circle at left center, rgba(205, 187, 161, 0.24), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 38%),
-    var(--paper);
+  background: #f8f9f8;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding-bottom: 6rem;
 }
 
-.resource-list-page__masthead {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
-  gap: 1.5rem;
-  align-items: end;
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
+/* 顶部导语区 */
+.library-hero {
+  padding: 6vw 4vw 4vw;
+  background: linear-gradient(180deg, #edf0ee 0%, #f8f9f8 100%);
+  border-bottom: 1px solid rgba(42, 54, 46, 0.06);
 }
 
-.resource-list-page__eyebrow,
-.resource-list-page__label,
-.resource-list-page__snapshot dt,
-.resource-card__type,
-.resource-card__published,
-.resource-card__stats dt,
-.resource-card__tags span,
-.resource-filter-panel__field span {
+.hero-content {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.hero-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(2.5rem, 4vw, 3.8rem);
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.02em;
+}
+
+.hero-summary {
+  font-size: 1.15rem;
+  color: #5c6b60;
+  max-width: 600px;
+  line-height: 1.8;
   margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
 }
 
-.resource-list-page__title {
-  margin: 0.95rem 0 0;
-  font: 600 clamp(2.8rem, 5vw, 5rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.resource-list-page__summary {
-  max-width: 46rem;
-  margin: 1rem 0 0;
-  color: var(--muted);
-  font: 400 1rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.resource-list-page__snapshot,
-.resource-filter-panel,
-.resource-card,
-.resource-list-page__status-panel {
-  border: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 22px 48px rgba(80, 70, 58, 0.08);
-}
-
-.resource-list-page__snapshot {
-  padding: 1.2rem;
-}
-
-.resource-list-page__snapshot dl {
+/* 杂志分栏布局 */
+.library-layout {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 4rem 4vw;
   display: grid;
-  gap: 0.9rem;
-  margin: 1rem 0 0;
+  grid-template-columns: 280px 1fr;
+  gap: 5rem;
+  align-items: start;
 }
 
-.resource-list-page__snapshot dd {
-  margin: 0.35rem 0 0;
-  font: 600 1.04rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
+/* 侧边栏与吸顶交互 */
+.sidebar-filter {
+  position: relative;
 }
 
-.resource-list-page__alert {
-  margin: 1.25rem 0 0;
-  color: #8d4747;
-  font: 600 0.9rem/1.6 'Manrope', sans-serif;
-}
-
-.resource-list-page__filter-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.resource-filter-panel {
-  display: grid;
-  gap: 1rem;
-  padding: 1.2rem;
-}
-
-.resource-filter-panel__head {
+.sidebar-sticky {
+  position: sticky;
+  top: 2rem; /* UI/UX 视差跟随 */
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 2.5rem;
 }
 
-.resource-filter-panel__field {
-  display: grid;
-  gap: 0.7rem;
-}
-
-.resource-filter-panel__field input {
-  min-height: 3rem;
-  padding: 0 0.95rem;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.58);
-  color: var(--ink);
-  font: 500 0.95rem/1.5 'Manrope', sans-serif;
-}
-
-.resource-filter-panel__chips {
+.filter-group {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
+  flex-direction: column;
+  gap: 1.2rem;
 }
 
-.resource-chip,
-.resource-list-page__primary,
-.resource-list-page__ghost {
-  min-height: 2.9rem;
-  padding: 0 1rem;
-  font: 600 0.82rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
+.filter-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #8a9c90;
   text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+  letter-spacing: 0.1em;
+  margin: 0;
 }
 
-.resource-chip,
-.resource-list-page__ghost {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.5);
-  color: var(--ink);
-}
-
-.resource-chip--active {
-  border-color: rgba(92, 119, 101, 0.42);
-  background: rgba(92, 119, 101, 0.12);
-}
-
-.resource-list-page__primary {
+/* 考究的输入框 */
+.sleek-input {
+  width: 100%;
   border: none;
-  background: linear-gradient(135deg, #6d8575, #4f6658);
-  color: #faf6f0;
-  box-shadow: 0 18px 36px rgba(79, 102, 86, 0.24);
+  border-bottom: 1px solid rgba(42, 54, 46, 0.2);
+  background: transparent;
+  padding: 0.5rem 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  color: #1e2821;
+  outline: none;
+  transition: border-color 0.3s ease;
 }
 
-.resource-chip:hover,
-.resource-list-page__primary:hover,
-.resource-list-page__ghost:hover,
-.resource-card:hover {
-  transform: translateY(-2px);
+.sleek-input:focus {
+  border-bottom-color: #2a362e;
 }
 
-.resource-list-page__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.5rem;
+.sleek-input::placeholder {
+  color: #b5c2b9;
 }
 
-.resource-card {
-  display: grid;
-  gap: 1rem;
-  padding: 1.1rem;
-  cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.resource-card:hover {
-  border-color: rgba(92, 119, 101, 0.38);
-  box-shadow: 0 26px 46px rgba(80, 70, 58, 0.12);
-}
-
-.resource-card__cover {
-  overflow: hidden;
-  border-radius: 20px;
-  aspect-ratio: 16 / 10;
-  background: linear-gradient(135deg, rgba(92, 119, 101, 0.22), rgba(205, 187, 161, 0.26));
-}
-
-.resource-card__cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.resource-card__cover-fallback {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  font: 600 1rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.resource-card__header,
-.resource-card__stats {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-}
-
-.resource-card__body h2 {
+/* 分类列表 */
+.category-list {
+  list-style: none;
+  padding: 0;
   margin: 0;
-  font: 600 1.45rem/1.34 'Noto Serif SC', 'Source Han Serif SC', serif;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
 }
 
-.resource-card__body p {
-  margin: 0.85rem 0 0;
-  color: var(--muted);
-  font: 400 0.96rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
+.category-item {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  color: #5c6b60;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding-left: 0.5rem;
+  border-left: 2px solid transparent;
 }
 
-.resource-card__memory {
-  color: #3d4f44;
+.category-item:hover {
+  color: #2a362e;
 }
 
-.resource-card__tags {
+.category-item.is-active {
+  color: #1e2821;
+  font-weight: 600;
+  border-left-color: #2a362e;
+}
+
+/* 标签云 */
+.tags-cloud {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
 }
 
-.resource-card__tags span {
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.42);
+.minimal-tag {
+  background: transparent;
+  border: 1px solid rgba(130, 150, 138, 0.3);
+  padding: 0.4rem 0.9rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #5c6b60;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.resource-card__stats {
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
+.minimal-tag:hover {
+  border-color: #5c6b60;
+  color: #2a362e;
 }
 
-.resource-card__stats dd {
-  margin: 0.35rem 0 0;
-  font: 600 0.98rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
+.minimal-tag.is-active {
+  background: #2a362e;
+  border-color: #2a362e;
+  color: #ffffff;
 }
 
-.resource-list-page__status-panel {
-  display: grid;
+/* 操作按钮 */
+.filter-actions {
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
-  margin-top: 1.5rem;
-  padding: 1.35rem;
+  margin-top: 1rem;
 }
 
-.resource-list-page__status-panel p {
-  margin: 0;
-  color: var(--muted);
-  font: 400 0.98rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
+.btn-apply {
+  background: #2a362e;
+  color: #ffffff;
+  border: none;
+  padding: 1rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-@media (max-width: 980px) {
-  .resource-list-page {
-    padding: 1rem;
+.btn-apply:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(42, 54, 46, 0.15);
+}
+
+.btn-apply:disabled {
+  background: #8a9c90;
+  cursor: not-allowed;
+}
+
+.btn-reset {
+  background: transparent;
+  border: none;
+  color: #8a9c90;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn-reset:hover {
+  color: #5c6b60;
+}
+
+/* 右侧内容区 */
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.view-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  color: #2a362e;
+  font-weight: 500;
+}
+
+.dot {
+  color: #b5c2b9;
+  margin: 0 0.5rem;
+}
+
+.result-count {
+  font-family: 'Manrope', serif;
+  font-size: 0.9rem;
+  color: #8a9c90;
+}
+
+/* 资源网格 (杂志风) */
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 4rem 2.5rem; /* 垂直间距极大，增强阅读感 */
+}
+
+/* 无边框区块 */
+.media-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  cursor: pointer;
+  group: hover;
+}
+
+.media-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #e9ecea;
+}
+
+.cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.media-block:hover .cover-img {
+  transform: scale(1.04);
+}
+
+.type-badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  color: #1e2821;
+  padding: 0.3rem 0.8rem;
+  border-radius: 8px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.favorite-mark {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(42, 54, 46, 0.8);
+  color: #ffffff;
+  padding: 0.3rem 0.8rem;
+  border-radius: 8px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.75rem;
+}
+
+/* 文本排版区 */
+.media-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-line {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+  margin-bottom: 0.8rem;
+}
+
+.category-name {
+  color: #5c6b60;
+  font-weight: 600;
+}
+
+.media-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 0.8rem 0;
+  line-height: 1.4;
+  transition: color 0.3s ease;
+}
+
+.media-block:hover .media-title {
+  color: #5c6b60;
+}
+
+.media-summary {
+  font-size: 0.95rem;
+  color: #6a7c70;
+  line-height: 1.7;
+  margin: 0 0 1rem 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.media-memory {
+  margin: 0 0 1.2rem 0;
+  padding-left: 1rem;
+  border-left: 2px solid rgba(130, 150, 138, 0.3);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: #8a9c90;
+}
+
+.stats-line {
+  display: flex;
+  gap: 1.5rem;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  font-size: 0.8rem;
+  color: #a3b0a7;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.06);
+}
+
+/* 状态展示 */
+.loading-state,
+.empty-state {
+  padding: 6rem 0;
+  text-align: center;
+  color: #7b8c80;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-state h2 {
+  font-family: 'Noto Serif SC', serif;
+  color: #2a362e;
+  margin-bottom: 0.5rem;
+}
+
+.error-text {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* 响应式适配 */
+@media (max-width: 1024px) {
+  .library-layout {
+    grid-template-columns: 240px 1fr;
+    gap: 3rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .library-layout {
+    grid-template-columns: 1fr; /* 侧边栏移至顶部 */
+    gap: 2rem;
+    padding: 2rem 4vw;
   }
 
-  .resource-list-page__masthead,
-  .resource-list-page__filter-grid,
-  .resource-list-page__grid {
-    grid-template-columns: 1fr;
+  .sidebar-sticky {
+    position: relative;
+    top: 0;
   }
 
-  .resource-filter-panel__head,
-  .resource-card__header,
-  .resource-card__stats {
-    flex-direction: column;
-    align-items: flex-start;
+  .category-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .category-item {
+    border-left: none;
+    border-bottom: 2px solid transparent;
+    padding-left: 0;
+    padding-bottom: 0.3rem;
+  }
+
+  .category-item.is-active {
+    border-bottom-color: #2a362e;
   }
 }
 </style>

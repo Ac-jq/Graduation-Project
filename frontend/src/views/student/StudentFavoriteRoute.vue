@@ -42,340 +42,489 @@ async function openResource(resourceId: number): Promise<void> {
   await router.push({ name: 'student-resource-detail', params: { resourceId } })
 }
 
+function formatDate(dateString?: string): string {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
+}
+
 onMounted(() => {
   void loadFavorites()
 })
 </script>
 
 <template>
-  <section class="favorite-page">
-    <div class="page-shell">
-      <header class="page-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">收藏清单</p>
-          <h1>把真正对你有帮助的内容沉淀下来，形成自己的恢复资料夹。</h1>
-          <p class="lead">
-            收藏列表直接读取后端真实资源数据，包含分类、标签、浏览量与收藏量，你可以继续进入详情或取消收藏。
-          </p>
+  <main class="premium-gallery-page">
+    <div class="premium-gallery-card">
+
+      <header class="gallery-header">
+        <div class="header-content">
+          <span class="premium-tag">恢复资料夹</span>
+          <h1 class="main-title">沉淀对你有帮助的片段</h1>
+          <p class="sub-title">在这里，随时重温那些给你带来平静与启发的影音与图文。</p>
         </div>
-        <div class="hero-aside">
-          <div class="metric-card">
-            <span>收藏总数</span>
-            <strong>{{ favorites.length }}</strong>
+        <div class="header-meta">
+          <div class="meta-block">
+            <span>共收藏</span>
+            <strong>{{ loading ? '-' : favorites.length }}</strong>
           </div>
         </div>
       </header>
 
-      <section class="favorite-panel">
-        <div class="section-head section-head-inline">
-          <div>
-            <p class="section-kicker">收藏归档</p>
-            <h2>我的资源收藏</h2>
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+
+      <div v-if="loading" class="state-container">
+        <div class="loading-orb"></div>
+        <p class="state-text">正在整理您的资料夹...</p>
+      </div>
+
+      <div v-else-if="!favorites.length" class="state-container empty-state">
+        <div class="empty-icon"></div>
+        <h2 class="empty-title">这里还是空的</h2>
+        <p class="state-text">去资源库逛逛，把有共鸣的内容留在这里。</p>
+      </div>
+
+      <section v-else class="media-grid">
+        <article v-for="resource in favorites" :key="resource.resourceId" class="media-card">
+
+          <div class="media-cover" @click="openResource(resource.resourceId)">
+            <img
+                :src="(resource as any).coverUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=600&auto=format&fit=crop'"
+                class="cover-image"
+                alt="资源封面"
+            />
+            <span class="media-type-badge">{{ resource.resourceType }}</span>
+            <div class="play-overlay">
+              <span class="play-text">查看内容</span>
+            </div>
           </div>
-          <span class="status-chip">{{ loading ? '读取中' : `${favorites.length} 条收藏` }}</span>
-        </div>
 
-        <p v-if="loading" class="state-text">正在读取收藏资源...</p>
-        <p v-else-if="!favorites.length" class="state-text">当前还没有收藏内容，你可以先去资源库挑选对自己有帮助的条目。</p>
+          <div class="media-info">
+            <div class="info-top">
+              <span class="media-category">{{ resource.categoryName }}</span>
+              <h3 class="media-title" @click="openResource(resource.resourceId)">{{ resource.title }}</h3>
+              <p class="media-summary">{{ resource.summaryText }}</p>
+            </div>
 
-        <div v-else class="favorite-grid">
-          <article v-for="resource in favorites" :key="resource.resourceId" class="favorite-card">
-            <div class="resource-topline">
-              <div>
-                <p class="resource-category">{{ resource.categoryName }}</p>
-                <h3>{{ resource.title }}</h3>
+            <div class="info-bottom">
+              <div class="media-stats">
+                <span>浏览 {{ resource.viewCount }}</span>
+                <span class="dot-divider">·</span>
+                <span>收藏 {{ resource.favoriteCount }}</span>
+                <template v-if="resource.publishedAt">
+                  <span class="dot-divider">·</span>
+                  <span>发布于 {{ formatDate(resource.publishedAt) }}</span>
+                </template>
               </div>
-              <span class="resource-type">{{ resource.resourceType }}</span>
-            </div>
-            <p class="resource-summary">{{ resource.summaryText }}</p>
-            <div class="tag-list">
-              <span v-for="tag in resource.tags" :key="tag.tagId" class="tag-pill">{{ tag.name }}</span>
-            </div>
-            <div class="resource-meta">
-              <span>浏览 {{ resource.viewCount }}</span>
-              <span>收藏 {{ resource.favoriteCount }}</span>
-              <span v-if="resource.publishedAt">发布于 {{ new Date(resource.publishedAt).toLocaleDateString('zh-CN') }}</span>
-            </div>
-            <div class="action-row">
-              <button class="ghost-button" type="button" @click="openResource(resource.resourceId)">查看详情</button>
-              <button class="danger-button" type="button" :disabled="removing" @click="removeFavorite(resource.resourceId)">
-                {{ removing ? '处理中...' : '取消收藏' }}
-              </button>
-            </div>
-          </article>
-        </div>
 
-        <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+              <div class="action-footer">
+                <div class="tags-row">
+                  <span v-for="tag in resource.tags?.slice(0, 2)" :key="tag.tagId" class="minimal-tag">
+                    {{ tag.name }}
+                  </span>
+                </div>
+
+                <button
+                    class="ghost-remove-btn"
+                    :disabled="removing"
+                    @click="removeFavorite(resource.resourceId)"
+                    title="取消收藏"
+                >
+                  取消收藏
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </article>
       </section>
+
     </div>
-  </section>
+  </main>
 </template>
+
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-:global(body) {
-  background:
-    radial-gradient(circle at 12% 16%, rgba(205, 221, 208, 0.28), transparent 24%),
-    radial-gradient(circle at 86% 18%, rgba(228, 217, 203, 0.3), transparent 24%),
-    linear-gradient(180deg, #f5f0e6 0%, #f8f5ee 100%);
-}
-
-.favorite-page {
+/* 全局背景 */
+.premium-gallery-page {
   min-height: 100vh;
-  padding: 44px 28px 72px;
-  color: #2b3029;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: #f4f6f4;
+  padding: 5vw 2rem;
+  box-sizing: border-box;
 }
 
-.page-shell {
-  max-width: 1320px;
-  margin: 0 auto;
+/* 巨大的悬浮画板容器 */
+.premium-gallery-card {
+  width: 100%;
+  max-width: 1100px;
+  background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(248, 246, 242, 0.85) 100%
+  );
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 40px;
+  padding: 4.5rem;
+  box-sizing: border-box;
+  box-shadow:
+      0 40px 80px rgba(54, 66, 58, 0.06),
+      inset 0 2px 0 rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: column;
 }
 
-.page-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.55fr);
-  gap: 28px;
-  align-items: end;
-  margin-bottom: 30px;
+/* 头部排版 */
+.gallery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 4rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  padding-bottom: 3rem;
 }
 
-.hero-copy {
-  border-top: 1px solid rgba(64, 72, 63, 0.16);
-  padding-top: 18px;
+.header-content {
+  max-width: 60%;
 }
 
-.eyebrow,
-.section-kicker {
-  margin: 0 0 10px;
-  font: 700 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #7f6a57;
+.premium-tag {
+  display: inline-block;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.1em;
+  color: #4a5c51;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 0.5rem 1.2rem;
+  border-radius: 100px;
+  font-weight: 600;
+  margin-bottom: 1.2rem;
 }
 
-.hero-copy h1,
-.section-head h2,
-.favorite-card h3 {
+.main-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(2.2rem, 4vw, 2.8rem);
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1rem 0;
+  line-height: 1.2;
+}
+
+.sub-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  color: #6a7c70;
   margin: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.hero-copy h1 {
-  font-size: clamp(1.96rem, 3vw, 3.25rem);
-  line-height: 1.16;
-}
-
-.lead {
-  max-width: 720px;
-  margin: 18px 0 0;
-  font: 400 1rem/1.84 'Manrope', sans-serif;
-  color: rgba(43, 48, 41, 0.74);
-}
-
-.metric-card,
-.favorite-panel,
-.favorite-card {
-  border: 1px solid rgba(78, 86, 77, 0.14);
-  background: rgba(255, 252, 247, 0.74);
-  box-shadow: 0 24px 70px rgba(91, 80, 66, 0.08);
-  backdrop-filter: blur(16px);
-}
-
-.metric-card {
-  padding: 18px 20px;
-}
-
-.metric-card span,
-.resource-summary,
-.resource-meta,
-.state-text,
-.error-text {
-  font-family: 'Manrope', sans-serif;
-}
-
-.metric-card span {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 0.78rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(68, 74, 66, 0.56);
-}
-
-.metric-card strong {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.6rem;
-  font-weight: 600;
-}
-
-.favorite-panel {
-  padding: 24px;
-}
-
-.section-head {
-  margin-bottom: 18px;
-}
-
-.section-head-inline {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: end;
-}
-
-.status-chip {
-  border: 1px solid rgba(88, 93, 84, 0.14);
-  background: rgba(255, 250, 240, 0.82);
-  padding: 9px 14px;
-  font: 700 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #696152;
-}
-
-.favorite-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.favorite-card {
-  padding: 22px;
-}
-
-.resource-topline {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-  margin-bottom: 12px;
-}
-
-.resource-category {
-  margin: 0 0 6px;
-  font: 700 0.78rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7f6957;
-}
-
-.favorite-card h3 {
-  font-size: 1.28rem;
-  line-height: 1.35;
-}
-
-.resource-type {
-  flex-shrink: 0;
-  border: 1px solid rgba(98, 112, 99, 0.16);
-  background: rgba(242, 244, 237, 0.94);
-  padding: 8px 12px;
-  font: 700 0.74rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #66735f;
-}
-
-.resource-summary {
-  margin: 0 0 14px;
-  font-size: 0.96rem;
-  line-height: 1.84;
-  color: rgba(43, 48, 41, 0.72);
-}
-
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 14px;
-}
-
-.tag-pill {
-  border: 1px solid rgba(125, 130, 119, 0.18);
-  background: rgba(255, 255, 255, 0.62);
-  padding: 6px 10px;
-  font: 600 0.78rem/1 'Manrope', sans-serif;
-  color: #5b6158;
-}
-
-.resource-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 18px;
-  font-size: 0.82rem;
-  color: rgba(68, 74, 66, 0.58);
-}
-
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.ghost-button,
-.danger-button {
-  border: 1px solid rgba(54, 65, 56, 0.2);
-  background: rgba(255, 255, 255, 0.58);
-  color: #2b3029;
-  padding: 12px 16px;
-  font: 700 0.82rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease, border-color 0.28s ease, opacity 0.28s ease;
-}
-
-.danger-button {
-  color: #8f4d3b;
-}
-
-.ghost-button:hover,
-.danger-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 30px rgba(55, 67, 57, 0.1);
-}
-
-.danger-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.state-text,
-.error-text {
-  margin: 14px 0 0;
-  font-size: 0.96rem;
   line-height: 1.8;
 }
 
-.error-text {
-  font-weight: 600;
-  color: #a64939;
+.meta-block {
+  text-align: right;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 1.2rem 2rem;
+  border-radius: 24px;
+  border: 1px solid rgba(130, 150, 138, 0.15);
 }
 
-@media (max-width: 980px) {
-  .page-hero,
-  .favorite-grid {
+.meta-block span {
+  display: block;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #7b8c80;
+  margin-bottom: 0.2rem;
+}
+
+.meta-block strong {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+/* 媒体网格 (画廊模式) */
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 2.8rem;
+}
+
+/* 独立的媒体卡片 */
+.media-card {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border-radius: 24px;
+  overflow: hidden;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.media-card:hover {
+  transform: translateY(-6px);
+}
+
+/* 图片封面区域 */
+.media-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 24px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #e9ecea; /* 兜底背景色 */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.cover-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.media-cover:hover .cover-image {
+  transform: scale(1.05);
+}
+
+.media-type-badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  color: #2a362e;
+  padding: 0.4rem 0.8rem;
+  border-radius: 12px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  z-index: 2;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* 悬停时的播放遮罩 */
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(42, 54, 46, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.media-cover:hover .play-overlay {
+  opacity: 1;
+}
+
+.play-text {
+  color: white;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.1em;
+  padding: 0.8rem 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  transform: translateY(10px);
+  transition: transform 0.3s ease;
+}
+
+.media-cover:hover .play-text {
+  transform: translateY(0);
+}
+
+/* 信息区 */
+.media-info {
+  padding: 1.5rem 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: space-between;
+}
+
+.info-top {
+  margin-bottom: 1.2rem;
+}
+
+.media-category {
+  display: block;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.8rem;
+  color: #8a9c90;
+  margin-bottom: 0.5rem;
+}
+
+.media-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 0.8rem 0;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.3s ease;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.media-title:hover {
+  color: #5c6b60;
+}
+
+.media-summary {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #7b8c80;
+  margin: 0;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 底部数据与操作 */
+.info-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.media-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  font-size: 0.8rem;
+  color: #8fa094;
+}
+
+.dot-divider {
+  margin: 0 0.5rem;
+  color: #b5c2b9;
+}
+
+.action-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tags-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.minimal-tag {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.75rem;
+  color: #6a7c70;
+  background: rgba(130, 150, 138, 0.1);
+  padding: 0.3rem 0.8rem;
+  border-radius: 8px;
+}
+
+.ghost-remove-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #b08e8e;
+  cursor: pointer;
+  padding: 0.4rem 0;
+  transition: color 0.3s ease;
+}
+
+.ghost-remove-btn:hover:not(:disabled) {
+  color: #8c4a4a;
+}
+
+.ghost-remove-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 状态提示 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  border: 1px solid rgba(140, 74, 74, 0.2);
+  color: #8c4a4a;
+  padding: 1rem 1.5rem;
+  border-radius: 16px;
+  font-family: 'Noto Serif SC', serif;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6rem 0;
+}
+
+.loading-orb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.state-text {
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+}
+
+.empty-state {
+  padding: 8rem 0;
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.8rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+@media (max-width: 900px) {
+  .gallery-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+  .header-content {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .premium-gallery-card {
+    padding: 2.5rem 1.5rem;
+    border-radius: 32px;
+  }
+  .media-grid {
     grid-template-columns: 1fr;
   }
 }
-
-@media (max-width: 640px) {
-  .favorite-page {
-    padding: 28px 16px 46px;
-  }
-
-  .hero-copy h1,
-  .section-head h2 {
-    font-size: 1.82rem;
-  }
-
-  .resource-topline,
-  .section-head-inline {
-    flex-direction: column;
-    align-items: start;
-  }
-}
 </style>
-

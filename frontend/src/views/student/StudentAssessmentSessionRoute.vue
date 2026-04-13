@@ -147,11 +147,11 @@ async function submitSession(): Promise<void> {
 }
 
 watch(
-  () => route.params.sessionId,
-  () => {
-    assessmentStore.resetSessionState()
-    void loadQuestionPage()
-  }
+    () => route.params.sessionId,
+    () => {
+      assessmentStore.resetSessionState()
+      void loadQuestionPage()
+    }
 )
 
 onMounted(() => {
@@ -160,332 +160,393 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="assessment-session-page">
-    <header class="assessment-session-page__header">
-      <div>
-        <p class="assessment-session-page__eyebrow">Assessment Session</p>
-        <h1>按真实状态完成本次作答</h1>
-      </div>
-      <div class="assessment-session-page__progress-card">
-        <span>完成进度</span>
-        <strong>{{ progressPercent }}%</strong>
-        <p>{{ answeredCount }} / {{ pageData?.totalQuestions || '--' }} 题已作答</p>
-      </div>
-    </header>
+  <main class="premium-session-page">
+    <div class="premium-session-card">
 
-    <section class="assessment-session-page__bar-panel">
-      <div class="assessment-session-page__bar-track">
-        <div class="assessment-session-page__bar-fill" :style="{ width: `${progressPercent}%` }"></div>
-      </div>
-      <p>{{ pageData?.totalQuestions || '--' }} 题中，当前为第 {{ paging.pageNum }} / {{ totalPages }} 页。</p>
-    </section>
-
-    <p v-if="errorMessage" class="assessment-session-page__alert">{{ errorMessage }}</p>
-
-    <section v-if="loading" class="assessment-session-page__status-panel">
-      <p>正在加载当前页题目...</p>
-    </section>
-
-    <section v-else class="assessment-session-page__question-list">
-      <article v-for="question in questions" :key="question.questionId" class="question-card">
-        <div class="question-card__head">
-          <p class="question-card__number">Q{{ String(question.questionNo).padStart(2, '0') }}</p>
-          <span v-if="assessmentStore.draftAnswers[question.questionId] != null" class="question-card__status">
-            已选择
-          </span>
+      <header class="session-header">
+        <div class="header-top">
+          <h1 class="session-title">倾听内心的声音</h1>
+          <div class="progress-text">
+            <span>当前进度</span>
+            <strong>{{ progressPercent }}%</strong>
+          </div>
         </div>
-        <h2>{{ question.content }}</h2>
-        <div class="question-card__options">
+        <div class="progress-track">
+          <div class="progress-fill" :style="{ width: `${progressPercent}%` }"></div>
+        </div>
+      </header>
+
+      <div v-if="errorMessage" class="state-container">
+        <h2 class="error-text">{{ errorMessage }}</h2>
+      </div>
+
+      <div v-else-if="loading" class="state-container">
+        <div class="loading-orb"></div>
+        <p class="meta-text">正在翻开新的一页...</p>
+      </div>
+
+      <section v-else class="question-list">
+        <article v-for="question in questions" :key="question.questionId" class="question-item">
+          <h2 class="question-content">
+            <span class="question-number">第 {{ String(question.questionNo).padStart(2, '0') }} 题</span>
+            {{ question.content }}
+          </h2>
+
+          <div class="options-grid">
+            <button
+                v-for="option in question.options"
+                :key="option.id"
+                class="option-btn"
+                :class="{ 'option-btn--active': optionSelected(question.questionId, option.id) }"
+                type="button"
+                @click="selectOption(question.questionId, option.id)"
+            >
+              <span class="option-label">{{ option.content }}</span>
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <footer class="session-footer">
+        <div class="footer-meta">
+          第 {{ paging.pageNum }} / {{ totalPages }} 页
+        </div>
+
+        <div class="footer-actions">
           <button
-            v-for="option in question.options"
-            :key="option.id"
-            class="question-card__option"
-            :class="{ 'question-card__option--active': optionSelected(question.questionId, option.id) }"
-            type="button"
-            @click="selectOption(question.questionId, option.id)"
+              class="ghost-action-btn"
+              type="button"
+              :disabled="paging.pageNum <= 1 || saving || submitting"
+              @click="changePage(paging.pageNum - 1)"
           >
-            <span>{{ option.optionCode }}</span>
-            <strong>{{ option.content }}</strong>
-            <small>{{ option.score }} 分</small>
+            上一页
+          </button>
+          <button
+              class="ghost-action-btn"
+              type="button"
+              :disabled="saving || submitting"
+              @click="persistAnswers(true)"
+          >
+            {{ saving ? '暂存中...' : '暂存进度' }}
+          </button>
+          <button
+              v-if="paging.pageNum < totalPages"
+              class="primary-action-btn"
+              type="button"
+              :disabled="saving || submitting"
+              @click="changePage(paging.pageNum + 1)"
+          >
+            下一页
+          </button>
+          <button
+              v-else
+              class="primary-action-btn submit-btn"
+              type="button"
+              :disabled="saving || submitting"
+              @click="submitSession"
+          >
+            {{ submitting ? '生成报告中...' : '提交并生成报告' }}
           </button>
         </div>
-      </article>
-    </section>
+      </footer>
 
-    <footer class="assessment-session-page__footer">
-      <div class="assessment-session-page__page-info">
-        第 {{ paging.pageNum }} 页，共 {{ totalPages }} 页
-      </div>
-
-      <div class="assessment-session-page__actions">
-        <button
-          class="assessment-session-page__ghost"
-          type="button"
-          :disabled="paging.pageNum <= 1 || saving || submitting"
-          @click="changePage(paging.pageNum - 1)"
-        >
-          上一页
-        </button>
-        <button
-          class="assessment-session-page__ghost"
-          type="button"
-          :disabled="saving || submitting"
-          @click="persistAnswers(true)"
-        >
-          {{ saving ? '正在暂存...' : '暂存进度' }}
-        </button>
-        <button
-          v-if="paging.pageNum < totalPages"
-          class="assessment-session-page__primary"
-          type="button"
-          :disabled="saving || submitting"
-          @click="changePage(paging.pageNum + 1)"
-        >
-          下一页
-        </button>
-        <button
-          v-else
-          class="assessment-session-page__submit"
-          type="button"
-          :disabled="saving || submitting"
-          @click="submitSession"
-        >
-          {{ submitting ? '正在提交并生成报告...' : '提交并生成报告' }}
-        </button>
-      </div>
-    </footer>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.assessment-session-page {
-  --ink: #1f2620;
-  --muted: #6c665d;
-  --line: rgba(31, 38, 32, 0.1);
-  --card: rgba(255, 252, 247, 0.82);
-  min-height: 100%;
-  color: var(--ink);
+/* 全局沉浸式背景 */
+.premium-session-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  background: #f4f6f4;
+  padding: 5vw 2rem;
+  box-sizing: border-box;
 }
 
-.assessment-session-page__header,
-.assessment-session-page__footer {
+/* 核心画板容器 */
+.premium-session-card {
+  width: 100%;
+  max-width: 820px;
+  background: linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.75) 0%,
+      rgba(248, 246, 242, 0.85) 100%
+  );
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 36px;
+  padding: 3.5rem 4rem;
+  box-sizing: border-box;
+  box-shadow:
+      0 30px 60px rgba(54, 66, 58, 0.05),
+      inset 0 2px 0 rgba(255, 255, 255, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+/* 头部进度条区 */
+.session-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.header-top {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
-.assessment-session-page__eyebrow,
-.question-card__number {
-  margin: 0;
-  font: 700 0.74rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #756c60;
-}
-
-.assessment-session-page h1,
-.question-card h2 {
-  margin: 0;
+.session-title {
   font-family: 'Noto Serif SC', serif;
+  font-size: clamp(1.8rem, 3vw, 2.2rem);
   font-weight: 600;
+  color: #1e2821;
+  margin: 0;
+  letter-spacing: 0.02em;
 }
 
-.assessment-session-page h1 {
-  margin-top: 0.85rem;
-  font-size: clamp(2.1rem, 4vw, 3.7rem);
-  line-height: 1.08;
+.progress-text {
+  text-align: right;
 }
 
-.assessment-session-page__progress-card,
-.assessment-session-page__bar-panel,
-.question-card,
-.assessment-session-page__status-panel {
-  border: 1px solid var(--line);
-  background: var(--card);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 22px 52px rgba(76, 62, 46, 0.08);
-}
-
-.assessment-session-page__progress-card {
-  min-width: 220px;
-  padding: 1.15rem 1.2rem;
-}
-
-.assessment-session-page__progress-card span,
-.assessment-session-page__page-info,
-.question-card__status {
-  font: 700 0.78rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #687466;
-}
-
-.assessment-session-page__progress-card strong {
+.progress-text span {
   display: block;
-  margin-top: 0.55rem;
-  font: 600 2rem/1 'Noto Serif SC', serif;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #7b8c80;
+  margin-bottom: 0.2rem;
 }
 
-.assessment-session-page__progress-card p,
-.assessment-session-page__bar-panel p,
-.assessment-session-page__status-panel p {
-  margin: 0.7rem 0 0;
-  color: var(--muted);
-  font: 400 0.92rem/1.7 'Manrope', sans-serif;
-}
-
-.assessment-session-page__bar-panel {
-  margin-top: 1.2rem;
-  padding: 1rem 1.1rem;
-}
-
-.assessment-session-page__bar-track {
-  height: 10px;
-  overflow: hidden;
-  background: rgba(31, 38, 32, 0.08);
-}
-
-.assessment-session-page__bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #718a79, #43584a);
-  transition: width 220ms ease;
-}
-
-.assessment-session-page__alert {
-  margin-top: 1rem;
-  color: #a24d4d;
+.progress-text strong {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.4rem;
   font-weight: 600;
+  color: #2a362e;
 }
 
-.assessment-session-page__status-panel {
-  margin-top: 1.2rem;
-  padding: 1.2rem;
+.progress-track {
+  height: 4px;
+  background: rgba(42, 54, 46, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
 }
 
-.assessment-session-page__question-list {
+.progress-fill {
+  height: 100%;
+  background: #2a362e;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 题目列表区 */
+.question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+}
+
+.question-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8rem;
+}
+
+.question-content {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.question-number {
+  display: block;
+  font-size: 0.95rem;
+  color: #7b8c80;
+  margin-bottom: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
+
+/* 高级选项交互 */
+.options-grid {
   display: grid;
-  gap: 1rem;
-  margin-top: 1.2rem;
+  gap: 0.8rem;
 }
 
-.question-card {
-  padding: 1.35rem;
+.option-btn {
+  width: 100%;
+  text-align: left;
+  padding: 1.4rem 1.8rem;
+  background: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(130, 150, 138, 0.15);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  color: #4a5c51;
 }
 
-.question-card__head {
+.option-btn:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(130, 150, 138, 0.4);
+  transform: translateX(4px);
+}
+
+.option-btn--active {
+  background: #2a362e;
+  border-color: #2a362e;
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
+  transform: translateX(8px);
+}
+
+.option-btn--active:hover {
+  background: #2a362e;
+  transform: translateX(8px);
+}
+
+/* 底部操作区 */
+.session-footer {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
   align-items: center;
-}
-
-.question-card h2 {
-  margin-top: 0.8rem;
-  font-size: 1.4rem;
-  line-height: 1.55;
-}
-
-.question-card__options {
-  display: grid;
-  gap: 0.75rem;
   margin-top: 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
 }
 
-.question-card__option {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
-  gap: 0.9rem;
-  align-items: center;
-  padding: 1rem;
-  border: 1px solid rgba(31, 38, 32, 0.08);
-  background: rgba(255, 255, 255, 0.48);
-  cursor: pointer;
-  text-align: left;
+.footer-meta {
+  font-family: 'Noto Serif SC', serif;
+  color: #7b8c80;
+  font-size: 0.95rem;
 }
 
-.question-card__option span,
-.question-card__option small {
-  font-family: 'Manrope', sans-serif;
-}
-
-.question-card__option span {
-  font-weight: 700;
-  color: #7b7368;
-}
-
-.question-card__option strong {
-  font: 600 1rem/1.6 'Noto Serif SC', serif;
-}
-
-.question-card__option small {
-  color: var(--muted);
-}
-
-.question-card__option--active {
-  border-color: rgba(97, 121, 105, 0.45);
-  background: linear-gradient(135deg, rgba(236, 244, 237, 0.95), rgba(246, 250, 246, 0.95));
-}
-
-.assessment-session-page__footer {
-  margin-top: 1.25rem;
-  padding-bottom: 0.5rem;
-}
-
-.assessment-session-page__actions {
+.footer-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.8rem;
-  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.assessment-session-page__ghost,
-.assessment-session-page__primary,
-.assessment-session-page__submit {
-  min-height: 3rem;
-  padding: 0 1.15rem;
-  border: none;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.ghost-action-btn,
+.primary-action-btn {
+  padding: 0 1.8rem;
+  height: 3.2rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: all 0.3s ease;
 }
 
-.assessment-session-page__ghost {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.52);
-  color: var(--ink);
+.ghost-action-btn {
+  background: transparent;
+  border: 1px solid rgba(130, 150, 138, 0.3);
+  color: #5c6b60;
 }
 
-.assessment-session-page__primary,
-.assessment-session-page__submit {
-  color: #fffaf4;
-  background: linear-gradient(135deg, #627b69, #4d6454);
-  box-shadow: 0 18px 34px rgba(77, 100, 84, 0.24);
+.ghost-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: #5c6b60;
+  color: #2a362e;
 }
 
-.assessment-session-page__ghost:disabled,
-.assessment-session-page__primary:disabled,
-.assessment-session-page__submit:disabled {
-  opacity: 0.56;
+.primary-action-btn {
+  background: #2a362e;
+  border: none;
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(42, 54, 46, 0.15);
+}
+
+.primary-action-btn:hover:not(:disabled) {
+  background: #1c2620;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.25);
+}
+
+.ghost-action-btn:disabled,
+.primary-action-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
 }
 
-@media (max-width: 980px) {
-  .assessment-session-page__header,
-  .assessment-session-page__footer {
+/* 加载与错误状态 */
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 0;
+}
+
+.loading-orb {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+.meta-text {
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.error-text {
+  color: #8c4a4a;
+  font-family: 'Noto Serif SC', serif;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .premium-session-card {
+    padding: 2.5rem 1.5rem;
+    border-radius: 28px;
+    gap: 2rem;
+  }
+
+  .session-footer {
     flex-direction: column;
-    align-items: stretch;
+    gap: 1.5rem;
   }
 
-  .question-card__option {
-    grid-template-columns: 1fr;
+  .footer-actions {
+    width: 100%;
+    flex-direction: column;
   }
 
-  .assessment-session-page__actions button {
-    flex: 1;
+  .ghost-action-btn,
+  .primary-action-btn {
+    width: 100%;
+  }
+
+  .option-btn:hover {
+    transform: translateX(2px);
+  }
+
+  .option-btn--active {
+    transform: translateX(4px);
+  }
+
+  .option-btn--active:hover {
+    transform: translateX(4px);
   }
 }
 </style>

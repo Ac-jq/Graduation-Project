@@ -2,6 +2,7 @@ package sdu.jiaq.jqpro.controller.admin;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,10 +17,8 @@ import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskResponse;
 import sdu.jiaq.jqpro.service.AdminAiTaskService;
 
-import java.util.List;
-
 /**
- * Admin AI task controller.
+ * Administrator AI task controller.
  */
 @RestController
 @RequestMapping("/api/admin/ai-tasks")

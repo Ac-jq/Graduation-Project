@@ -15,6 +15,7 @@
     <name>JQPro</name>
     <description>高校心理自助服务平台的设计与实现</description>
 
+
     <properties>
         <java.version>17</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
