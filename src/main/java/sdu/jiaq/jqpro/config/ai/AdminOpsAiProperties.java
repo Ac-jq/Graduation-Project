@@ -30,7 +30,7 @@ public class AdminOpsAiProperties {
 
     private Double temperature = 0.1D;
 
-    private Integer maxTokens = 1200;
+    private Integer maxTokens = 1400;
 
     private Integer timeoutSeconds = 60;
 
@@ -40,27 +40,33 @@ public class AdminOpsAiProperties {
             You must never describe execution as already completed.
 
             Supported intents only:
-            1. Enable or disable a specific account.
-            2. Disable student accounts that have not logged in for N months.
-            3. Create a counselor account.
-            4. Publish or offline a resource by exact title or resource id.
+            1. Create a student or counselor account.
+            2. Query students or counselors by account, displayName, realName, studentNo, counselorNo, roleCode, or status.
+            3. Update student or counselor fields including account, displayName, realName, studentNo, counselorNo, and status.
+            4. Delete a student or counselor account.
+            5. Enable or disable a specific account.
+            6. Disable student accounts that have not logged in for N months.
+            7. Publish or offline a resource by exact title or resource id.
 
             Output JSON only. No markdown. No explanations. No code fences.
             Required top-level JSON fields:
             {
-              "taskType": "ACCOUNT_STATUS | COUNSELOR_CREATE | RESOURCE_STATUS | null",
+              "taskType": "USER_CRUD | ACCOUNT_STATUS | COUNSELOR_CREATE | RESOURCE_STATUS | null",
               "parseStatus": "READY | NEED_MORE_INFO",
               "summaryText": "string or null",
               "failureReason": "string or null",
               "actions": [
                 {
                   "targetType": "USER | RESOURCE",
-                  "operationType": "UPDATE | CREATE | PUBLISH | OFFLINE",
-                  "fieldName": "status | account | displayName | counselorNo | roleCode",
+                  "operationType": "CREATE | UPDATE | DELETE | QUERY | PUBLISH | OFFLINE",
+                  "fieldName": "status | account | displayName | realName | studentNo | counselorNo | roleCode | snapshot | null",
                   "newValue": "string or null",
                   "account": "string or null",
                   "displayName": "string or null",
+                  "realName": "string or null",
+                  "studentNo": "string or null",
                   "counselorNo": "string or null",
+                  "status": "ACTIVE | DISABLED | null",
                   "resourceTitle": "string or null",
                   "resourceId": "number or null",
                   "inactiveMonths": "number or null",
@@ -71,9 +77,12 @@ public class AdminOpsAiProperties {
 
             Rules:
             - If information is insufficient, return parseStatus=NEED_MORE_INFO and explain why.
-            - For “disable students inactive for 3 months”, return taskType=ACCOUNT_STATUS and one action with targetType=USER, operationType=UPDATE, fieldName=status, newValue=DISABLED, inactiveMonths=3, roleCode=STUDENT.
-            - For counselor creation, extract displayName and counselorNo. account may be null.
-            - For resource publish/offline, prefer exact resourceTitle if present. If resource id is explicit, fill resourceId.
+            - Use taskType=USER_CRUD for student or counselor create, query, update, and delete operations.
+            - For "disable students inactive for 3 months", return taskType=ACCOUNT_STATUS and one action with targetType=USER, operationType=UPDATE, fieldName=status, newValue=DISABLED, inactiveMonths=3, roleCode=STUDENT.
+            - For user creation, fill roleCode and as many fields as possible. account may be null if studentNo or counselorNo is available.
+            - For user query, operationType must be QUERY and the action should contain only the filters that appear in the instruction.
+            - For user delete, operationType must be DELETE and the action should contain a precise identifier such as account, studentNo, counselorNo, or exact displayName.
+            - For resource publish or offline, prefer exact resourceTitle if present. If resource id is explicit, fill resourceId.
             - Do not invent database ids or unsupported fields.
             """;
 

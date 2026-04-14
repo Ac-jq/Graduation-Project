@@ -31,6 +31,7 @@ function formatDate(value: string | null): string {
 }
 
 function resolveResourceType(type: string): string {
+  if (type === 'IMAGE') return '鍥惧儚鍐呭'
   switch (type) {
     case 'ARTICLE': return '图文阅览'
     case 'VIDEO': return '视频影像'

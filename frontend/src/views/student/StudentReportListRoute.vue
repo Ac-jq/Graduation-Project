@@ -13,61 +13,61 @@ const loading = ref(false)
 const errorMessage = ref('')
 const reports = ref<ReportSummary[]>([])
 
+// 分页相关状态
+const currentPage = ref(1)
+const pageSize = 5 // 每页显示 5 条历史记录
+
 const latestReport = computed(() => reports.value[0] ?? null)
 const highRiskCount = computed(() => reports.value.filter((item) => item.levelCode === 'HIGH').length)
 const averageScore = computed(() => {
-  if (!reports.value.length) {
-    return 0
-  }
-
+  if (!reports.value.length) return 0
   return Math.round((reports.value.reduce((sum, item) => sum + item.totalScore, 0) / reports.value.length) * 10) / 10
 })
 
-const latestSummary = computed(() => {
-  if (!latestReport.value) {
-    return '完成测评后，系统会在这里保留正式历史报告。'
-  }
+// 剥离出第一条（最新）后，剩下的作为历史记录
+const pastReports = computed(() => reports.value.slice(1))
 
-  return latestReport.value.summaryText
+// 前端分页计算
+const totalPages = computed(() => Math.max(1, Math.ceil(pastReports.value.length / pageSize)))
+const pagedReports = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return pastReports.value.slice(start, start + pageSize)
 })
 
+function prevPage() {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value))
+  const date = new Date(value)
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
 function resolveLevelLabel(levelCode: string): string {
   switch (levelCode) {
-    case 'LOW':
-      return '低风险'
-    case 'MEDIUM':
-      return '中风险'
-    case 'HIGH':
-      return '高风险'
-    default:
-      return levelCode
+    case 'LOW': return '状态平稳'
+    case 'MEDIUM': return '需适度关注'
+    case 'HIGH': return '建议重点关注'
+    default: return levelCode
   }
 }
 
 function resolveLevelTone(levelCode: string): LevelTone {
   switch (levelCode) {
-    case 'HIGH':
-      return 'high'
-    case 'MEDIUM':
-      return 'medium'
-    default:
-      return 'low'
+    case 'HIGH': return 'high'
+    case 'MEDIUM': return 'medium'
+    default: return 'low'
   }
-}
-
-function resolveReportInitials(scaleName: string): string {
-  const sanitized = scaleName.replace(/[^A-Za-z0-9\u4e00-\u9fa5]/g, '')
-  return sanitized.slice(0, 2).toUpperCase() || '报告'
 }
 
 async function loadReports(): Promise<void> {
@@ -76,6 +76,7 @@ async function loadReports(): Promise<void> {
 
   try {
     reports.value = await fetchStudentReportsApi()
+    currentPage.value = 1 // 重新加载时回到第一页
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -93,587 +94,638 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="student-report-list-page">
-    <section class="student-report-list-page__hero">
-      <div class="student-report-list-page__copy-card">
-        <div class="student-report-list-page__eyebrow-row">
-          <p class="student-report-list-page__eyebrow">Report Archive</p>
-          <span class="student-report-list-page__hero-badge">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M6 4.75h9l3 3v11.5A1.75 1.75 0 0 1 16.25 21h-10.5A1.75 1.75 0 0 1 4 19.25V6.5A1.75 1.75 0 0 1 5.75 4.75Z" />
-              <path d="M9 12h6" />
-              <path d="M9 15.5h4.5" />
-            </svg>
-            结构化成长留档
-          </span>
-        </div>
-        <h1>历史报告总览</h1>
-        <p class="student-report-list-page__lead">
-          每一次正式测评都会在这里留下可回看的记录，方便你重新理解阶段性的情绪波动、
-          分值变化和系统生成的风险判断。
-        </p>
+  <main class="archive-list-page">
+    <div class="archive-container">
 
-        <div class="student-report-list-page__metrics">
-          <article class="metric-card">
-            <span>报告数量</span>
-            <strong>{{ reports.length }}</strong>
-            <p>已完成并归档的正式报告</p>
-          </article>
-          <article class="metric-card">
-            <span>高风险次数</span>
-            <strong>{{ highRiskCount }}</strong>
-            <p>系统记录的高关注区间</p>
-          </article>
-          <article class="metric-card metric-card--warm">
-            <span>平均分</span>
-            <strong>{{ averageScore }}</strong>
-            <p>用于感受趋势，不代表医学诊断</p>
-          </article>
+      <header class="archive-header">
+        <div class="header-context">
+          <span class="header-tag">Report Archive</span>
+          <h1 class="header-title">评估卷宗</h1>
+          <p class="header-desc">
+            你所有的情绪切片与梳理记录都已妥善归档。这些分数仅代表过去的某个切面，请将它们作为了解自己的线索，而非绝对的结论。
+          </p>
         </div>
-      </div>
 
-      <aside class="student-report-list-page__snapshot">
-        <div class="student-report-list-page__snapshot-top">
-          <div class="student-report-list-page__snapshot-avatar">
-            {{ latestReport ? resolveReportInitials(latestReport.scaleName) : '记录' }}
+        <div class="header-stats">
+          <div class="stat-block">
+            <span class="stat-label">归档总数</span>
+            <span class="stat-value">{{ loading ? '-' : reports.length }}</span>
           </div>
-          <div>
-            <p class="student-report-list-page__meta-label">最近一次归档</p>
-            <strong>{{ latestReport?.scaleName || '等待生成第一份报告' }}</strong>
+          <div class="stat-block">
+            <span class="stat-label">高关注提醒</span>
+            <span class="stat-value">{{ loading ? '-' : highRiskCount }}</span>
+          </div>
+          <div class="stat-block">
+            <span class="stat-label">平均分波动</span>
+            <span class="stat-value">{{ loading ? '-' : averageScore }}</span>
           </div>
         </div>
-        <p class="student-report-list-page__snapshot-summary">{{ latestSummary }}</p>
-        <div v-if="latestReport" class="student-report-list-page__snapshot-tags">
-          <span class="info-chip">{{ formatDate(latestReport.createdAt) }}</span>
-          <span class="info-chip">总分 {{ latestReport.totalScore }}</span>
-          <span class="level-pill" :class="`level-pill--${resolveLevelTone(latestReport.levelCode)}`">
-            {{ resolveLevelLabel(latestReport.levelCode) }}
-          </span>
-        </div>
-      </aside>
-    </section>
+      </header>
 
-    <p v-if="errorMessage" class="student-report-list-page__alert">{{ errorMessage }}</p>
+      <div v-if="errorMessage" class="error-text">{{ errorMessage }}</div>
 
-    <section v-if="latestReport && !loading" class="student-report-list-page__featured-card">
-      <div class="student-report-list-page__featured-copy">
-        <div class="student-report-list-page__featured-kicker">
-          <span class="student-report-list-page__meta-label">重点查看</span>
-          <span class="level-pill" :class="`level-pill--${resolveLevelTone(latestReport.levelCode)}`">
-            {{ resolveLevelLabel(latestReport.levelCode) }}
-          </span>
-        </div>
-        <h2>{{ latestReport.scaleName }}</h2>
-        <p>{{ latestReport.summaryText }}</p>
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在展卷...</p>
       </div>
 
-      <dl class="student-report-list-page__featured-meta">
-        <div>
-          <dt>总分</dt>
-          <dd>{{ latestReport.totalScore }}</dd>
-        </div>
-        <div>
-          <dt>生成时间</dt>
-          <dd>{{ formatDate(latestReport.createdAt) }}</dd>
-        </div>
-      </dl>
-
-      <button class="student-report-list-page__primary" type="button" @click="openReport(latestReport.reportId)">
-        查看报告详情
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M5 12h14" />
-          <path d="m13 6 6 6-6 6" />
-        </svg>
-      </button>
-    </section>
-
-    <section v-if="loading" class="student-report-list-page__status-panel">
-      <div class="student-report-list-page__status-icon">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 6.5v5.5l3.25 2" />
-          <path d="M20 12a8 8 0 1 1-8-8" />
-        </svg>
+      <div v-else-if="!reports.length" class="empty-state">
+        <h2 class="empty-title">卷宗尚为空白</h2>
+        <p class="empty-desc">完成你的第一次量表梳理后，系统会在此生成详细的解读报告。</p>
+        <button class="ghost-btn" @click="router.push({ name: 'student-scales' })">
+          前往量表室 <span class="arrow">→</span>
+        </button>
       </div>
-      <div>
-        <h2>正在加载历史报告</h2>
-        <p>系统正在同步你已生成的测评档案。</p>
-      </div>
-    </section>
 
-    <section v-else-if="reports.length" class="student-report-list-page__timeline">
-      <article
-        v-for="(report, index) in reports"
-        :key="report.reportId"
-        class="report-card"
-        @click="openReport(report.reportId)"
-      >
-        <div class="report-card__index">{{ String(index + 1).padStart(2, '0') }}</div>
-        <div class="report-card__avatar">{{ resolveReportInitials(report.scaleName) }}</div>
-
-        <div class="report-card__content">
-          <div class="report-card__header">
-            <div>
-              <p class="report-card__code">报告 #{{ report.reportId }}</p>
-              <h2>{{ report.scaleName }}</h2>
+      <template v-else>
+        <section class="latest-entry" v-if="latestReport && currentPage === 1" @click="openReport(latestReport.reportId)">
+          <div class="latest-accent-line"></div>
+          <div class="latest-content">
+            <div class="latest-meta">
+              <span class="meta-label">最新归档</span>
+              <span class="meta-date">{{ formatDate(latestReport.createdAt) }}</span>
             </div>
-            <span class="level-pill" :class="`level-pill--${resolveLevelTone(report.levelCode)}`">
-              {{ resolveLevelLabel(report.levelCode) }}
-            </span>
+
+            <h2 class="latest-title">{{ latestReport.scaleName }}</h2>
+            <p class="latest-summary">{{ latestReport.summaryText }}</p>
+
+            <div class="latest-bottom">
+              <div class="latest-indicators">
+                <span class="indicator-score">总分 <strong>{{ latestReport.totalScore }}</strong></span>
+                <span class="indicator-pill" :class="`indicator-pill--${resolveLevelTone(latestReport.levelCode)}`">
+                  {{ resolveLevelLabel(latestReport.levelCode) }}
+                </span>
+              </div>
+              <button class="action-read-btn">
+                查阅详阅 <span class="arrow">→</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="history-list" v-if="pastReports.length > 0">
+          <h3 class="list-heading" v-if="currentPage === 1">往期留档</h3>
+          <h3 class="list-heading" v-else>第 {{ currentPage }} 页的留档记录</h3>
+
+          <div class="list-container">
+            <article
+                v-for="report in pagedReports"
+                :key="report.reportId"
+                class="history-row"
+                @click="openReport(report.reportId)"
+            >
+              <div class="row-date">
+                {{ formatDate(report.createdAt) }}
+              </div>
+
+              <div class="row-main">
+                <h4 class="row-title">{{ report.scaleName }}</h4>
+                <p class="row-summary">{{ report.summaryText }}</p>
+              </div>
+
+              <div class="row-stats">
+                <div class="stat-score">
+                  <span>总分</span>
+                  <strong>{{ report.totalScore }}</strong>
+                </div>
+                <div class="stat-advice">
+                  <span class="minimal-pill" :class="`minimal-pill--${resolveLevelTone(report.levelCode)}`">
+                    {{ resolveLevelLabel(report.levelCode) }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="row-action">
+                <span class="arrow">→</span>
+              </div>
+            </article>
           </div>
 
-          <div class="report-card__chips">
-            <span class="info-chip">{{ formatDate(report.createdAt) }}</span>
-            <span class="info-chip">总分 {{ report.totalScore }}</span>
-          </div>
+          <nav class="pagination-nav" v-if="totalPages > 1">
+            <button
+                class="page-btn"
+                :disabled="currentPage <= 1"
+                @click="prevPage"
+            >
+              <span class="arrow">←</span> 上一卷
+            </button>
 
-          <p>{{ report.summaryText }}</p>
-        </div>
+            <div class="page-indicator">
+              <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+            </div>
 
-        <div class="report-card__cta">
-          <span>查看详情</span>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M5 12h14" />
-            <path d="m13 6 6 6-6 6" />
-          </svg>
-        </div>
-      </article>
-    </section>
+            <button
+                class="page-btn"
+                :disabled="currentPage >= totalPages"
+                @click="nextPage"
+            >
+              下一卷 <span class="arrow">→</span>
+            </button>
+          </nav>
+        </section>
+      </template>
 
-    <section v-else class="student-report-list-page__status-panel">
-      <div class="student-report-list-page__status-icon">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 4.75v14.5" />
-          <path d="M4.75 12h14.5" />
-        </svg>
-      </div>
-      <div>
-        <h2>还没有正式测评报告</h2>
-        <p>先完成一次量表作答，系统才会生成可供回看的历史结果。</p>
-      </div>
-      <button class="student-report-list-page__primary" type="button" @click="router.push({ name: 'student-scales' })">
-        前往量表测评
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M5 12h14" />
-          <path d="m13 6 6 6-6 6" />
-        </svg>
-      </button>
-    </section>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.student-report-list-page {
-  --ink: #201c18;
-  --muted: #6e665f;
-  --line: rgba(32, 28, 24, 0.08);
-  min-height: 100%;
-  padding: 0.4rem 0 2.4rem;
-  color: var(--ink);
+/* 全局基调与宽度控制，彻底解决左右滑动 */
+.archive-list-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 8rem;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  width: 100%;
 }
 
-.student-report-list-page__hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.7fr);
-  gap: 1.5rem;
-  align-items: stretch;
+.archive-container {
+  max-width: 1000px; /* 适当放宽以容纳更大的字号 */
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
-.student-report-list-page__copy-card,
-.student-report-list-page__snapshot,
-.student-report-list-page__featured-card,
-.report-card,
-.student-report-list-page__status-panel,
-.metric-card {
-  border: 1px solid rgba(33, 28, 24, 0.05);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 244, 238, 0.86) 100%);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(18px);
-}
-
-.student-report-list-page__copy-card {
-  padding: 1.8rem;
-}
-
-.student-report-list-page__eyebrow-row {
+/* 卷宗头部：紧凑的秩序感 */
+.archive-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 2.5rem;
+  margin-bottom: 4rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.15);
+  gap: 4rem;
 }
 
-.student-report-list-page__eyebrow,
-.student-report-list-page__meta-label,
-.report-card__code,
-.metric-card span {
-  margin: 0;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7a7167;
+.header-context {
+  max-width: 520px;
 }
 
-.student-report-list-page__hero-badge,
-.info-chip,
-.level-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.52rem 0.82rem;
-  border-radius: 999px;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.student-report-list-page__hero-badge {
-  background: rgba(93, 120, 101, 0.12);
-  color: #5e7465;
-}
-
-.student-report-list-page__hero-badge svg,
-.student-report-list-page__status-icon svg,
-.student-report-list-page__primary svg,
-.report-card__cta svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.student-report-list-page h1,
-.student-report-list-page h2,
-.report-card h2,
-.student-report-list-page__status-panel h2 {
-  margin: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-}
-
-.student-report-list-page h1 {
-  margin-top: 0.95rem;
-  font-size: clamp(2.5rem, 4.6vw, 4.4rem);
-  line-height: 1.05;
-}
-
-.student-report-list-page__lead,
-.student-report-list-page__snapshot-summary,
-.metric-card p,
-.student-report-list-page__featured-copy p,
-.student-report-list-page__status-panel p,
-.report-card__content p {
-  font-family: 'Manrope', sans-serif;
-  line-height: 1.82;
-}
-
-.student-report-list-page__lead {
-  max-width: 44rem;
-  margin: 1rem 0 0;
-  color: var(--muted);
-}
-
-.student-report-list-page__metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.55rem;
-}
-
-.metric-card {
-  padding: 1.2rem 1.25rem;
-}
-
-.metric-card--warm {
-  background:
-    linear-gradient(180deg, rgba(255, 249, 241, 0.95) 0%, rgba(248, 243, 235, 0.88) 100%);
-}
-
-.metric-card strong,
-.student-report-list-page__snapshot strong {
+.header-tag {
   display: block;
-  margin-top: 0.7rem;
-  font: 600 1.75rem/1.08 'Noto Serif SC', serif;
-  color: #2b2621;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
 }
 
-.metric-card p {
-  margin: 0.7rem 0 0;
-  font-size: 0.88rem;
-  color: var(--muted);
+.header-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.05em;
 }
 
-.student-report-list-page__snapshot {
-  padding: 1.55rem;
-  background:
-    radial-gradient(circle at top right, rgba(97, 122, 105, 0.16), transparent 35%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 246, 240, 0.86) 100%);
+.header-desc {
+  font-size: 1.05rem;
+  color: #6a7c70;
+  line-height: 1.8;
+  margin: 0;
 }
 
-.student-report-list-page__snapshot-top {
+.header-stats {
   display: flex;
-  gap: 1rem;
-  align-items: center;
+  gap: 3rem;
 }
 
-.student-report-list-page__snapshot-avatar,
-.report-card__avatar,
-.student-report-list-page__status-icon {
-  display: grid;
-  place-items: center;
+.stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+/* 最新归档 */
+.latest-entry {
+  position: relative;
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 5rem;
+  padding: 2.5rem;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.latest-entry:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.latest-accent-line {
+  width: 4px;
+  background: #2a362e;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
-.student-report-list-page__snapshot-avatar {
-  width: 3.6rem;
-  height: 3.6rem;
-  border-radius: 20px;
-  background: linear-gradient(135deg, #6d8573, #c6d1c0);
-  color: #fffdf8;
-  font: 700 0.95rem/1 'Manrope', sans-serif;
-}
-
-.student-report-list-page__snapshot-summary {
-  margin: 1rem 0 0;
-  color: #656056;
-}
-
-.student-report-list-page__snapshot-tags,
-.report-card__chips {
+.latest-content {
+  flex: 1;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 1rem;
-}
-
-.info-chip {
-  background: rgba(255, 255, 255, 0.78);
-  color: #736a5f;
-}
-
-.level-pill--low {
-  background: rgba(104, 148, 117, 0.14);
-  color: #4f7556;
-}
-
-.level-pill--medium {
-  background: rgba(215, 175, 107, 0.16);
-  color: #9b6e27;
-}
-
-.level-pill--high {
-  background: rgba(178, 88, 76, 0.14);
-  color: #a04c42;
-}
-
-.student-report-list-page__alert {
-  margin-top: 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 18px;
-  background: rgba(168, 76, 67, 0.08);
-  color: #9a473f;
-  font-weight: 700;
-}
-
-.student-report-list-page__featured-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(220px, 0.7fr) auto;
-  gap: 1.2rem;
-  align-items: center;
-  margin-top: 1.55rem;
-  padding: 1.45rem;
-}
-
-.student-report-list-page__featured-copy {
+  flex-direction: column;
   min-width: 0;
 }
 
-.student-report-list-page__featured-kicker {
+.latest-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.8rem;
-  align-items: center;
-}
-
-.student-report-list-page__featured-card h2 {
-  margin-top: 0.7rem;
-  font-size: 2rem;
-  line-height: 1.18;
-}
-
-.student-report-list-page__featured-copy p {
-  margin: 0.8rem 0 0;
-  color: var(--muted);
-}
-
-.student-report-list-page__featured-meta {
-  display: grid;
-  gap: 0.9rem;
-}
-
-.student-report-list-page__featured-meta dt {
-  margin: 0;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #7d7468;
-}
-
-.student-report-list-page__featured-meta dd {
-  margin: 0.4rem 0 0;
-  font: 600 1.02rem/1.45 'Noto Serif SC', serif;
-}
-
-.student-report-list-page__primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 3rem;
-  padding: 0 1.15rem;
-  border: none;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #6b8473, #4f6656);
-  color: #faf6f0;
-  font: 800 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.student-report-list-page__primary:hover,
-.report-card:hover {
-  transform: translateY(-2px);
-}
-
-.student-report-list-page__primary:hover {
-  box-shadow: 0 16px 28px rgba(79, 102, 86, 0.2);
-}
-
-.student-report-list-page__status-panel {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: center;
-  margin-top: 1.5rem;
-  padding: 1.4rem;
+  margin-bottom: 1.2rem;
 }
 
-.student-report-list-page__status-icon {
-  width: 54px;
-  height: 54px;
-  border-radius: 18px;
-  background: rgba(97, 122, 105, 0.12);
-  color: #5e7564;
+.meta-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e2821;
+  background: rgba(42, 54, 46, 0.08);
+  padding: 0.3rem 0.8rem;
+  border-radius: 100px;
 }
 
-.student-report-list-page__status-panel h2 {
-  font-size: 1.24rem;
+.meta-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
 }
 
-.student-report-list-page__status-panel p {
-  margin: 0.35rem 0 0;
-  color: var(--muted);
+.latest-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1rem 0;
 }
 
-.student-report-list-page__timeline {
-  display: grid;
-  gap: 1.2rem;
-  margin-top: 1.55rem;
+.latest-summary {
+  font-size: 1.1rem;
+  color: #5c6b60;
+  line-height: 1.8;
+  margin: 0 0 2rem 0;
+  max-width: 90%;
 }
 
-.report-card {
-  display: grid;
-  grid-template-columns: 48px 64px minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: center;
-  padding: 1.35rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.report-card:hover {
-  box-shadow: 0 18px 34px rgba(80, 70, 58, 0.1);
-}
-
-.report-card__index {
-  font: 600 1.6rem/1 'Noto Serif SC', serif;
-  color: rgba(32, 28, 24, 0.34);
-}
-
-.report-card__avatar {
-  width: 64px;
-  height: 64px;
-  border-radius: 20px;
-  background: linear-gradient(135deg, rgba(107, 132, 115, 0.95), rgba(212, 220, 204, 0.88));
-  color: #fffdf8;
-  font: 700 0.96rem/1 'Manrope', sans-serif;
-}
-
-.report-card__content {
-  min-width: 0;
-}
-
-.report-card__header {
+.latest-bottom {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: start;
-}
-
-.report-card h2 {
-  margin-top: 0.45rem;
-  font-size: 1.5rem;
-  line-height: 1.25;
-}
-
-.report-card__content p {
-  margin: 0.95rem 0 0;
-  color: var(--muted);
-}
-
-.report-card__cta {
-  display: inline-flex;
-  gap: 0.45rem;
   align-items: center;
-  color: #596f60;
-  font: 800 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  margin-top: auto;
 }
 
-@media (max-width: 1080px) {
-  .student-report-list-page__hero,
-  .student-report-list-page__featured-card,
-  .report-card {
-    grid-template-columns: 1fr;
-  }
-
-  .student-report-list-page__metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .student-report-list-page__status-panel {
-    grid-template-columns: 54px minmax(0, 1fr);
-  }
+.latest-indicators {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
 }
 
-@media (max-width: 760px) {
-  .student-report-list-page__copy-card,
-  .student-report-list-page__snapshot,
-  .student-report-list-page__featured-card,
-  .report-card,
-  .student-report-list-page__status-panel {
-    padding: 1.25rem;
-  }
+.indicator-score {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  color: #5c6b60;
+}
 
-  .report-card__header {
+.indicator-score strong {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.3rem;
+  color: #1e2821;
+}
+
+/* 莫兰迪色调状态胶囊 */
+.indicator-pill {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  padding: 0.4rem 1rem;
+  border-radius: 100px;
+  font-weight: 600;
+}
+
+.indicator-pill--low {
+  background: rgba(130, 150, 138, 0.15);
+  color: #4a5c51;
+}
+.indicator-pill--medium {
+  background: rgba(193, 150, 83, 0.15);
+  color: #9e7330;
+}
+.indicator-pill--high {
+  background: rgba(176, 115, 115, 0.15);
+  color: #8c4a4a;
+}
+
+.action-read-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+/* 往期列表：对齐与截断 */
+.history-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.list-heading {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #8a9c90;
+  margin: 0 0 1rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.15);
+}
+
+.history-row {
+  display: grid;
+  /* 调整网格宽度分配，彻底解决挤压与溢出 */
+  grid-template-columns: 140px minmax(0, 1fr) 180px 40px;
+  gap: 2rem;
+  align-items: flex-start; /* 统一顶端对齐 */
+  padding: 2rem 0;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  cursor: pointer;
+  transition: background 0.3s ease;
+  box-sizing: border-box;
+}
+
+.history-row:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.row-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  margin-top: 0.2rem;
+}
+
+.row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-width: 0; /* 允许文本截断生效 */
+}
+
+.row-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2a362e;
+  margin: 0;
+}
+
+.row-summary {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  color: #7b8c80;
+  margin: 0;
+  /* 强制单行截断，防止撑开页面 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.row-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end; /* 右对齐 */
+  gap: 0.8rem;
+}
+
+.stat-score {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: #5c6b60;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.stat-score strong {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.2rem;
+  color: #1e2821;
+}
+
+.minimal-pill {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: right;
+}
+.minimal-pill--low { color: #5c6b60; }
+.minimal-pill--medium { color: #9e7330; }
+.minimal-pill--high { color: #8c4a4a; }
+
+.row-action {
+  color: #b5c2b9;
+  font-size: 1.3rem;
+  text-align: right;
+  transition: color 0.3s ease;
+  margin-top: 0.1rem;
+}
+
+.history-row:hover .row-action {
+  color: #2a362e;
+}
+
+/* 优雅的分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+/* 通用动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.latest-entry:hover .action-read-btn .arrow,
+.history-row:hover .row-action .arrow,
+.ghost-btn:hover .arrow {
+  transform: translateX(4px);
+}
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
+}
+
+/* 状态提示 */
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-text {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid rgba(42, 54, 46, 0.3);
+  color: #2a362e;
+  padding: 1rem 2.2rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.ghost-btn:hover {
+  background: rgba(42, 54, 46, 0.05);
+  border-color: #2a362e;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .archive-header {
     flex-direction: column;
-    align-items: start;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .history-row {
+    grid-template-columns: 1fr auto 20px;
+    gap: 1rem;
+    padding: 1.5rem 1rem;
+  }
+
+  .row-date {
+    display: none;
+  }
+
+  .row-summary {
+    display: none;
+  }
+
+  .row-stats {
+    align-items: flex-end;
+  }
+
+  .latest-entry {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.5rem;
+  }
+
+  .latest-accent-line {
+    width: 100%;
+    height: 4px;
+  }
+
+  .latest-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
   }
 }
 </style>

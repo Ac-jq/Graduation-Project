@@ -20,10 +20,11 @@ const favoriteButtonText = computed(() => {
   return isFavorited.value ? '已收录至资料夹' : '收录至资料夹'
 })
 
-const previewMode = computed<'video' | 'image' | 'article' | 'external'>(() => {
+const previewMode = computed<'video' | 'image' | 'audio' | 'article' | 'external'>(() => {
   const url = resourceDetail.value?.contentUrl?.toLowerCase() ?? ''
   if (!url) return 'external'
   if (url.endsWith('.mp4') || url.endsWith('.webm') || resourceDetail.value?.resourceType === 'VIDEO') return 'video'
+  if (url.endsWith('.mp3') || url.endsWith('.wav') || url.endsWith('.ogg') || resourceDetail.value?.resourceType === 'AUDIO') return 'audio'
   if (url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png') || url.endsWith('.webp')) return 'image'
   if (url.endsWith('.html') || resourceDetail.value?.resourceType === 'ARTICLE') return 'article'
   return 'external'
@@ -36,6 +37,7 @@ function formatDate(value: string | null): string {
 }
 
 function resolveResourceType(type: string): string {
+  if (type === 'IMAGE') return '鍥惧儚鍐呭'
   switch (type) {
     case 'ARTICLE': return '图文阅览'
     case 'VIDEO': return '视频影像'
@@ -172,6 +174,21 @@ onMounted(() => void loadResourceDetail())
               :src="resourceDetail.contentUrl"
               :alt="resourceDetail.title"
           />
+
+          <div v-else-if="previewMode === 'audio'" class="audio-stage">
+            <img
+                v-if="resourceDetail.coverUrl"
+                class="audio-cover"
+                :src="resourceDetail.coverUrl"
+                :alt="resourceDetail.title"
+            />
+            <audio
+                class="media-audio"
+                :src="resourceDetail.contentUrl"
+                controls
+                preload="metadata"
+            />
+          </div>
 
           <iframe
               v-else-if="previewMode === 'article'"
@@ -412,6 +429,24 @@ onMounted(() => void loadResourceDetail())
   width: 100%;
   display: block;
   border: none;
+}
+
+.audio-stage {
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(244, 240, 233, 0.88));
+}
+
+.audio-cover {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 24px;
+}
+
+.media-audio {
+  width: 100%;
 }
 
 .media-player {

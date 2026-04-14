@@ -16,44 +16,23 @@ const errorMessage = ref('')
 const scales = ref<ScaleSummary[]>([])
 
 const totalQuestions = computed(() =>
-  scales.value.reduce((sum, item) => sum + item.totalQuestions, 0)
+    scales.value.reduce((sum, item) => sum + item.totalQuestions, 0)
 )
 
 const averageQuestions = computed(() => {
-  if (!scales.value.length) {
-    return 0
-  }
-
+  if (!scales.value.length) return 0
   return Math.round(totalQuestions.value / scales.value.length)
 })
 
 function resolveScaleTone(code: string): ScaleTone {
-  return code === 'GAD7' ? 'amber' : 'sage'
+  return code === 'GAD7' || code === 'STRESS8' ? 'amber' : 'sage'
 }
 
 function resolveScaleLabel(code: string): string {
   switch (code) {
-    case 'PHQ9':
-      return '情绪状态'
-    case 'GAD7':
-      return '焦虑筛查'
-    default:
-      return '标准量表'
-  }
-}
-
-function resolveScaleIcon(code: string): string[] {
-  switch (code) {
-    case 'GAD7':
-      return [
-        'M12 3.75c3.38 0 6.34 1.82 7.92 4.53',
-        'M20.25 12A8.25 8.25 0 1 1 12 3.75',
-        'M12 8.25v4.1l2.75 2.4'
-      ]
-    default:
-      return [
-        'M12 20.25s-6.75-4.02-6.75-9.28A3.97 3.97 0 0 1 12 7.89a3.97 3.97 0 0 1 6.75 3.08c0 5.26-6.75 9.28-6.75 9.28Z'
-      ]
+    case 'PHQ9': return '情绪状态'
+    case 'GAD7': return '焦虑筛查'
+    default: return '标准量表'
   }
 }
 
@@ -63,7 +42,7 @@ async function loadScales(): Promise<void> {
 
   try {
     const response = await fetchScaleListApi()
-    scales.value = response.filter((item) => item.code === 'PHQ9' || item.code === 'GAD7')
+    scales.value = response
     assessmentStore.setScales(scales.value)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -82,577 +61,419 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="scale-list-page">
-    <section class="scale-list-page__hero">
-      <div class="scale-list-page__hero-copy">
-        <div class="scale-list-page__eyebrow-row">
-          <span class="scale-list-page__eyebrow">Assessment Studio</span>
-          <span class="scale-list-page__hero-pill">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 4.75v14.5" />
-              <path d="M4.75 12h14.5" />
-            </svg>
-            温和完成本轮自评
-          </span>
+  <main class="editorial-scale-page">
+    <div class="page-container">
+
+      <header class="editorial-hero">
+        <div class="hero-meta">
+          <span class="hero-tag">Assessment Studio</span>
         </div>
-        <h1>选择一份量表，开始一次更有节奏的心理状态整理。</h1>
-        <p class="scale-list-page__lead">
-          标准量表会帮助你在几分钟内记录最近两周的感受变化。提交后系统会生成结构化报告，
-          便于后续查看趋势、风险等级与支持建议。
+        <h1 class="hero-title">自我察觉的刻度</h1>
+        <p class="hero-lead">
+          选择一份量表，开启一段平静的向内探索。<br>
+          不需要追求“标准答案”，只需如实记录此刻的感受，所有的梳理都会被妥善保存。
         </p>
 
-        <div class="scale-list-page__hero-metrics">
-          <article class="metric-card">
-            <span>可用量表</span>
-            <strong>{{ scales.length }}</strong>
-            <p>精选学生端标准自评量表</p>
-          </article>
-          <article class="metric-card">
-            <span>平均题量</span>
-            <strong>{{ averageQuestions }}</strong>
-            <p>单次作答负担轻，适合阶段性复盘</p>
-          </article>
-          <article class="metric-card metric-card--soft">
-            <span>作答体验</span>
-            <strong>自动保存</strong>
-            <p>支持分页继续填写，减少中途打断焦虑</p>
-          </article>
-        </div>
-      </div>
-
-      <aside class="scale-list-page__hero-panel">
-        <div class="scale-list-page__hero-panel-top">
-          <span class="scale-list-page__panel-label">本轮测评速览</span>
-          <div class="scale-list-page__panel-icon">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 4.5 19.5 8.7v6.6L12 19.5 4.5 15.3V8.7L12 4.5Z" />
-              <path d="M12 10.2v5.4" />
-              <path d="M9.4 12.75h5.2" />
-            </svg>
+        <div class="hero-stats">
+          <div class="stat-item">
+            <span class="stat-label">可用量表</span>
+            <strong class="stat-value">{{ loading ? '-' : scales.length }}</strong>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-label">总计题量</span>
+            <strong class="stat-value">{{ loading ? '-' : totalQuestions }}</strong>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-label">体验保障</span>
+            <strong class="stat-text">支持分段作答与自动保存</strong>
           </div>
         </div>
-        <strong>{{ totalQuestions }} 道问题</strong>
-        <p>
-          每份量表都使用更柔和的分步体验帮助你完成自检，结果仅用于心理支持和辅助评估，
-          不作为医学诊断依据。
-        </p>
-        <div class="scale-list-page__panel-note">
-          <span>建议</span>
-          <p>选择一个安静时段，按直觉作答，比追求“标准答案”更有参考价值。</p>
-        </div>
-      </aside>
-    </section>
+      </header>
 
-    <p v-if="errorMessage" class="scale-list-page__alert">{{ errorMessage }}</p>
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
 
-    <section v-if="loading" class="scale-list-page__status-panel">
-      <div class="scale-list-page__status-icon">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 6.5v5.5l3.25 2" />
-          <path d="M20 12a8 8 0 1 1-8-8" />
-        </svg>
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在展卷...</p>
       </div>
-      <div>
-        <h2>正在整理量表列表</h2>
-        <p>马上就好，系统正在同步可用测评内容。</p>
-      </div>
-    </section>
 
-    <section v-else class="scale-list-page__grid">
-      <article
-        v-for="scale in scales"
-        :key="scale.id"
-        class="scale-card"
-        :class="`scale-card--${resolveScaleTone(scale.code)}`"
-        @click="openScale(scale.id)"
-      >
-        <div class="scale-card__glow"></div>
+      <section v-else class="scale-journal">
+        <article
+            v-for="scale in scales"
+            :key="scale.id"
+            class="scale-row"
+            :class="`scale-row--${resolveScaleTone(scale.code)}`"
+            @click="openScale(scale.id)"
+        >
+          <div class="row-watermark" aria-hidden="true">{{ scale.code }}</div>
 
-        <div class="scale-card__topline">
-          <div class="scale-card__identity">
-            <span class="scale-card__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path
-                  v-for="segment in resolveScaleIcon(scale.code)"
-                  :key="segment"
-                  :d="segment"
-                />
-              </svg>
-            </span>
-            <div>
-              <p class="scale-card__code">{{ scale.code }}</p>
-              <h2>{{ scale.name }}</h2>
+          <div class="row-content">
+            <div class="row-left">
+              <span class="scale-label">{{ resolveScaleLabel(scale.code) }}</span>
+              <h2 class="scale-title">{{ scale.name }}</h2>
+              <div class="scale-tags">
+                <span class="minimal-tag">{{ scale.totalQuestions }} 题</span>
+                <span class="minimal-tag">每页 {{ scale.pageSize }} 题</span>
+              </div>
+            </div>
+
+            <div class="row-center">
+              <p class="scale-desc">
+                {{ scale.description || '用于了解最近两周心理状态的标准量表。' }}
+              </p>
+              <div class="scale-notes">
+                <p><strong>适用场景：</strong>{{ scale.productPositioning || '心理状态辅助评估' }}</p>
+                <p><strong>填写提醒：</strong>{{ scale.noticeText || '建议按当下真实感受作答。' }}</p>
+              </div>
+            </div>
+
+            <div class="row-right">
+              <button class="start-btn">
+                开始梳理 <span class="arrow">→</span>
+              </button>
             </div>
           </div>
-          <span class="scale-card__badge">{{ resolveScaleLabel(scale.code) }}</span>
-        </div>
+        </article>
+      </section>
 
-        <p class="scale-card__desc">
-          {{ scale.description || '用于了解最近两周心理状态的标准量表。' }}
-        </p>
-
-        <div class="scale-card__chips">
-          <span class="info-chip">{{ scale.totalQuestions }} 题</span>
-          <span class="info-chip">每页 {{ scale.pageSize }} 题</span>
-          <span class="info-chip">自动存档</span>
-        </div>
-
-        <dl class="scale-card__meta">
-          <div>
-            <dt>适用场景</dt>
-            <dd>{{ scale.productPositioning || '心理状态辅助评估' }}</dd>
-          </div>
-          <div>
-            <dt>填写提醒</dt>
-            <dd>{{ scale.noticeText || '建议按当下真实感受作答。' }}</dd>
-          </div>
-        </dl>
-
-        <div class="scale-card__footer">
-          <div class="scale-card__footnote">
-            <span>完成后生成正式报告与 AI 辅助解释</span>
-          </div>
-          <button type="button">
-            开始测评
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M5 12h14" />
-              <path d="m13 6 6 6-6 6" />
-            </svg>
-          </button>
-        </div>
-      </article>
-    </section>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.scale-list-page {
-  --ink: #222720;
-  --muted: #6d675d;
-  --line: rgba(44, 50, 40, 0.08);
-  --card-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
-  min-height: 100%;
-  padding: 0.4rem 0 2.4rem;
-  color: var(--ink);
+/* 全局纸张质感背景 */
+.editorial-scale-page {
+  min-height: 100vh;
+  background: #f4f6f4;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2rem 8rem;
 }
 
-.scale-list-page__hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.72fr);
-  gap: 1.6rem;
-  align-items: stretch;
+.page-container {
+  max-width: 1100px;
+  margin: 0 auto;
 }
 
-.scale-list-page__hero-copy,
-.scale-list-page__hero-panel,
-.metric-card,
-.scale-card,
-.scale-list-page__status-panel {
-  border: 1px solid rgba(33, 39, 31, 0.05);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(247, 243, 236, 0.84) 100%);
-  box-shadow: var(--card-shadow);
-  backdrop-filter: blur(16px);
+/* 头部排版 */
+.editorial-hero {
+  margin-bottom: 5rem;
+  padding-bottom: 3rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.1);
 }
 
-.scale-list-page__hero-copy {
-  padding: 1.8rem;
+.hero-meta {
+  margin-bottom: 1.5rem;
 }
 
-.scale-list-page__eyebrow-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.9rem;
-  align-items: center;
-}
-
-.scale-list-page__eyebrow,
-.scale-card__code,
-.scale-card__meta dt,
-.scale-list-page__panel-label,
-.metric-card span {
-  margin: 0;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
+.hero-tag {
+  display: inline-block;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
   text-transform: uppercase;
 }
 
-.scale-list-page__eyebrow,
-.scale-card__code,
-.scale-list-page__panel-label {
-  color: #7e7264;
-}
-
-.scale-list-page__hero-pill {
-  display: inline-flex;
-  gap: 0.45rem;
-  align-items: center;
-  padding: 0.52rem 0.78rem;
-  border-radius: 999px;
-  background: rgba(97, 122, 105, 0.12);
-  color: #5a7362;
-  font: 700 0.75rem/1 'Manrope', sans-serif;
-}
-
-.scale-list-page__hero-pill svg,
-.scale-list-page__panel-icon svg,
-.scale-list-page__status-icon svg,
-.scale-card__icon svg,
-.scale-card__footer button svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.scale-list-page h1,
-.scale-card h2,
-.scale-list-page__status-panel h2 {
-  margin: 0;
+.hero-title {
   font-family: 'Noto Serif SC', serif;
+  font-size: clamp(2.8rem, 5vw, 4.5rem);
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.5rem 0;
+  letter-spacing: 0.02em;
+}
+
+.hero-lead {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.15rem;
+  color: #5c6b60;
+  line-height: 1.8;
+  max-width: 600px;
+  margin: 0 0 3rem 0;
+}
+
+/* 融入背景的轻量级数据展示 */
+.hero-stats {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+.stat-text {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+  padding-top: 0.5rem;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 2.5rem;
+  background: rgba(42, 54, 46, 0.15);
+}
+
+/* 核心列表区（打破方框） */
+.scale-journal {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 每一行都是开放的，仅用底边线分隔 */
+.scale-row {
+  position: relative;
+  padding: 4rem 0;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  cursor: pointer;
+  transition: background 0.4s ease;
+  overflow: hidden;
+}
+
+.scale-row:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.scale-row:first-child {
+  padding-top: 1rem;
+}
+
+/* 巨大的背景水印，营造画报感 */
+.row-watermark {
+  position: absolute;
+  top: 1rem;
+  left: -1rem;
+  font-family: 'Manrope', sans-serif;
+  font-size: 12rem;
+  font-weight: 800;
+  color: rgba(130, 150, 138, 0.04);
+  line-height: 1;
+  pointer-events: none;
+  z-index: 0;
+  transition: color 0.4s ease, transform 0.4s ease;
+}
+
+.scale-row--amber:hover .row-watermark {
+  color: rgba(213, 176, 115, 0.08);
+  transform: translateX(20px);
+}
+
+.scale-row--sage:hover .row-watermark {
+  color: rgba(125, 154, 126, 0.08);
+  transform: translateX(20px);
+}
+
+/* 内容网格排版 */
+.row-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.2fr 2fr auto;
+  gap: 4rem;
+  align-items: center;
+}
+
+/* 左侧标题区 */
+.row-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.scale-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #7b8c80;
   font-weight: 600;
 }
 
-.scale-list-page h1 {
-  margin-top: 1rem;
-  font-size: clamp(2.4rem, 4.6vw, 4.3rem);
-  line-height: 1.08;
-}
-
-.scale-list-page__lead,
-.metric-card p,
-.scale-list-page__hero-panel p,
-.scale-card__desc,
-.scale-card__meta dd,
-.scale-list-page__status-panel p {
-  font-family: 'Manrope', sans-serif;
-  line-height: 1.8;
-}
-
-.scale-list-page__lead {
-  max-width: 44rem;
-  margin: 1rem 0 0;
-  color: var(--muted);
-}
-
-.scale-list-page__hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.6rem;
-}
-
-.metric-card {
-  padding: 1.25rem 1.3rem;
-}
-
-.metric-card--soft {
-  background:
-    linear-gradient(180deg, rgba(245, 248, 243, 0.98) 0%, rgba(252, 247, 241, 0.88) 100%);
-}
-
-.metric-card span {
-  color: #7d7466;
-}
-
-.metric-card strong,
-.scale-list-page__hero-panel strong {
-  display: block;
-  margin-top: 0.65rem;
-  font: 600 1.85rem/1.08 'Noto Serif SC', serif;
-  color: #2b332a;
-}
-
-.metric-card p {
-  margin: 0.7rem 0 0;
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.scale-list-page__hero-panel {
-  position: relative;
-  overflow: hidden;
-  padding: 1.6rem;
-  background:
-    radial-gradient(circle at top right, rgba(97, 122, 105, 0.18), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(240, 246, 238, 0.88) 100%);
-}
-
-.scale-list-page__hero-panel-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-}
-
-.scale-list-page__panel-icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: rgba(97, 122, 105, 0.12);
-  color: #5f7664;
-}
-
-.scale-list-page__hero-panel p {
-  margin: 0.85rem 0 0;
-  color: #666156;
-}
-
-.scale-list-page__panel-note {
-  margin-top: 1.35rem;
-  padding: 1rem 1.05rem;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(44, 50, 40, 0.05);
-}
-
-.scale-list-page__panel-note span {
-  display: inline-flex;
-  margin-bottom: 0.45rem;
-  font: 800 0.7rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #6f886f;
-}
-
-.scale-list-page__panel-note p {
+.scale-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #1e2821;
   margin: 0;
-  font-size: 0.85rem;
-}
-
-.scale-list-page__alert {
-  margin-top: 1rem;
-  padding: 1rem 1.1rem;
-  border-radius: 18px;
-  background: rgba(169, 84, 74, 0.08);
-  color: #994b43;
-  font-weight: 700;
-}
-
-.scale-list-page__status-panel {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 1rem;
-  align-items: center;
-  margin-top: 1.6rem;
-  padding: 1.4rem 1.5rem;
-}
-
-.scale-list-page__status-icon {
-  width: 54px;
-  height: 54px;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: rgba(97, 122, 105, 0.11);
-  color: #5d7564;
-}
-
-.scale-list-page__status-panel h2 {
-  font-size: 1.3rem;
-}
-
-.scale-list-page__status-panel p {
-  margin: 0.3rem 0 0;
-  color: var(--muted);
-}
-
-.scale-list-page__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.4rem;
-  margin-top: 1.7rem;
-}
-
-.scale-card {
-  position: relative;
-  overflow: hidden;
-  padding: 1.6rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.scale-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 36px rgba(70, 60, 50, 0.1);
-}
-
-.scale-card__glow {
-  position: absolute;
-  inset: auto -2rem -3rem auto;
-  width: 8rem;
-  height: 8rem;
-  border-radius: 999px;
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.scale-card--sage .scale-card__glow {
-  background: radial-gradient(circle, rgba(125, 154, 126, 0.24), transparent 72%);
-}
-
-.scale-card--amber .scale-card__glow {
-  background: radial-gradient(circle, rgba(213, 176, 115, 0.24), transparent 72%);
-}
-
-.scale-card__topline {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: start;
-}
-
-.scale-card__identity {
-  display: flex;
-  gap: 0.95rem;
-  align-items: center;
-}
-
-.scale-card__icon {
-  width: 3.4rem;
-  height: 3.4rem;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-}
-
-.scale-card--sage .scale-card__icon {
-  background: rgba(97, 122, 105, 0.13);
-  color: #5d7765;
-}
-
-.scale-card--amber .scale-card__icon {
-  background: rgba(193, 150, 83, 0.14);
-  color: #b07c2e;
-}
-
-.scale-card__badge,
-.info-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.5rem 0.8rem;
-  border-radius: 999px;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.scale-card__badge {
-  background: rgba(255, 255, 255, 0.9);
-  color: #63745b;
-  border: 1px solid rgba(33, 39, 31, 0.05);
-}
-
-.scale-card h2 {
-  margin-top: 0.32rem;
-  font-size: 1.72rem;
   line-height: 1.2;
 }
 
-.scale-card__desc {
-  margin: 1rem 0 0;
-  color: #666055;
-}
-
-.scale-card__chips {
+.scale-tags {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-  margin-top: 1rem;
+  gap: 0.8rem;
 }
 
-.info-chip {
-  background: rgba(247, 244, 238, 0.92);
-  color: #6e695f;
+.minimal-tag {
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  font-size: 0.8rem;
+  color: #6a7c70;
+  padding: 0.3rem 0;
 }
 
-.scale-card__meta {
-  display: grid;
-  gap: 0.95rem;
-  margin: 1.2rem 0 0;
-}
-
-.scale-card__meta div {
-  padding: 1rem 1.05rem;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.64);
-}
-
-.scale-card__meta dt {
-  color: #7b7266;
-}
-
-.scale-card__meta dd {
-  margin: 0.45rem 0 0;
-  color: #2a2f28;
-}
-
-.scale-card__footer {
+/* 中间描述区 */
+.row-center {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  margin-top: 1.25rem;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.scale-card__footnote span {
-  display: block;
-  font: 600 0.85rem/1.65 'Manrope', sans-serif;
-  color: #70695f;
+.scale-desc {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  color: #4a5c51;
+  line-height: 1.8;
+  margin: 0;
 }
 
-.scale-card__footer button {
-  display: inline-flex;
-  gap: 0.45rem;
-  align-items: center;
-  min-height: 3rem;
-  padding: 0 1.1rem;
-  border: 1px solid rgba(44, 50, 40, 0.06);
-  border-radius: 999px;
-  background: linear-gradient(135deg, #6c8473, #526a58);
-  color: #fffdf8;
-  font: 800 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.scale-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 1rem;
+  border-left: 2px solid rgba(130, 150, 138, 0.2);
+}
+
+.scale-notes p {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #7b8c80;
+  margin: 0;
+}
+
+.scale-notes strong {
+  color: #5c6b60;
+  font-weight: 600;
+}
+
+/* 右侧操作区 */
+.start-btn {
+  background: transparent;
+  border: 1px solid rgba(42, 54, 46, 0.2);
+  color: #2a362e;
+  padding: 1.2rem 2.5rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
 }
 
-.scale-card__footer button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 24px rgba(82, 106, 88, 0.22);
+.scale-row:hover .start-btn {
+  background: #2a362e;
+  border-color: #2a362e;
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
 }
 
-@media (max-width: 1100px) {
-  .scale-list-page__hero,
-  .scale-list-page__grid {
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.scale-row:hover .arrow {
+  transform: translateX(4px);
+}
+
+/* 状态提示 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 响应式适配 */
+@media (max-width: 1024px) {
+  .row-content {
     grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+
+  .row-watermark {
+    font-size: 8rem;
+    top: 0;
+  }
+
+  .scale-row {
+    padding: 3rem 1.5rem;
+  }
+
+  .scale-row:first-child {
+    padding-top: 3rem;
+  }
+
+  .start-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 
-@media (max-width: 760px) {
-  .scale-list-page__hero-copy,
-  .scale-list-page__hero-panel,
-  .scale-card {
-    padding: 1.35rem;
+@media (max-width: 768px) {
+  .editorial-scale-page {
+    padding: 2rem 1rem 4rem;
   }
 
-  .scale-list-page__hero-metrics {
-    grid-template-columns: 1fr;
-  }
-
-  .scale-card__topline,
-  .scale-card__footer {
+  .hero-stats {
+    gap: 1rem;
     flex-direction: column;
-    align-items: start;
+    align-items: flex-start;
+  }
+
+  .stat-divider {
+    display: none;
   }
 }
 </style>
