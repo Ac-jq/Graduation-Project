@@ -46,6 +46,10 @@ function syncForm(data: AdminScale): void {
   }))
 }
 
+function resolveStatusText(status?: string): string {
+  return status === 'ACTIVE' ? '启用中' : status === 'INACTIVE' ? '已停用' : status || '未标记'
+}
+
 async function loadScaleDetail(): Promise<void> {
   if (!scaleId.value) {
     scaleDetail.value = null
@@ -116,52 +120,99 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-scale-detail-page">
-    <div class="page-shell">
-      <header class="hero-copy">
-        <p class="eyebrow">量表详情</p>
-        <h1>{{ scaleDetail ? '编辑量表' : '新增量表' }}</h1>
+  <section class="admin-editorial-page">
+    <div class="admin-editorial-shell">
+      <header class="admin-editorial-hero">
+        <div class="admin-editorial-copy">
+          <p class="admin-editorial-eyebrow">量表详情</p>
+          <h1 class="admin-editorial-title">{{ scaleDetail ? '编辑量表' : '新增量表' }}</h1>
+          <p class="admin-editorial-lead">表单字段、保存动作和启停逻辑保持不变，界面只改成更克制、更接近学生端的编辑体验。</p>
+        </div>
+        <div class="admin-editorial-hero-side">
+          <article class="admin-editorial-stat">
+            <p class="admin-editorial-label">当前状态</p>
+            <strong>{{ resolveStatusText(scaleDetail?.status) }}</strong>
+            <p class="admin-editorial-lead">{{ scaleDetail?.name || '新量表尚未保存' }}</p>
+          </article>
+        </div>
       </header>
 
-      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
 
-      <section class="glass-panel panel">
-        <div class="form-grid">
-          <label><span>编码</span><input v-model="form.code" type="text"></label>
-          <label><span>名称</span><input v-model="form.name" type="text"></label>
-          <label class="wide"><span>描述</span><input v-model="form.description" type="text"></label>
-          <label class="wide"><span>引导语</span><textarea v-model="form.introduction" rows="4" /></label>
-          <label><span>分页大小</span><input v-model.number="form.pageSize" type="number"></label>
-          <label><span>低阈值</span><input v-model.number="form.lowThreshold" type="number"></label>
-          <label><span>中阈值</span><input v-model.number="form.mediumThreshold" type="number"></label>
-          <label><span>高阈值</span><input v-model.number="form.highThreshold" type="number"></label>
-        </div>
-
-        <article class="question-panel">
-          <h3>题目结构概览</h3>
-          <div v-if="form.questions.length" class="question-stack">
-            <div v-for="question in form.questions" :key="question.questionNo" class="question-card">
-              <p>Q{{ question.questionNo }} · {{ question.content }}</p>
-              <small>选项 {{ question.options.length }} · requiredFlag {{ question.requiredFlag }}</small>
-            </div>
+      <div class="admin-editorial-grid">
+        <section class="admin-editorial-panel admin-editorial-panel--mesh">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">基础配置</p>
+            <h2>编辑量表元信息与阈值</h2>
           </div>
-          <p v-else class="state-text">当前量表没有题目数据。</p>
-        </article>
 
-        <div class="action-row">
-          <button class="primary-button" type="button" :disabled="saving" @click="saveScale">保存量表</button>
-          <button v-if="scaleDetail" class="ghost-button" type="button" :disabled="switchingStatus" @click="toggleScaleStatus">
-            {{ scaleDetail.status === 'ACTIVE' ? 'Deactivate scale' : 'Activate scale' }}
-          </button>
-        </div>
-      </section>
+          <div class="admin-editorial-form">
+            <label class="admin-editorial-field">
+              <span>编码</span>
+              <input v-model="form.code" type="text">
+            </label>
+            <label class="admin-editorial-field">
+              <span>名称</span>
+              <input v-model="form.name" type="text">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>描述</span>
+              <input v-model="form.description" type="text">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>引导语</span>
+              <textarea v-model="form.introduction" rows="4" />
+            </label>
+            <label class="admin-editorial-field">
+              <span>分页大小</span>
+              <input v-model.number="form.pageSize" type="number">
+            </label>
+            <label class="admin-editorial-field">
+              <span>低阈值</span>
+              <input v-model.number="form.lowThreshold" type="number">
+            </label>
+            <label class="admin-editorial-field">
+              <span>中阈值</span>
+              <input v-model.number="form.mediumThreshold" type="number">
+            </label>
+            <label class="admin-editorial-field">
+              <span>高阈值</span>
+              <input v-model.number="form.highThreshold" type="number">
+            </label>
+          </div>
+
+          <div class="admin-editorial-actions" style="margin-top: 1rem;">
+            <button class="admin-editorial-button" type="button" :disabled="saving" @click="saveScale">保存量表</button>
+            <button v-if="scaleDetail" class="admin-editorial-ghost" type="button" :disabled="switchingStatus" @click="toggleScaleStatus">
+              {{ scaleDetail.status === 'ACTIVE' ? '停用量表' : '启用量表' }}
+            </button>
+          </div>
+        </section>
+
+        <section class="admin-editorial-panel">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">结构概览</p>
+            <h2>题目与选项数量快速预览</h2>
+          </div>
+
+          <div v-if="loading" class="admin-editorial-empty">正在读取量表详情…</div>
+          <div v-else-if="form.questions.length" class="admin-editorial-board">
+            <article v-for="question in form.questions" :key="question.questionNo" class="admin-editorial-card">
+              <p class="admin-editorial-code">题目 {{ question.questionNo }}</p>
+              <h3>{{ question.content }}</h3>
+              <div class="admin-editorial-meta">
+                <span>选项 {{ question.options.length }}</span>
+                <span>requiredFlag {{ question.requiredFlag }}</span>
+              </div>
+            </article>
+          </div>
+          <div v-else class="admin-editorial-empty">当前量表没有题目数据。</div>
+        </section>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-.admin-scale-detail-page{min-height:100vh;padding:44px 28px 72px;color:#272f27;background:linear-gradient(180deg,#f4efe6 0%,#f8f4ed 100%)}.page-shell{max-width:1320px;margin:0 auto}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px;margin-bottom:28px}.eyebrow,.form-grid span{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.question-panel h3{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.panel,.question-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.panel{padding:24px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.form-grid label{display:grid;gap:8px}.wide{grid-column:1/-1}input,textarea{width:100%;box-sizing:border-box;border:1px solid rgba(80,88,79,.16);background:rgba(255,255,255,.74);padding:14px 16px;font:500 .95rem/1.6 'Manrope',sans-serif;color:#272f27;outline:none;resize:vertical}.question-panel{margin-top:18px}.question-stack{display:grid;gap:12px;margin-top:12px}.question-card{padding:14px}.question-card p,.question-card small,.state-text,.error-text{font-family:'Manrope',sans-serif}.question-card p{margin:0;color:#272f27}.question-card small,.state-text{display:block;margin-top:8px;color:rgba(39,47,39,.62)}.action-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}.primary-button,.ghost-button{padding:12px 16px;font:700 .82rem/1 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.primary-button{border:none;background:linear-gradient(135deg,#253128 0%,#47564b 100%);color:#f8f5ef}.ghost-button{border:1px solid rgba(54,65,56,.2);background:rgba(255,255,255,.58);color:#272f27}.error-text{margin-bottom:16px;color:#a44f46}
-@media (max-width:980px){.admin-scale-detail-page{padding:28px 16px 46px}.form-grid{grid-template-columns:1fr}}
+@import './admin-editorial.css';
 </style>
-

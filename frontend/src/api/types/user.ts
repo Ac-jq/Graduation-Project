@@ -24,6 +24,10 @@ export interface UpdateStudentProfileRequest {
   emergencyPhone?: string | null
 }
 
+export interface AvatarUploadResponse {
+  avatarUrl: string
+}
+
 export interface CounselorStudentSummary {
   studentUserId: number
   studentName: string

@@ -9,21 +9,34 @@ const processing = ref(false)
 const errorMessage = ref('')
 const notifications = ref<NotificationItem[]>([])
 
+// 分页状态
+const currentPage = ref(1)
+const pageSize = 8
+
 const unreadCount = computed(() => notifications.value.filter((notification) => !notification.read).length)
 const latestNotification = computed(() => notifications.value[0] ?? null)
+const totalPages = computed(() => Math.max(1, Math.ceil(notifications.value.length / pageSize)))
+const pagedNotifications = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return notifications.value.slice(start, start + pageSize)
+})
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return '未记录'
-  }
+function formatFullDate(value: string | null): string {
+  if (!value) return '未记录'
+  const date = new Date(value)
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
 
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value))
+function formatDatePart(value: string | null): string {
+  if (!value) return '--/--'
+  const d = new Date(value)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formatTimePart(value: string | null): string {
+  if (!value) return '--:--'
+  const d = new Date(value)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 async function loadNotifications(): Promise<void> {
@@ -32,10 +45,25 @@ async function loadNotifications(): Promise<void> {
 
   try {
     notifications.value = await fetchNotificationsApi()
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -73,296 +101,570 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="notification-page">
-    <section class="notification-page__masthead">
-      <div class="notification-page__heading">
-        <p class="notification-page__eyebrow">Notification Center</p>
-        <h1 class="notification-page__title">Notification Center</h1>
-        <p class="notification-page__summary">
-          这里汇总系统推送给你的预约更新、测评结果提醒与聊天相关通知。已读动作会直接写回后端，不保留前端假状态。
-        </p>
+  <main class="dispatch-page">
+    <div class="page-container">
+
+      <header class="dispatch-header">
+        <div class="header-main">
+          <span class="header-tag">System Dispatch</span>
+          <h1 class="header-title">通知中心</h1>
+          <p class="header-desc">
+            这里按时间轴汇总了系统推送给你的测评结果提醒、预约状态更新等信件。你可以随时查阅，标记已读后，它们会像褪色的卷宗一样安静地留在底部。
+          </p>
+        </div>
+
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">信件总数</span>
+            <span class="stat-value">{{ loading ? '-' : notifications.length }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">待阅</span>
+            <span class="stat-value highlight">{{ loading ? '-' : unreadCount }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">最新送达</span>
+            <span class="stat-text">{{ latestNotification ? formatDatePart(latestNotification.createdAt) : '--' }}</span>
+          </div>
+        </div>
+      </header>
+
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在整理信件...</p>
       </div>
 
-      <aside class="notification-page__snapshot">
-        <p class="notification-page__label">Inbox Snapshot</p>
-        <dl>
-          <div>
-            <dt>Total</dt>
-            <dd>{{ notifications.length }}</dd>
-          </div>
-          <div>
-            <dt>Unread</dt>
-            <dd>{{ unreadCount }}</dd>
-          </div>
-          <div>
-            <dt>最新时间</dt>
-            <dd>{{ latestNotification ? formatDate(latestNotification.createdAt) : '暂无通知' }}</dd>
-          </div>
-        </dl>
-      </aside>
-    </section>
-
-    <section class="notification-page__toolbar">
-      <div class="notification-page__toolbar-copy">
-        <p>{{ unreadCount > 0 ? `当前还有 ${unreadCount} 条未读通知。` : '当前没有未读通知。' }}</p>
+      <div v-else-if="!notifications.length" class="empty-state">
+        <h2 class="empty-title">信箱是空的</h2>
+        <p class="empty-desc">当前没有任何系统通知或提醒记录。</p>
       </div>
-      <button class="notification-page__primary" type="button" :disabled="processing || unreadCount === 0" @click="markAllRead">
-        {{ processing ? '处理中...' : '全部标为已读' }}
-      </button>
-    </section>
 
-    <p v-if="errorMessage" class="notification-page__alert">{{ errorMessage }}</p>
+      <section v-else class="dispatch-list-section">
 
-    <section v-if="loading" class="notification-page__status-panel">
-      <p>正在加载通知...</p>
-    </section>
-
-    <section v-else-if="notifications.length" class="notification-page__list">
-      <article
-        v-for="notification in notifications"
-        :key="notification.notificationId"
-        class="notification-card"
-        :class="{ 'notification-card--unread': !notification.read }"
-      >
-        <header class="notification-card__header">
-          <div>
-            <p class="notification-card__serial">Notification #{{ notification.notificationId }}</p>
-            <h2>{{ notification.title }}</h2>
-          </div>
-          <span class="notification-card__state">
-            {{ notification.read ? '已读' : '未读' }}
+        <div class="list-toolbar">
+          <span class="toolbar-status">
+            {{ unreadCount > 0 ? `有 ${unreadCount} 封未读信件等待查阅` : '所有信件均已归档' }}
           </span>
-        </header>
-
-        <p class="notification-card__content">{{ notification.contentText }}</p>
-
-        <footer class="notification-card__footer">
-          <div class="notification-card__time-block">
-            <p>创建时间：{{ formatDate(notification.createdAt) }}</p>
-            <p>已读时间：{{ notification.read ? formatDate(notification.readAt) : '尚未阅读' }}</p>
-          </div>
           <button
-            v-if="!notification.read"
-            class="notification-page__ghost"
-            type="button"
-            :disabled="processing"
-            @click="markRead(notification.notificationId)"
+              v-if="unreadCount > 0"
+              class="action-link action-link--primary"
+              type="button"
+              :disabled="processing"
+              @click="markAllRead"
           >
-            标记为已读
+            {{ processing ? '处理中...' : '将全部标为已阅' }} <span class="arrow">→</span>
           </button>
-        </footer>
-      </article>
-    </section>
+        </div>
 
-    <section v-else class="notification-page__status-panel">
-      <p>当前没有通知记录。</p>
-    </section>
+        <div class="dispatch-stream">
+          <article
+              v-for="notification in pagedNotifications"
+              :key="notification.notificationId"
+              class="dispatch-row"
+              :class="{ 'is-unread': !notification.read }"
+          >
+            <div class="unread-indicator" aria-hidden="true"></div>
+
+            <div class="row-left">
+              <span class="huge-date">{{ formatDatePart(notification.createdAt) }}</span>
+              <span class="time-stamp">{{ formatTimePart(notification.createdAt) }}</span>
+            </div>
+
+            <div class="row-center">
+              <div class="center-topline">
+                <span class="serial-no">#{{ notification.notificationId }}</span>
+                <h3 class="subject-title">{{ notification.title }}</h3>
+              </div>
+              <p class="subject-content">{{ notification.contentText }}</p>
+            </div>
+
+            <div class="row-right">
+              <div v-if="notification.read" class="read-status">
+                <span class="status-label">已阅</span>
+                <span class="status-time">{{ formatFullDate(notification.readAt) }}</span>
+              </div>
+              <button
+                  v-else
+                  class="action-link"
+                  type="button"
+                  :disabled="processing"
+                  @click="markRead(notification.notificationId)"
+              >
+                标记已阅 <span class="arrow">→</span>
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+            <span class="arrow">←</span> 往前翻
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+            往后翻 <span class="arrow">→</span>
+          </button>
+        </nav>
+
+      </section>
+    </div>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.notification-page {
-  --paper: #f4efe5;
-  --ink: #201c18;
-  --muted: #6e665f;
-  --line: rgba(32, 28, 24, 0.12);
-  --glass: rgba(255, 251, 245, 0.68);
-  --accent: #6a8372;
+/* 全局极简白纸底色 */
+.dispatch-page {
   min-height: 100vh;
-  padding: 2rem;
-  color: var(--ink);
-  background:
-    radial-gradient(circle at top right, rgba(114, 136, 121, 0.18), transparent 26%),
-    radial-gradient(circle at left center, rgba(198, 186, 168, 0.22), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 38%),
-    var(--paper);
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 8rem;
+  box-sizing: border-box;
 }
 
-.notification-page__masthead {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
-  gap: 1.5rem;
-  align-items: end;
-  padding-bottom: 1.4rem;
-  border-bottom: 1px solid var(--line);
+.page-container {
+  max-width: 1060px;
+  margin: 0 auto;
 }
 
-.notification-page__eyebrow,
-.notification-page__label,
-.notification-page__snapshot dt,
-.notification-card__serial,
-.notification-card__state {
-  margin: 0;
-  font: 600 0.72rem/1.4 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.notification-page__title {
-  margin: 0.95rem 0 0;
-  font: 600 clamp(2.8rem, 5vw, 5.1rem)/0.98 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.notification-page__summary {
-  max-width: 46rem;
-  margin: 1rem 0 0;
-  color: var(--muted);
-  font: 400 1rem/1.9 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.notification-page__snapshot,
-.notification-page__toolbar,
-.notification-card,
-.notification-page__status-panel {
-  border: 1px solid var(--line);
-  background: var(--glass);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 22px 48px rgba(80, 70, 58, 0.08);
-}
-
-.notification-page__snapshot {
-  padding: 1.2rem;
-}
-
-.notification-page__snapshot dl {
-  display: grid;
-  gap: 0.9rem;
-  margin: 1rem 0 0;
-}
-
-.notification-page__snapshot dd {
-  margin: 0.35rem 0 0;
-  font: 600 1.04rem/1.45 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.notification-page__toolbar {
+/* 头部排版 */
+.dispatch-header {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  margin-top: 1.5rem;
-  padding: 1rem 1.2rem;
+  align-items: flex-end;
+  padding-bottom: 3rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.12);
+  gap: 4rem;
 }
 
-.notification-page__toolbar-copy p,
-.notification-card__content,
-.notification-card__time-block p,
-.notification-page__status-panel p {
-  margin: 0;
-  color: var(--muted);
-  font: 400 0.98rem/1.85 'Noto Serif SC', 'Source Han Serif SC', serif;
+.header-main {
+  max-width: 580px;
 }
 
-.notification-page__primary,
-.notification-page__ghost {
-  min-height: 3rem;
-  padding: 0 1.15rem;
-  font: 600 0.84rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
+.header-tag {
+  display: block;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
   text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  margin-bottom: 1rem;
 }
 
-.notification-page__primary {
+.header-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.05em;
+}
+
+.header-desc {
+  font-size: 1.05rem;
+  color: #6a7c70;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.header-stats {
+  display: flex;
+  gap: 3rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+.stat-value.highlight {
+  color: #5c6b60;
+}
+
+.stat-text {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #2a362e;
+  margin-top: 0.5rem;
+}
+
+/* 列表控制栏 */
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 0 1rem;
+}
+
+.toolbar-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1e2821;
+}
+
+.action-link {
+  background: transparent;
   border: none;
-  background: linear-gradient(135deg, #6b8473, #4f6656);
-  color: #faf6f0;
-  box-shadow: 0 18px 36px rgba(79, 102, 86, 0.24);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #5c6b60;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  transition: color 0.3s ease;
 }
 
-.notification-page__ghost {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.48);
-  color: var(--ink);
+.action-link:hover:not(:disabled) {
+  color: #1e2821;
 }
 
-.notification-page__primary:hover:not(:disabled),
-.notification-page__ghost:hover:not(:disabled),
-.notification-card:hover {
-  transform: translateY(-2px);
+.action-link--primary {
+  color: #2a362e;
 }
 
-.notification-page__primary:disabled,
-.notification-page__ghost:disabled {
-  opacity: 0.55;
+.action-link:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.notification-page__alert {
-  margin: 1.25rem 0 0;
-  color: #8d4747;
-  font: 600 0.9rem/1.6 'Manrope', sans-serif;
-}
-
-.notification-page__list {
-  display: grid;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.notification-card {
-  display: grid;
-  gap: 1rem;
-  padding: 1.25rem;
-  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.notification-card--unread {
-  border-color: rgba(106, 131, 114, 0.34);
-  background: linear-gradient(180deg, rgba(106, 131, 114, 0.1), rgba(255, 251, 245, 0.72));
-}
-
-.notification-card__header,
-.notification-card__footer {
+/* 信件流行排版 */
+.dispatch-stream {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
+  flex-direction: column;
 }
 
-.notification-card__header h2 {
-  margin: 0.65rem 0 0;
-  font: 600 1.45rem/1.34 'Noto Serif SC', 'Source Han Serif SC', serif;
-}
-
-.notification-card__state {
-  padding: 0.4rem 0.65rem;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.5);
-}
-
-.notification-card__footer {
-  padding-top: 1rem;
-  border-top: 1px solid var(--line);
-}
-
-.notification-card__time-block {
+.dispatch-row {
+  position: relative;
   display: grid;
-  gap: 0.3rem;
+  grid-template-columns: 140px minmax(0, 1fr) 140px;
+  gap: 3rem;
+  padding: 2.5rem 1.5rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  transition: background 0.4s ease;
 }
 
-.notification-page__status-panel {
-  margin-top: 1.5rem;
-  padding: 1.35rem;
+.dispatch-row:hover {
+  background: rgba(255, 255, 255, 0.6);
 }
 
-@media (max-width: 900px) {
-  .notification-page {
-    padding: 1rem;
+/* 已读状态的褪色效果 */
+.dispatch-row:not(.is-unread) {
+  opacity: 0.75;
+}
+.dispatch-row:not(.is-unread):hover {
+  opacity: 1;
+}
+
+/* 未读状态锚点修饰线 */
+.unread-indicator {
+  position: absolute;
+  left: 0;
+  top: 2.5rem;
+  bottom: 2.5rem;
+  width: 3px;
+  background: transparent;
+  transition: background 0.3s ease;
+}
+
+.is-unread .unread-indicator {
+  background: #2a362e;
+}
+
+/* 左侧：巨型日期 */
+.row-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.huge-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #8a9c90;
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+.is-unread .huge-date {
+  color: #2a362e;
+}
+
+.time-stamp {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #a3b0a7;
+  font-weight: 500;
+}
+
+.is-unread .time-stamp {
+  color: #5c6b60;
+}
+
+/* 中间：正文内容 */
+.row-center {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.center-topline {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.serial-no {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  color: #b5c2b9;
+}
+
+.subject-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: #5c6b60;
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.is-unread .subject-title {
+  font-weight: 600;
+  color: #1e2821;
+}
+
+.subject-content {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #7b8c80;
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.is-unread .subject-content {
+  color: #4a5c51;
+}
+
+/* 右侧：动作与状态 */
+.row-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding-top: 0.2rem;
+}
+
+.read-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+}
+
+.status-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+  border: 1px solid rgba(130, 150, 138, 0.3);
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+}
+
+.status-time {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.8rem;
+  color: #b5c2b9;
+  text-align: right;
+}
+
+/* 状态样式 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+/* 分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+/* 交互动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.action-link:hover:not(:disabled) .arrow,
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .dispatch-row {
+    grid-template-columns: 100px minmax(0, 1fr) 100px;
+    gap: 2rem;
   }
 
-  .notification-page__masthead,
-  .notification-page__toolbar,
-  .notification-card__header,
-  .notification-card__footer {
-    grid-template-columns: 1fr;
+  .huge-date {
+    font-size: 1.8rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .dispatch-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .header-stats {
+    flex-wrap: wrap;
+    gap: 2rem;
+  }
+
+  .dispatch-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 2rem 1.5rem;
+  }
+
+  .unread-indicator {
+    top: 2rem;
+    bottom: 2rem;
+  }
+
+  .row-left {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.8rem;
+  }
+
+  .huge-date {
+    font-size: 1.5rem;
+  }
+
+  .row-right {
+    align-items: flex-start;
+    margin-top: 1rem;
+  }
+
+  .read-status {
+    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
   }
 }
 </style>
-

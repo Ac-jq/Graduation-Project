@@ -34,6 +34,13 @@ function syncForm(data: AdminResourceListItem): void {
   form.tagIds = data.tags.map((tag) => tag.tagId)
 }
 
+function resolveStatusText(status?: string): string {
+  if (status === 'PUBLISHED') return '已发布'
+  if (status === 'OFFLINE') return '已下线'
+  if (status === 'DRAFT') return '草稿'
+  return status || '未标记'
+}
+
 async function loadMeta(): Promise<void> {
   const [categoryList, tagList] = await Promise.all([
     fetchAdminResourceCategoriesApi(),
@@ -117,45 +124,107 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-resource-detail-page">
-    <div class="page-shell">
-      <header class="hero-copy">
-        <p class="eyebrow">资源详情</p>
-        <h1>{{ resourceDetail ? '编辑资源' : '新增资源' }}</h1>
+  <section class="admin-editorial-page">
+    <div class="admin-editorial-shell">
+      <header class="admin-editorial-hero">
+        <div class="admin-editorial-copy">
+          <p class="admin-editorial-eyebrow">资源详情</p>
+          <h1 class="admin-editorial-title">{{ resourceDetail ? '编辑资源' : '新增资源' }}</h1>
+          <p class="admin-editorial-lead">资源保存、发布和下线逻辑保持不变，界面只改成更克制、更接近学生端的编辑体验。</p>
+        </div>
+        <div class="admin-editorial-hero-side">
+          <article class="admin-editorial-stat">
+            <p class="admin-editorial-label">当前状态</p>
+            <strong>{{ resolveStatusText(resourceDetail?.status) }}</strong>
+            <p class="admin-editorial-lead">{{ resourceDetail?.title || '新资源尚未保存' }}</p>
+          </article>
+        </div>
       </header>
 
-      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
 
-      <section class="glass-panel panel">
-        <div class="form-grid">
-          <label class="wide"><span>标题</span><input v-model="form.title" type="text"></label>
-          <label class="wide"><span>摘要</span><textarea v-model="form.summaryText" rows="4" /></label>
-          <label><span>资源类型</span><input v-model="form.resourceType" type="text"></label>
-          <label><span>分类 ID</span><input v-model.number="form.categoryId" type="number"></label>
-          <label class="wide"><span>内容链接</span><input v-model="form.contentUrl" type="url"></label>
-          <label class="wide"><span>封面链接</span><input v-model="form.coverUrl" type="url"></label>
-          <label class="wide"><span>标签 ID 列表（逗号分隔，仅展示当前值）</span><input :value="(form.tagIds || []).join(', ')" @input="form.tagIds = String(($event.target as HTMLInputElement).value).split(',').map((item) => Number(item.trim())).filter((item) => Number.isFinite(item) && item > 0)"></label>
-        </div>
+      <div class="admin-editorial-grid">
+        <section class="admin-editorial-panel admin-editorial-panel--mesh">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">资源表单</p>
+            <h2>编辑基础信息与链接</h2>
+          </div>
 
-        <div class="meta-grid">
-          <article class="meta-card"><h3>可选分类</h3><p v-for="category in categories" :key="category.categoryId">#{{ category.categoryId }} {{ category.name }}</p></article>
-          <article class="meta-card"><h3>可选标签</h3><p v-for="tag in tags" :key="tag.tagId">#{{ tag.tagId }} {{ tag.name }}</p></article>
-        </div>
+          <div class="admin-editorial-form">
+            <label class="admin-editorial-field wide">
+              <span>标题</span>
+              <input v-model="form.title" type="text">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>摘要</span>
+              <textarea v-model="form.summaryText" rows="4" />
+            </label>
+            <label class="admin-editorial-field">
+              <span>资源类型</span>
+              <input v-model="form.resourceType" type="text">
+            </label>
+            <label class="admin-editorial-field">
+              <span>分类 ID</span>
+              <input v-model.number="form.categoryId" type="number">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>内容链接</span>
+              <input v-model="form.contentUrl" type="url">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>封面链接</span>
+              <input v-model="form.coverUrl" type="url">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>标签 ID 列表</span>
+              <input
+                :value="(form.tagIds || []).join(', ')"
+                @input="form.tagIds = String(($event.target as HTMLInputElement).value).split(',').map((item) => Number(item.trim())).filter((item) => Number.isFinite(item) && item > 0)"
+              >
+            </label>
+          </div>
 
-        <div class="action-row">
-          <button class="primary-button" type="button" :disabled="saving" @click="saveResource">保存资源</button>
-          <button v-if="resourceDetail" class="ghost-button" type="button" :disabled="switchingStatus" @click="toggleResourceStatus">
-            {{ resourceDetail.status === 'PUBLISHED' ? '下线资源' : '发布资源' }}
-          </button>
-        </div>
-      </section>
+          <div class="admin-editorial-actions" style="margin-top: 1rem;">
+            <button class="admin-editorial-button" type="button" :disabled="saving" @click="saveResource">保存资源</button>
+            <button v-if="resourceDetail" class="admin-editorial-ghost" type="button" :disabled="switchingStatus" @click="toggleResourceStatus">
+              {{ resourceDetail.status === 'PUBLISHED' ? '下线资源' : '发布资源' }}
+            </button>
+          </div>
+        </section>
+
+        <section class="admin-editorial-panel">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">辅助参照</p>
+            <h2>当前可选分类与标签</h2>
+          </div>
+
+          <div v-if="loading" class="admin-editorial-empty">正在同步资源元数据…</div>
+          <div v-else class="admin-editorial-board">
+            <article class="admin-editorial-card">
+              <p class="admin-editorial-code">可选分类</p>
+              <div class="admin-editorial-stack">
+                <div v-for="category in categories" :key="category.categoryId" class="admin-editorial-meta">
+                  <span>#{{ category.categoryId }}</span>
+                  <span>{{ category.name }}</span>
+                </div>
+              </div>
+            </article>
+            <article class="admin-editorial-card">
+              <p class="admin-editorial-code">可选标签</p>
+              <div class="admin-editorial-stack">
+                <div v-for="tag in tags" :key="tag.tagId" class="admin-editorial-meta">
+                  <span>#{{ tag.tagId }}</span>
+                  <span>{{ tag.name }}</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-.admin-resource-detail-page{min-height:100vh;padding:44px 28px 72px;color:#272f27;background:linear-gradient(180deg,#f4efe6 0%,#f8f4ed 100%)}.page-shell{max-width:1320px;margin:0 auto}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px;margin-bottom:28px}.eyebrow,.form-grid span{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.meta-card h3{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.panel,.meta-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.panel{padding:24px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.form-grid label{display:grid;gap:8px}.wide{grid-column:1/-1}input,textarea{width:100%;box-sizing:border-box;border:1px solid rgba(80,88,79,.16);background:rgba(255,255,255,.74);padding:14px 16px;font:500 .95rem/1.6 'Manrope',sans-serif;color:#272f27;outline:none;resize:vertical}.meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}.meta-card{padding:16px}.meta-card p,.error-text{font:400 .92rem/1.8 'Manrope',sans-serif;color:rgba(39,47,39,.68)}.action-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}.primary-button,.ghost-button{padding:12px 16px;font:700 .82rem/1 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.primary-button{border:none;background:linear-gradient(135deg,#253128 0%,#47564b 100%);color:#f8f5ef}.ghost-button{border:1px solid rgba(54,65,56,.2);background:rgba(255,255,255,.58);color:#272f27}.error-text{margin-bottom:16px;color:#a44f46}
-@media (max-width:980px){.admin-resource-detail-page{padding:28px 16px 46px}.form-grid,.meta-grid{grid-template-columns:1fr}}
+@import './admin-editorial.css';
 </style>
-

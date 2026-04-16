@@ -11,10 +11,17 @@ const errorMessage = ref('')
 const categories = ref<ResourceCategory[]>([])
 const tags = ref<ResourceTag[]>([])
 const resources = ref<ResourceSummary[]>([])
+const currentPage = ref(1)
+const pageSize = 6
 const filters = reactive<ResourceQuery>({
   categoryId: undefined,
   tagId: undefined,
   keyword: ''
+})
+const totalPages = computed(() => Math.max(1, Math.ceil(resources.value.length / pageSize)))
+const pagedResources = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return resources.value.slice(start, start + pageSize)
 })
 
 const selectedCategoryName = computed(() =>
@@ -62,10 +69,25 @@ async function loadResources(): Promise<void> {
       ...filters,
       keyword: filters.keyword?.trim() || undefined
     })
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -202,7 +224,7 @@ onMounted(() => {
 
         <div v-else class="resource-grid">
           <article
-              v-for="resource in resources"
+              v-for="resource in pagedResources"
               :key="resource.resourceId"
               class="media-block"
               @click="openResource(resource.resourceId)"
@@ -237,6 +259,28 @@ onMounted(() => {
             </div>
           </article>
         </div>
+
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button
+              class="page-btn"
+              :disabled="currentPage <= 1"
+              @click="prevPage"
+          >
+            <span class="arrow">←</span> 上一页
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button
+              class="page-btn"
+              :disabled="currentPage >= totalPages"
+              @click="nextPage"
+          >
+            下一页 <span class="arrow">→</span>
+          </button>
+        </nav>
 
       </section>
     </div>
@@ -678,5 +722,59 @@ onMounted(() => {
   .category-item.is-active {
     border-bottom-color: #2a362e;
   }
+}
+
+/* 优雅的分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
 }
 </style>

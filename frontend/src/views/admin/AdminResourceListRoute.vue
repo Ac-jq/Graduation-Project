@@ -14,6 +14,13 @@ const filters = reactive<AdminResourceQuery>({
   keyword: ''
 })
 
+function resolveStatusText(status?: string): string {
+  if (status === 'PUBLISHED') return '已发布'
+  if (status === 'OFFLINE') return '已下线'
+  if (status === 'DRAFT') return '草稿'
+  return status || '未标记'
+}
+
 async function loadResources(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
@@ -46,40 +53,68 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-resource-page">
-    <div class="page-shell">
-      <header class="page-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">资源治理</p>
-          <h1>查看资源上下线状态、浏览热度与分类归属，并进入单条资源编辑页。</h1>
+  <section class="admin-editorial-page">
+    <div class="admin-editorial-shell">
+      <header class="admin-editorial-hero">
+        <div class="admin-editorial-copy">
+          <p class="admin-editorial-eyebrow">资源治理</p>
+          <h1 class="admin-editorial-title">统一查看资源状态、分类归属与热度变化，再进入单条资源页细化维护。</h1>
+          <p class="admin-editorial-lead">保留原有查询与跳转逻辑，只重构可读性、层级和留白，让管理员端与学生端维持一致的阅读气质。</p>
         </div>
-        <div class="hero-actions">
-          <button class="ghost-button" type="button" @click="openMetaCenter">分类标签中心</button>
-          <button class="primary-button" type="button" @click="openResourceDetail()">新增资源</button>
+        <div class="admin-editorial-hero-side">
+          <article class="admin-editorial-stat">
+            <p class="admin-editorial-label">当前条目</p>
+            <strong>{{ resources.length }}</strong>
+            <p class="admin-editorial-lead">显示符合筛选条件的资源总量。</p>
+          </article>
+          <div class="admin-editorial-actions">
+            <button class="admin-editorial-ghost" type="button" @click="openMetaCenter">分类标签中心</button>
+            <button class="admin-editorial-button" type="button" @click="openResourceDetail()">新增资源</button>
+          </div>
         </div>
       </header>
 
-      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
 
-      <section class="glass-panel panel">
-        <div class="filter-grid">
-          <label><span>状态</span><input v-model="filters.status" type="text" placeholder="已发布 / 草稿 / 已下线"></label>
-          <label class="filter-wide"><span>关键词</span><input v-model="filters.keyword" type="text" placeholder="标题或摘要关键词"></label>
+      <section class="admin-editorial-panel">
+        <div class="admin-editorial-section">
+          <p class="admin-editorial-kicker">筛选条件</p>
+          <h2>按状态或关键词聚焦资源集合</h2>
         </div>
-        <button class="ghost-button" type="button" @click="loadResources">刷新资源列表</button>
 
-        <p v-if="loading" class="state-text">正在同步资源列表...</p>
-        <div v-else class="resource-stack">
-          <article v-for="resource in resources" :key="resource.resourceId" class="resource-card" @click="openResourceDetail(resource.resourceId)">
-            <div class="resource-topline">
+        <div class="admin-editorial-form">
+          <label class="admin-editorial-field">
+            <span>状态</span>
+            <input v-model="filters.status" type="text" placeholder="PUBLISHED / DRAFT / OFFLINE">
+          </label>
+          <label class="admin-editorial-field wide">
+            <span>关键词</span>
+            <input v-model="filters.keyword" type="text" placeholder="标题或摘要关键词">
+          </label>
+        </div>
+
+        <div class="admin-editorial-actions" style="margin-top: 1rem;">
+          <button class="admin-editorial-ghost" type="button" @click="loadResources">刷新资源列表</button>
+        </div>
+
+        <div v-if="loading" class="admin-editorial-empty">正在同步资源列表…</div>
+        <div v-else class="admin-editorial-board" style="margin-top: 1rem;">
+          <article
+            v-for="resource in resources"
+            :key="resource.resourceId"
+            class="admin-editorial-card"
+            style="cursor: pointer;"
+            @click="openResourceDetail(resource.resourceId)"
+          >
+            <div class="admin-editorial-card__topline">
               <div>
-                <p class="resource-code">资源 #{{ resource.resourceId }}</p>
+                <p class="admin-editorial-code">资源 #{{ resource.resourceId }}</p>
                 <h3>{{ resource.title }}</h3>
               </div>
-              <span class="status-pill">{{ resource.status }}</span>
+              <span class="admin-editorial-status">{{ resolveStatusText(resource.status) }}</span>
             </div>
-            <p class="resource-summary">{{ resource.summaryText }}</p>
-            <div class="resource-meta">
+            <p>{{ resource.summaryText }}</p>
+            <div class="admin-editorial-meta">
               <span>{{ resource.categoryName }}</span>
               <span>{{ resource.resourceType }}</span>
               <span>浏览 {{ resource.viewCount }}</span>
@@ -93,8 +128,5 @@ onMounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-.admin-resource-page{min-height:100vh;padding:44px 28px 72px;color:#272f27;background:linear-gradient(180deg,#f4efe6 0%,#f8f4ed 100%)}.page-shell{max-width:1320px;margin:0 auto}.page-hero{display:flex;justify-content:space-between;align-items:end;gap:18px;margin-bottom:28px}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px;flex:1}.eyebrow,.resource-code,.filter-grid span{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.resource-card h3{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.hero-actions{display:flex;gap:12px;flex-wrap:wrap}.primary-button,.ghost-button{padding:12px 16px;font:700 .82rem/1 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.primary-button{border:none;background:linear-gradient(135deg,#253128 0%,#47564b 100%);color:#f8f5ef}.ghost-button{border:1px solid rgba(54,65,56,.2);background:rgba(255,255,255,.58);color:#272f27}.panel,.resource-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.panel{padding:24px}.filter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:16px}.filter-grid label{display:grid;gap:8px}.filter-wide{grid-column:1/-1}input{width:100%;box-sizing:border-box;border:1px solid rgba(80,88,79,.16);background:rgba(255,255,255,.74);padding:14px 16px;font:500 .95rem/1.4 'Manrope',sans-serif;color:#272f27;outline:none}.resource-stack{display:grid;gap:16px;margin-top:16px}.resource-card{padding:18px;cursor:pointer;transition:transform .28s ease,box-shadow .28s ease}.resource-card:hover{transform:translateY(-3px);box-shadow:0 28px 54px rgba(86,106,92,.12)}.resource-topline{display:flex;justify-content:space-between;gap:16px;align-items:start}.status-pill{border:1px solid rgba(97,111,98,.15);background:rgba(242,244,237,.94);padding:8px 12px;font:700 .74rem/1 'Manrope',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#66735f}.resource-summary,.resource-meta,.state-text,.error-text{font-family:'Manrope',sans-serif}.resource-summary{margin:14px 0 0;font-size:.96rem;line-height:1.84;color:rgba(39,47,39,.72)}.resource-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;font-size:.84rem;color:rgba(39,47,39,.6)}.error-text{margin-bottom:16px;color:#a44f46}
-@media (max-width:980px){.admin-resource-page{padding:28px 16px 46px}.page-hero,.filter-grid{display:grid}.page-hero{grid-template-columns:1fr}}
+@import './admin-editorial.css';
 </style>
-

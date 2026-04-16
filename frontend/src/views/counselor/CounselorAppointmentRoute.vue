@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { acceptAppointmentApi, fetchCounselorAppointmentsApi, rejectAppointmentApi } from '@/api/appointment'
 import type { Appointment, AppointmentActionRequest } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
+
+type AppointmentTone = 'pending' | 'accepted' | 'active' | 'done' | 'muted'
 
 const router = useRouter()
 const loading = ref(false)
@@ -11,6 +13,53 @@ const processing = ref(false)
 const errorMessage = ref('')
 const appointments = ref<Appointment[]>([])
 const actionForm = reactive<Record<number, AppointmentActionRequest>>({})
+
+// 分页状态
+const currentPage = ref(1)
+const pageSize = 6
+
+const totalPages = computed(() => Math.max(1, Math.ceil(appointments.value.length / pageSize)))
+const pagedAppointments = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return appointments.value.slice(start, start + pageSize)
+})
+
+const pendingCount = computed(() => appointments.value.filter(a => a.status === 'PENDING').length)
+
+// 日期时间格式化
+function getDayMonth(value: string): string {
+  const d = new Date(value)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function getTimeSpan(start: string, end: string): string {
+  const s = new Date(start)
+  const e = new Date(end)
+  const formatTime = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return `${formatTime(s)} - ${formatTime(e)}`
+}
+
+function resolveStatusLabel(status: string): string {
+  switch (status) {
+    case 'PENDING': return '待处理'
+    case 'ACCEPTED': return '已受理'
+    case 'IN_PROGRESS': return '沟通中'
+    case 'COMPLETED': return '已结束'
+    case 'REJECTED': return '已婉拒'
+    case 'CANCELLED': return '已取消'
+    default: return status
+  }
+}
+
+function resolveStatusTone(status: string): AppointmentTone {
+  switch (status) {
+    case 'ACCEPTED': return 'accepted'
+    case 'IN_PROGRESS': return 'active'
+    case 'COMPLETED': return 'done'
+    case 'PENDING': return 'pending'
+    default: return 'muted'
+  }
+}
 
 async function loadAppointments(): Promise<void> {
   loading.value = true
@@ -21,10 +70,25 @@ async function loadAppointments(): Promise<void> {
     for (const appointment of appointments.value) {
       actionForm[appointment.appointmentId] ??= { resultMessage: appointment.resultMessage ?? '' }
     }
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -75,62 +139,645 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="c-appointment-page">
-    <div class="page-shell">
-      <header class="page-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">预约处理台</p>
-          <h1>处理学生的匿名预约请求，并为后续沟通写下明确的流转说明。</h1>
-          <p class="lead">列表中的预约、匿名名与时间段均来自真实接口返回。</p>
+  <main class="editorial-ledger-page">
+    <div class="page-container">
+
+      <header class="ledger-header">
+        <div class="header-main">
+          <span class="header-tag">Appointment Ledger</span>
+          <h1 class="huge-title">接诊台账</h1>
+          <p class="header-lead">
+            这里汇总了向您发起的匿名预约请求。您可以审阅学生的初访摘要，写下专业的处理建议，或直接推开沟通室的门。
+          </p>
         </div>
-        <div class="hero-metric">
-          <span>预约总数</span>
-          <strong>{{ appointments.length }}</strong>
+
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">总请求数</span>
+            <span class="stat-value">{{ loading ? '-' : appointments.length }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">待处理</span>
+            <span class="stat-value highlight">{{ loading ? '-' : pendingCount }}</span>
+          </div>
         </div>
       </header>
 
-      <p v-if="loading" class="state-text">正在同步预约池...</p>
-      <p v-else-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-      <p v-else-if="!appointments.length" class="state-text">当前没有待处理或历史预约。</p>
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
 
-      <div v-else class="appointment-stack">
-        <article v-for="appointment in appointments" :key="appointment.appointmentId" class="appointment-card">
-          <div class="appointment-topline">
-            <div>
-              <p class="appointment-code">预约 #{{ appointment.appointmentId }}</p>
-              <h2>{{ appointment.anonymousName }}</h2>
-            </div>
-            <span class="status-pill">{{ appointment.status }}</span>
-          </div>
-          <p class="issue-summary">{{ appointment.issueSummary }}</p>
-          <div class="appointment-meta">
-            <span>{{ new Date(appointment.startTime).toLocaleString('zh-CN') }} - {{ new Date(appointment.endTime).toLocaleString('zh-CN') }}</span>
-            <span>咨询师 {{ appointment.counselorName || `#${appointment.counselorUserId || '-'}` }}</span>
-          </div>
-          <textarea v-model="ensureActionModel(appointment.appointmentId).resultMessage" class="result-input" rows="3" placeholder="写给学生的处理说明或后续建议。" />
-          <div class="action-row">
-            <button
-              v-if="['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(appointment.status)"
-              class="ghost-button"
-              type="button"
-              @click="openChat(appointment.appointmentId)"
-            >
-              进入私密聊天室
-            </button>
-            <button class="ghost-button" type="button" :disabled="processing" @click="rejectAppointment(appointment.appointmentId)">拒绝</button>
-            <button class="primary-button" type="button" :disabled="processing" @click="acceptAppointment(appointment.appointmentId)">接单</button>
-          </div>
-        </article>
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在翻阅接诊簿...</p>
       </div>
+
+      <div v-else-if="!appointments.length" class="empty-state">
+        <h2 class="empty-title">当前无请求</h2>
+        <p class="empty-desc">接诊台账目前为空。当有学生向您发起预约时，记录会出现在这里。</p>
+      </div>
+
+      <section v-else class="ledger-section">
+
+        <div class="list-toolbar">
+          <span class="toolbar-status">
+            当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页
+          </span>
+        </div>
+
+        <div class="ledger-stream">
+          <article
+              v-for="appointment in pagedAppointments"
+              :key="appointment.appointmentId"
+              class="ledger-entry"
+              :class="`entry--${resolveStatusTone(appointment.status)}`"
+          >
+            <div class="entry-time-col">
+              <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
+              <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
+              <span class="status-pill">{{ resolveStatusLabel(appointment.status) }}</span>
+            </div>
+
+            <div class="entry-content-col">
+              <div class="entry-topline">
+                <h3 class="student-name">{{ appointment.anonymousName || '匿名来访者' }}</h3>
+                <span class="entry-id">Req #{{ appointment.appointmentId }}</span>
+              </div>
+
+              <blockquote class="issue-quote">
+                “{{ appointment.issueSummary || '该生未留下具体的摘要描述...' }}”
+              </blockquote>
+
+              <div class="counselor-reply-area">
+                <label class="reply-label">写给学生的回复与跟进建议：</label>
+                <textarea
+                    v-model="ensureActionModel(appointment.appointmentId).resultMessage"
+                    class="sleek-textarea"
+                    rows="2"
+                    placeholder="例如：已收到您的预约，请在约定时间准时进入聊天室..."
+                />
+              </div>
+
+              <div class="entry-actions">
+                <div class="action-group">
+                  <button
+                      v-if="appointment.status === 'PENDING'"
+                      class="action-btn action-btn--primary"
+                      type="button"
+                      :disabled="processing"
+                      @click="acceptAppointment(appointment.appointmentId)"
+                  >
+                    接单受理 <span class="arrow">→</span>
+                  </button>
+                  <button
+                      v-if="appointment.status === 'PENDING'"
+                      class="action-btn action-btn--danger"
+                      type="button"
+                      :disabled="processing"
+                      @click="rejectAppointment(appointment.appointmentId)"
+                  >
+                    婉拒预约
+                  </button>
+
+                  <button
+                      v-if="appointment.status !== 'PENDING' && !['CANCELLED', 'REJECTED'].includes(appointment.status)"
+                      class="action-btn"
+                      type="button"
+                      :disabled="processing"
+                      @click="acceptAppointment(appointment.appointmentId)"
+                  >
+                    更新回复留言
+                  </button>
+                </div>
+
+                <button
+                    v-if="['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(appointment.status)"
+                    class="action-link"
+                    type="button"
+                    @click="openChat(appointment.appointmentId)"
+                >
+                  进入私密聊天室 <span class="arrow">→</span>
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+            <span class="arrow">←</span> 往前翻
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+            往后翻 <span class="arrow">→</span>
+          </button>
+        </nav>
+
+      </section>
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.c-appointment-page{min-height:100vh;padding:44px 28px 72px;color:#283128;background:linear-gradient(180deg,#f5f0e5 0%,#f8f4ed 100%)}
-.page-shell{max-width:1240px;margin:0 auto}.page-hero{display:grid;grid-template-columns:minmax(0,1.35fr) 220px;gap:28px;align-items:end;margin-bottom:30px}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px}.eyebrow,.appointment-code{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.appointment-card h2{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.lead,.issue-summary,.appointment-meta,.result-input,.state-text,.error-text{font-family:'Manrope',sans-serif}.lead{margin:18px 0 0;line-height:1.84;color:rgba(40,49,40,.72)}.hero-metric,.appointment-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.hero-metric{padding:18px 20px}.hero-metric span{display:block;margin-bottom:8px;font:700 .78rem/1 'Manrope',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:rgba(68,74,66,.56)}.hero-metric strong{font:600 1.6rem/1 'Noto Serif SC',serif}.appointment-stack{display:grid;gap:18px}.appointment-card{padding:22px}.appointment-topline{display:flex;justify-content:space-between;gap:16px;align-items:start}.appointment-card h2{font-size:1.34rem;line-height:1.35}.status-pill{border:1px solid rgba(97,111,98,.15);background:rgba(242,244,237,.94);padding:8px 12px;font:700 .74rem/1 'Manrope',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#66735f}.issue-summary{margin:14px 0 0;font-size:.96rem;line-height:1.86;color:rgba(40,49,40,.7)}.appointment-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;font-size:.84rem;color:rgba(40,49,40,.58)}.result-input{width:100%;margin-top:16px;border:1px solid rgba(80,88,79,.16);background:rgba(255,255,255,.74);padding:14px 16px;resize:vertical;color:#283128;outline:none}.action-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:16px}.ghost-button,.primary-button{padding:12px 16px;font:700 .82rem/1 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.ghost-button{border:1px solid rgba(54,65,56,.2);background:rgba(255,255,255,.58);color:#283128}.primary-button{border:none;background:linear-gradient(135deg,#253128 0%,#47564b 100%);color:#f8f5ef}.error-text{color:#a44f46}
-@media (max-width:900px){.c-appointment-page{padding:28px 16px 46px}.page-hero{grid-template-columns:1fr}.appointment-topline,.action-row{flex-direction:column;align-items:start}}
+/* 全局极简白纸底色 */
+.editorial-ledger-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 8rem;
+  box-sizing: border-box;
+}
+
+.page-container {
+  max-width: 1060px;
+  margin: 0 auto;
+}
+
+/* 头部排版 */
+.ledger-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 3rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.12);
+  gap: 4rem;
+}
+
+.header-main {
+  max-width: 600px;
+}
+
+.header-tag {
+  display: block;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.huge-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.6rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.05em;
+}
+
+.header-lead {
+  font-size: 1.05rem;
+  color: #5c6b60;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.header-stats {
+  display: flex;
+  gap: 3rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+.stat-value.highlight {
+  color: #8c4a4a;
+}
+
+/* 控制栏 */
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 0 0.5rem;
+}
+
+.toolbar-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: #8a9c90;
+}
+
+/* 接诊流行排版 */
+.ledger-stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.ledger-entry {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 4rem;
+  padding: 3.5rem 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  transition: background 0.4s ease;
+}
+
+.ledger-entry:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* 左侧：巨型日期锚点 */
+.entry-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.huge-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 3.2rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #2a362e;
+  line-height: 1;
+  margin-bottom: 0.2rem;
+  transition: color 0.3s ease;
+}
+
+.time-span {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  font-weight: 500;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 1.2rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  border-radius: 100px;
+  background: rgba(130, 150, 138, 0.15);
+  color: #5c6b60;
+  transition: all 0.3s ease;
+}
+
+/* 状态色暗示 */
+.entry--pending .status-pill {
+  background: rgba(213, 176, 115, 0.18);
+  color: #9e7330;
+}
+
+.entry--accepted .huge-date, .entry--active .huge-date {
+  color: #3b4d40;
+}
+.entry--accepted .status-pill, .entry--active .status-pill {
+  background: #2a362e;
+  color: #ffffff;
+}
+
+.entry--done .huge-date {
+  color: #7b8c80;
+}
+
+.entry--muted .huge-date {
+  color: #b5c2b9;
+}
+
+/* 右侧内容区 */
+.entry-content-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.student-name {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0;
+}
+
+.entry-id {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.95rem;
+  color: #b5c2b9;
+}
+
+/* 引言样式的摘要 */
+.issue-quote {
+  margin: 0 0 2.5rem 0;
+  padding-left: 1.5rem;
+  border-left: 3px solid rgba(42, 54, 46, 0.15);
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #4a5c51;
+}
+
+/* 咨询师批注区 */
+.counselor-reply-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 2.5rem;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(130, 150, 138, 0.2);
+}
+
+.reply-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #5c6b60;
+}
+
+.sleek-textarea {
+  width: 100%;
+  border: none;
+  border-bottom: 1px dashed rgba(42, 54, 46, 0.2);
+  background: transparent;
+  padding: 0.5rem 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: #1e2821;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.3s ease;
+}
+
+.sleek-textarea::placeholder {
+  color: #b5c2b9;
+}
+
+.sleek-textarea:focus {
+  border-bottom-color: #2a362e;
+  border-bottom-style: solid;
+}
+
+/* 底部操作区 */
+.entry-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.action-group {
+  display: flex;
+  gap: 1rem;
+}
+
+.action-btn {
+  background: transparent;
+  border: 1px solid rgba(130, 150, 138, 0.4);
+  color: #2a362e;
+  padding: 0.8rem 1.6rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: #2a362e;
+}
+
+.action-btn--primary {
+  background: #2a362e;
+  border: none;
+  color: #ffffff;
+  box-shadow: 0 8px 16px rgba(42, 54, 46, 0.15);
+}
+
+.action-btn--primary:hover:not(:disabled) {
+  background: #1c2620;
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.25);
+}
+
+.action-btn--danger {
+  color: #8c4a4a;
+  border-color: rgba(140, 74, 74, 0.3);
+}
+
+.action-btn--danger:hover:not(:disabled) {
+  background: rgba(140, 74, 74, 0.05);
+  border-color: #8c4a4a;
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-link {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  transition: color 0.3s ease;
+}
+
+.action-link:hover {
+  color: #5c6b60;
+}
+
+/* 状态提示 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+/* 分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+/* 交互动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.action-link:hover .arrow,
+.action-btn:hover:not(:disabled) .arrow,
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .ledger-entry {
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 2.5rem;
+  }
+
+  .huge-date {
+    font-size: 2.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .ledger-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .header-stats {
+    flex-wrap: wrap;
+    gap: 2rem;
+  }
+
+  .ledger-entry {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 2.5rem 0;
+  }
+
+  .entry-time-col {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .huge-date {
+    font-size: 2.2rem;
+  }
+
+  .status-pill {
+    margin-top: 0;
+  }
+
+  .entry-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 </style>
-

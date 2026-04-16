@@ -85,10 +85,10 @@ function Ensure-Tag {
 
 function New-StandardOptions {
     @(
-        @{ optionCode = 'A'; content = 'Never';      score = 0; sortNo = 1 },
-        @{ optionCode = 'B'; content = 'Sometimes';  score = 1; sortNo = 2 },
-        @{ optionCode = 'C'; content = 'Often';      score = 2; sortNo = 3 },
-        @{ optionCode = 'D'; content = 'Almost daily'; score = 3; sortNo = 4 }
+        @{ optionCode = 'A'; content = '从不';      score = 0; sortNo = 1 },
+        @{ optionCode = 'B'; content = '偶尔';      score = 1; sortNo = 2 },
+        @{ optionCode = 'C'; content = '经常';      score = 2; sortNo = 3 },
+        @{ optionCode = 'D'; content = '几乎每天'; score = 3; sortNo = 4 }
     )
 }
 
@@ -190,45 +190,45 @@ function Ensure-Resource {
 
 $headers = Get-AdminHeaders
 
-$visualCategory = Ensure-Category -Headers $headers -Name 'Visual Grounding' -Description 'Image-based calming resources.' -SortNo 11
-$audioCategory = Ensure-Category -Headers $headers -Name 'Audio Relief' -Description 'Audio-guided breathing and low-stimulus listening resources.' -SortNo 12
-$rhythmCategory = Ensure-Category -Headers $headers -Name 'Rhythm Clips' -Description 'Short campus and pacing videos for rhythm recovery.' -SortNo 13
+$visualCategory = Ensure-Category -Headers $headers -Name '图像安抚资源' -Description '以图片为主的轻量安抚资源。' -SortNo 11
+$audioCategory = Ensure-Category -Headers $headers -Name '呼吸音频集' -Description '用于呼吸放松和低刺激陪伴聆听的音频资源。' -SortNo 12
+$rhythmCategory = Ensure-Category -Headers $headers -Name '节律观察短片' -Description '帮助恢复学习与生活节奏感的校园短片。' -SortNo 13
 
-$tagVisual = Ensure-Tag -Headers $headers -Name 'visual-grounding' -Description 'Short visual pause and sensory grounding.'
-$tagBreath = Ensure-Tag -Headers $headers -Name 'light-breathing' -Description 'Short breathing reset for tension and overload.'
-$tagSleep = Ensure-Tag -Headers $headers -Name 'sleep-buffer' -Description 'Low-stimulus support for wind-down and sleep transition.'
-$tagRhythm = Ensure-Tag -Headers $headers -Name 'rhythm-reset' -Description 'Helps restore pacing and focus rhythm.'
+$tagVisual = Ensure-Tag -Headers $headers -Name '图卡安抚' -Description '适合短时停留和视觉落地练习的图像标签。'
+$tagBreath = Ensure-Tag -Headers $headers -Name '轻缓呼吸' -Description '适合紧张、烦躁或切换状态时的短呼吸引导。'
+$tagSleep = Ensure-Tag -Headers $headers -Name '睡眠缓冲' -Description '适合睡前放松与过渡的低刺激陪伴内容。'
+$tagRhythm = Ensure-Tag -Headers $headers -Name '节律重整' -Description '帮助重新找回学习、休息和专注节奏。'
 
-$sleepScale = Ensure-Scale -Headers $headers -Code 'SLEEP6' -Name 'Sleep Recovery Scale' `
-    -Description 'A short self-check for sleep onset, night waking and morning recovery.' `
-    -Introduction 'Answer based on your recent week. This scale is for supportive self-observation only and is not a medical diagnosis.' `
+$sleepScale = Ensure-Scale -Headers $headers -Code 'SLEEP6' -Name '睡眠恢复感知量表' `
+    -Description '用于快速了解近一周入睡、夜间醒来与晨起恢复感受的辅助量表。' `
+    -Introduction '请根据最近一周的真实状态作答。本量表仅用于心理状态辅助评估，不作为医学诊断依据。' `
     -PageSize 3 -LowThreshold 0 -MediumThreshold 5 -HighThreshold 10 -Questions @(
-        (New-ScaleQuestion -No 1 -Content 'In the past week, did you often take a long time to fall asleep?'),
-        (New-ScaleQuestion -No 2 -Content 'In the past week, did you wake up repeatedly at night and struggle to fall asleep again?'),
-        (New-ScaleQuestion -No 3 -Content 'In the past week, did you wake up feeling unrefreshed or drained?'),
-        (New-ScaleQuestion -No 4 -Content 'In the past week, did racing thoughts make it hard to relax before sleep?'),
-        (New-ScaleQuestion -No 5 -Content 'In the past week, did worry about the next day make your nights more tense?'),
-        (New-ScaleQuestion -No 6 -Content 'In the past week, did sleep trouble affect your daytime focus or mood?')
+        (New-ScaleQuestion -No 1 -Content '最近一周，你是否经常需要很久才能入睡？'),
+        (New-ScaleQuestion -No 2 -Content '最近一周，你是否在夜间反复醒来且难以再次入睡？'),
+        (New-ScaleQuestion -No 3 -Content '最近一周，你早晨醒来时是否仍觉得疲惫或没有恢复感？'),
+        (New-ScaleQuestion -No 4 -Content '最近一周，你是否因为脑中想法停不下来而难以放松入睡？'),
+        (New-ScaleQuestion -No 5 -Content '最近一周，你是否因为担心第二天的事情而让夜晚更紧绷？'),
+        (New-ScaleQuestion -No 6 -Content '最近一周，睡眠困扰是否已经影响到你的白天专注或情绪状态？')
     )
 
-$stressScale = Ensure-Scale -Headers $headers -Code 'STRESS8' -Name 'Campus Stress Pulse Scale' `
-    -Description 'A short self-check for recent pressure load from study, pacing and interpersonal demands.' `
-    -Introduction 'Answer based on your recent two weeks. This scale is for supportive self-observation only and is not a medical diagnosis.' `
+$stressScale = Ensure-Scale -Headers $headers -Code 'STRESS8' -Name '校园压力脉搏量表' `
+    -Description '用于识别近期学习、人际与节奏安排带来的压力负荷变化。' `
+    -Introduction '请根据最近两周的真实状态作答。本量表仅用于心理状态辅助评估，不作为医学诊断依据。' `
     -PageSize 4 -LowThreshold 0 -MediumThreshold 6 -HighThreshold 12 -Questions @(
-        (New-ScaleQuestion -No 1 -Content 'In the past two weeks, did tasks feel piled up and hard to prioritize?'),
-        (New-ScaleQuestion -No 2 -Content 'In the past two weeks, did study demands keep you in a tense state?'),
-        (New-ScaleQuestion -No 3 -Content 'In the past two weeks, did interactions with classmates, teachers or family feel draining?'),
-        (New-ScaleQuestion -No 4 -Content 'In the past two weeks, did you feel constantly rushed and unable to rest?'),
-        (New-ScaleQuestion -No 5 -Content 'In the past two weeks, did pressure lead to avoidance, delay or loss of motivation?'),
-        (New-ScaleQuestion -No 6 -Content 'In the past two weeks, did you worry that you could not handle the next stretch of study or life?'),
-        (New-ScaleQuestion -No 7 -Content 'In the past two weeks, did small events easily amplify your mood or interrupt your focus?'),
-        (New-ScaleQuestion -No 8 -Content 'In the past two weeks, did you feel you needed support but found it hard to ask?')
+        (New-ScaleQuestion -No 1 -Content '最近两周，你是否觉得任务不断堆积，很难理清轻重缓急？'),
+        (New-ScaleQuestion -No 2 -Content '最近两周，学习要求是否让你持续处在紧绷状态？'),
+        (New-ScaleQuestion -No 3 -Content '最近两周，与同学、老师或家人的互动是否让你感到明显消耗？'),
+        (New-ScaleQuestion -No 4 -Content '最近两周，你是否总觉得自己在赶时间，几乎没有真正休息？'),
+        (New-ScaleQuestion -No 5 -Content '最近两周，压力是否让你出现拖延、逃避或动力下降？'),
+        (New-ScaleQuestion -No 6 -Content '最近两周，你是否担心自己难以应对接下来的学习或生活安排？'),
+        (New-ScaleQuestion -No 7 -Content '最近两周，小事是否也容易放大你的情绪波动，打断你的专注？'),
+        (New-ScaleQuestion -No 8 -Content '最近两周，你是否感觉自己需要支持，却又不容易开口求助？')
     )
 
 $resources = @(
     @{
-        Title        = 'Morning Grounding Card'
-        SummaryText  = 'A quiet visual card for short grounding pauses when the mind feels noisy.'
+        Title        = '晨光静观图卡'
+        SummaryText  = '适合在思绪嘈杂时短暂停留，通过画面让注意力慢慢落回当下。'
         ResourceType = 'IMAGE'
         ContentUrl   = "$staticBaseUrl/images/breathing-cover.jpg"
         CoverUrl     = "$staticBaseUrl/images/breathing-cover.jpg"
@@ -236,8 +236,8 @@ $resources = @(
         TagIds       = @([long]$tagVisual.tagId, [long]$tagBreath.tagId)
     },
     @{
-        Title        = 'Night Reset Card'
-        SummaryText  = 'A low-stimulus image for closing the day and shifting out of task mode.'
+        Title        = '夜色整理图卡'
+        SummaryText  = '适合睡前从任务状态切换出来，用更柔和的节奏结束一天。'
         ResourceType = 'IMAGE'
         ContentUrl   = "$staticBaseUrl/images/sleep-cover.jpg"
         CoverUrl     = "$staticBaseUrl/images/sleep-cover.jpg"
@@ -245,8 +245,8 @@ $resources = @(
         TagIds       = @([long]$tagVisual.tagId, [long]$tagSleep.tagId)
     },
     @{
-        Title        = 'Focus Breathing Prompt'
-        SummaryText  = 'A very short breathing audio for pre-class, pre-study, or tension reset moments.'
+        Title        = '专注前的呼吸引导'
+        SummaryText  = '适合上课前、自习前或情绪绷紧时，先用一分钟把呼吸稳下来。'
         ResourceType = 'AUDIO'
         ContentUrl   = "$staticBaseUrl/audio/pause-breathing-loop.mp3"
         CoverUrl     = "$staticBaseUrl/images/breathing-cover.jpg"
@@ -254,8 +254,8 @@ $resources = @(
         TagIds       = @([long]$tagBreath.tagId, [long]$tagRhythm.tagId)
     },
     @{
-        Title        = 'Sleep Buffer Audio'
-        SummaryText  = 'A low-stimulus listening clip for winding down before sleep.'
+        Title        = '睡前白噪音片段'
+        SummaryText  = '低刺激的陪伴音频，帮助你在睡前慢慢放掉白天的紧张感。'
         ResourceType = 'AUDIO'
         ContentUrl   = "$staticBaseUrl/audio/pause-breathing-loop.mp3"
         CoverUrl     = "$staticBaseUrl/images/sleep-cover.jpg"
@@ -263,8 +263,8 @@ $resources = @(
         TagIds       = @([long]$tagSleep.tagId)
     },
     @{
-        Title        = 'Campus Rhythm Clip'
-        SummaryText  = 'A short campus pacing video for exam weeks and overloaded days.'
+        Title        = '校园步调观察短片'
+        SummaryText  = '用缓慢镜头重新感受校园节奏，适合考试周或事务堆积时短暂抽离。'
         ResourceType = 'VIDEO'
         ContentUrl   = "$staticBaseUrl/videos/campus-rhythm.mp4"
         CoverUrl     = "$staticBaseUrl/images/study-cover.jpg"

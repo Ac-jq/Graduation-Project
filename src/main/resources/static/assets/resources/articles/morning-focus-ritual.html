@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>晨间专注启动页</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f8f4ee;
+      --paper: rgba(255, 255, 255, 0.76);
+      --ink: #243126;
+      --muted: #708071;
+      --line: rgba(36, 49, 38, 0.08);
+      --accent: #7f9b86;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(196, 214, 197, 0.35), transparent 22%),
+        radial-gradient(circle at bottom right, rgba(230, 207, 177, 0.28), transparent 26%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 56px 24px 72px;
+    }
+
+    article {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(248, 245, 239, 0.9));
+      border: 1px solid rgba(255, 255, 255, 0.82);
+      border-radius: 32px;
+      box-shadow: 0 32px 80px rgba(70, 83, 70, 0.08);
+      backdrop-filter: blur(20px);
+      padding: 40px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    h1 {
+      margin: 18px 0 16px;
+      font-family: "Noto Serif SC", serif;
+      font-size: clamp(2rem, 4vw, 3.3rem);
+      line-height: 1.18;
+      font-weight: 600;
+    }
+
+    .lead {
+      margin: 0 0 28px;
+      font-size: 1.04rem;
+      line-height: 1.9;
+      color: #4d5b4f;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin: 28px 0 34px;
+    }
+
+    .card {
+      padding: 20px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .card p,
+    li {
+      color: #556257;
+      line-height: 1.8;
+      margin: 0;
+    }
+
+    ul {
+      padding-left: 1.1rem;
+      margin: 0;
+    }
+
+    .footer-note {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <article>
+    <span class="eyebrow">Focus Ritual</span>
+    <h1>晨间专注启动页</h1>
+    <p class="lead">
+      早上刚坐到书桌前，不必立刻逼自己进入满速状态。先用三到五分钟把身体、注意力和当天的安排轻轻对齐，
+      你会更容易进入稳定而持续的节奏。
+    </p>
+
+    <section class="grid">
+      <div class="card">
+        <h2>一步：给身体一个缓冲</h2>
+        <p>坐直肩颈，做三次缓慢呼吸。吸气时默数四拍，呼气时默数六拍，让身体先从“刚醒”切到“在场”。</p>
+      </div>
+      <div class="card">
+        <h2>二步：只写下一件事</h2>
+        <p>不要同时铺开很多任务。先写今天最重要的一件事，再补充一件“做完就能轻松一点”的小事。</p>
+      </div>
+      <div class="card">
+        <h2>三步：清掉噪音</h2>
+        <p>把手机调成勿扰，桌面只保留本轮需要的材料。视觉上的干净，会直接降低大脑的切换成本。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>适合今天立刻试一下的专注流程</h2>
+      <ul>
+        <li>先做 20 分钟单一任务，再决定是否继续，而不是一开始就要求自己学满一整上午。</li>
+        <li>中途分心时，不评价自己，只把注意力拉回眼前这一页或这一段。</li>
+        <li>如果心里有明显焦虑，先写出最担心的一件事，再写下一条现实可做的小动作。</li>
+      </ul>
+    </section>
+
+    <p class="footer-note">
+      这份内容适合用作学习前的节律整理。若你已经连续多天出现明显失眠、情绪低落或压力失控，请考虑联系学校心理老师或专业支持资源。
+    </p>
+  </article>
+</main>
+</body>
+</html>

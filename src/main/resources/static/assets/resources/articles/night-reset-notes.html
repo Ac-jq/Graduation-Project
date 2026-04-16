@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>宿舍夜谈后情绪收束页</title>
+  <style>
+    :root {
+      --bg: #f7f2eb;
+      --ink: #233029;
+      --muted: #6f7e73;
+      --paper: rgba(255, 255, 255, 0.72);
+      --line: rgba(35, 48, 41, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "PingFang SC", "Noto Sans SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(168, 188, 176, 0.25), transparent 24%),
+        radial-gradient(circle at left bottom, rgba(222, 200, 180, 0.34), transparent 28%),
+        var(--bg);
+    }
+
+    main {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 60px 24px 80px;
+    }
+
+    article {
+      padding: 42px;
+      border-radius: 34px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.78), rgba(248,245,240,0.9));
+      border: 1px solid rgba(255,255,255,0.82);
+      box-shadow: 0 32px 80px rgba(60, 74, 65, 0.08);
+      backdrop-filter: blur(22px);
+    }
+
+    .eyebrow {
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 18px 0 16px;
+      font-family: "Noto Serif SC", serif;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1.2;
+      font-weight: 600;
+    }
+
+    p {
+      line-height: 1.9;
+      color: #4f5e53;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      margin-top: 28px;
+    }
+
+    .panel {
+      border-radius: 24px;
+      background: var(--paper);
+      padding: 22px;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    ol, ul {
+      margin: 0;
+      padding-left: 1.2rem;
+      color: #556257;
+      line-height: 1.85;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    @media (max-width: 780px) {
+      article { padding: 28px; }
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <article>
+    <div class="eyebrow">Night Reset</div>
+    <h1>宿舍夜谈后情绪收束页</h1>
+    <p>
+      夜里聊天、刷视频或者临睡前突然想到很多事，并不说明你“停不下来”。更多时候只是大脑还没收到休息的信号。
+      与其强行压住情绪，不如给自己一个温和的收束过程。
+    </p>
+
+    <section class="layout">
+      <div class="panel">
+        <h2>三分钟情绪收束</h2>
+        <ol>
+          <li>先把灯光调暗一点，让身体知道“白天已经结束”。</li>
+          <li>把手机放远，至少给自己 10 分钟不再接触信息流。</li>
+          <li>对自己说一句简单的话：今晚不需要把所有问题都想完。</li>
+          <li>做四次慢呼吸，呼气比吸气稍长。</li>
+        </ol>
+      </div>
+
+      <div class="panel">
+        <h2>如果脑子还很吵</h2>
+        <ul>
+          <li>把最在意的一件事记在纸上，告诉自己明天再处理。</li>
+          <li>如果是人际情绪，不在深夜继续推演对话。</li>
+          <li>如果是学业压力，只留下明早第一步动作，不展开完整计划。</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top: 18px;">
+      <h2>给今晚的一个小结尾</h2>
+      <p>
+        你不需要在入睡前把自己整理成完全平静的样子。只要把唤醒水平轻轻降下来，让身体知道现在可以休息，就已经足够。
+      </p>
+    </section>
+
+    <p class="footer">
+      如果你连续多晚难以入睡、明显心烦、反复惊醒，或者已经影响到第二天的学习和生活，建议尽快联系学校心理老师或专业支持资源。
+    </p>
+  </article>
+</main>
+</body>
+</html>

@@ -12,9 +12,37 @@ const errorMessage = ref('')
 const sessions = ref<AiChatSession[]>([])
 const studentUserId = computed(() => toNumberParam(route.params.studentUserId))
 
+// 分页状态
+const currentPage = ref(1)
+const pageSize = 6
+
+const totalPages = computed(() => Math.max(1, Math.ceil(sessions.value.length / pageSize)))
+const pagedSessions = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return sessions.value.slice(start, start + pageSize)
+})
+
+const alertCount = computed(() => sessions.value.filter(s => Boolean(s.riskFlag)).length)
+
+// 日期格式化
+function getDayMonth(value: string | Date): string {
+  const d = new Date(value)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function getTime(value: string | Date): string {
+  const d = new Date(value)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function formatFullDate(value: string | Date): string {
+  const d = new Date(value)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
 async function loadSessions(): Promise<void> {
   if (!studentUserId.value) {
-    errorMessage.value = 'Invalid studentUserId'
+    errorMessage.value = '无法定位到该学生档案'
     sessions.value = []
     return
   }
@@ -24,6 +52,7 @@ async function loadSessions(): Promise<void> {
 
   try {
     sessions.value = await fetchCounselorStudentAiSessionsApi(studentUserId.value)
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -31,12 +60,27 @@ async function loadSessions(): Promise<void> {
   }
 }
 
-async function openSession(sessionId: number): Promise<void> {
-  if (!studentUserId.value) {
-    return
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+}
 
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+async function openSession(sessionId: number): Promise<void> {
+  if (!studentUserId.value) return
   await router.push({ name: 'counselor-student-ai-session-detail', params: { studentUserId: studentUserId.value, sessionId } })
+}
+
+function goBack(): void {
+  router.push({ name: 'counselor-students' })
 }
 
 watch(() => route.params.studentUserId, () => {
@@ -49,50 +93,544 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="c-ai-list-page">
-    <div class="page-shell">
-      <header class="page-hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Student AI Sessions</p>
-          <h1>浏览学生与 AI 导师的历史会话，快速定位Level与对话脉络。</h1>
-          <p class="lead">当前查看学生 #{{ studentUserId || '-' }} 的 AI 会话档案。</p>
+  <main class="editorial-archive-page">
+    <div class="page-container">
+
+      <nav class="dossier-nav">
+        <button class="nav-ghost-btn" @click="goBack">
+          <span class="arrow">←</span> 返回来访者名册
+        </button>
+      </nav>
+
+      <header class="archive-header">
+        <div class="header-main">
+          <span class="header-tag">AI Interview Archive</span>
+          <h1 class="huge-title">AI 访谈案卷</h1>
+          <p class="header-lead">
+            当前正在查阅学生 <strong>#{{ studentUserId || '-' }}</strong> 与 AI 导师的历史会话记录。请仔细审阅这些包含高关注标记的线索，作为线下沟通的辅助参考。
+          </p>
         </div>
-        <div class="hero-metric">
-          <span>会话Total</span>
-          <strong>{{ sessions.length }}</strong>
+
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">会话总计</span>
+            <span class="stat-value">{{ loading ? '-' : sessions.length }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">高关注标记</span>
+            <span class="stat-value highlight">{{ loading ? '-' : alertCount }}</span>
+          </div>
         </div>
       </header>
 
-      <p v-if="loading" class="state-text">正在同步 AI 会话列表...</p>
-      <p v-else-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-      <p v-else-if="!sessions.length" class="state-text">当前学生暂无 AI 会话。</p>
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
 
-      <div v-else class="session-stack">
-        <article v-for="session in sessions" :key="session.sessionId" class="session-card" @click="openSession(session.sessionId)">
-          <div class="session-topline">
-            <div>
-              <p class="session-code">Session #{{ session.sessionId }}</p>
-              <h2>{{ session.title || `未命名会话 #${session.sessionId}` }}</h2>
-            </div>
-            <span class="risk-pill" :class="{ 'risk-pill--alert': Boolean(session.riskFlag) }">{{ session.riskLevel || '常规' }}</span>
-          </div>
-          <p class="session-summary">{{ session.summaryText || '暂无摘要。' }}</p>
-          <div class="session-meta">
-            <span>{{ session.status }}</span>
-            <span>{{ new Date(session.createdAt).toLocaleString('zh-CN') }}</span>
-            <span v-if="session.lastActiveAt">活跃于 {{ new Date(session.lastActiveAt).toLocaleString('zh-CN') }}</span>
-          </div>
-        </article>
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在翻阅案卷记录...</p>
       </div>
+
+      <div v-else-if="!sessions.length" class="empty-state">
+        <h2 class="empty-title">卷宗尚为空白</h2>
+        <p class="empty-desc">该学生尚未与 AI 导师进行过任何会话。</p>
+      </div>
+
+      <section v-else class="archive-list-section">
+
+        <div class="list-toolbar">
+          <span class="toolbar-status">当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页</span>
+        </div>
+
+        <div class="archive-stream">
+          <article
+              v-for="session in pagedSessions"
+              :key="session.sessionId"
+              class="archive-row"
+              :class="{ 'row--alert': Boolean(session.riskFlag) }"
+              @click="openSession(session.sessionId)"
+          >
+            <div class="row-time-col">
+              <span class="huge-date">{{ getDayMonth(session.createdAt) }}</span>
+              <span class="time-stamp">{{ getTime(session.createdAt) }}</span>
+
+              <span v-if="session.riskFlag" class="risk-badge">
+                重点关注
+              </span>
+            </div>
+
+            <div class="row-content-col">
+              <div class="content-topline">
+                <span class="session-id">Session #{{ session.sessionId }}</span>
+                <h3 class="session-title">{{ session.title || '未命名会话' }}</h3>
+              </div>
+
+              <blockquote class="session-quote">
+                “{{ session.summaryText || '暂无摘要，您可以进入详情查看完整的对话脉络。' }}”
+              </blockquote>
+
+              <div class="session-meta">
+                <span class="meta-item">风险层级: {{ session.riskLevel || '常规' }}</span>
+                <span class="dot">·</span>
+                <span class="meta-item">最后活跃于 {{ session.lastActiveAt ? formatFullDate(session.lastActiveAt) : '未知' }}</span>
+                <span class="dot">·</span>
+                <span class="meta-item">状态: {{ session.status }}</span>
+              </div>
+            </div>
+
+            <div class="row-action-col">
+              <button class="action-link" type="button">
+                查阅完整记录 <span class="arrow">→</span>
+              </button>
+            </div>
+          </article>
+        </div>
+
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+            <span class="arrow">←</span> 往前翻
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+            往后翻 <span class="arrow">→</span>
+          </button>
+        </nav>
+
+      </section>
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.c-ai-list-page{min-height:100vh;padding:44px 28px 72px;color:#283128;background:linear-gradient(180deg,#f5f0e5 0%,#f8f4ed 100%)}
-.page-shell{max-width:1240px;margin:0 auto}.page-hero{display:grid;grid-template-columns:minmax(0,1.35fr) 220px;gap:28px;align-items:end;margin-bottom:30px}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px}.eyebrow,.session-code{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.session-card h2{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.lead,.session-summary,.session-meta,.state-text,.error-text{font-family:'Manrope',sans-serif}.lead{margin:18px 0 0;line-height:1.84;color:rgba(40,49,40,.72)}.hero-metric,.session-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.hero-metric{padding:18px 20px}.hero-metric span{display:block;margin-bottom:8px;font:700 .78rem/1 'Manrope',sans-serif;letter-spacing:.16em;text-transform:uppercase;color:rgba(68,74,66,.56)}.hero-metric strong{font:600 1.6rem/1 'Noto Serif SC',serif}.session-stack{display:grid;gap:18px}.session-card{padding:22px;cursor:pointer;transition:transform .28s ease, box-shadow .28s ease}.session-card:hover{transform:translateY(-3px);box-shadow:0 28px 54px rgba(86,106,92,.12)}.session-topline{display:flex;justify-content:space-between;gap:16px;align-items:start}.session-card h2{font-size:1.34rem;line-height:1.35}.risk-pill{border:1px solid rgba(97,111,98,.15);background:rgba(242,244,237,.94);padding:8px 12px;font:700 .74rem/1 'Manrope',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#66735f}.risk-pill--alert{color:#8c4f37;background:rgba(239,225,217,.95);border-color:rgba(140,79,55,.22)}.session-summary{margin:14px 0 0;font-size:.96rem;line-height:1.86;color:rgba(40,49,40,.7)}.session-meta{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:14px;font-size:.84rem;color:rgba(40,49,40,.58)}.error-text{color:#a44f46}
-@media (max-width:900px){.c-ai-list-page{padding:28px 16px 46px}.page-hero{grid-template-columns:1fr}.session-topline{flex-direction:column;align-items:start}}
+/* 全局极简白纸底色 */
+.editorial-archive-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 2rem 2vw 8rem;
+  box-sizing: border-box;
+}
+
+.page-container {
+  max-width: 1060px;
+  margin: 0 auto;
+}
+
+/* 顶部导航 */
+.dossier-nav {
+  margin-bottom: 3rem;
+}
+
+.nav-ghost-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #5c6b60;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  transition: color 0.3s ease;
+}
+
+.nav-ghost-btn:hover {
+  color: #1e2821;
+}
+
+/* 头部排版 */
+.archive-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 3rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.12);
+  gap: 4rem;
+}
+
+.header-main {
+  max-width: 600px;
+}
+
+.header-tag {
+  display: block;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+.huge-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.8rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.05em;
+}
+
+.header-lead {
+  font-size: 1.05rem;
+  color: #6a7c70;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.header-lead strong {
+  color: #2a362e;
+}
+
+.header-stats {
+  display: flex;
+  gap: 3rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+.stat-value.highlight {
+  color: #8c4a4a;
+}
+
+/* 控制栏 */
+.list-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 0 0.5rem;
+}
+
+.toolbar-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: #8a9c90;
+}
+
+/* 会话流行排版 */
+.archive-stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.archive-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
+  gap: 3rem;
+  padding: 2.5rem 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  cursor: pointer;
+  transition: background 0.4s ease;
+}
+
+.archive-row:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* 左侧：巨幕时间 */
+.row-time-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.huge-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #2a362e;
+  line-height: 1;
+  margin-bottom: 0.2rem;
+  transition: color 0.3s ease;
+}
+
+.time-stamp {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  font-weight: 500;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 1.2rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  border: 1px solid rgba(140, 74, 74, 0.2);
+}
+
+.row--alert .huge-date {
+  color: #8c4a4a;
+}
+
+/* 中间：正文摘要 */
+.row-content-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.content-topline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.session-id {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.session-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0;
+  transition: color 0.3s ease;
+}
+
+.archive-row:hover .session-title {
+  color: #5c6b60;
+}
+
+/* 杂志风引言摘要 */
+.session-quote {
+  margin: 0 0 2rem 0;
+  padding-left: 1.5rem;
+  border-left: 3px solid rgba(42, 54, 46, 0.15);
+  font-size: 1.05rem;
+  line-height: 1.8;
+  color: #5c6b60;
+}
+
+.row--alert .session-quote {
+  border-left-color: rgba(140, 74, 74, 0.3);
+  color: #7a5c5c;
+}
+
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: auto;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #8a9c90;
+}
+
+.dot {
+  margin: 0 0.6rem;
+  color: #cbd5cf;
+}
+
+/* 右侧：动作按钮 */
+.row-action-col {
+  display: flex;
+  align-items: center;
+}
+
+.action-link {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #5c6b60;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  transition: color 0.3s ease;
+}
+
+.archive-row:hover .action-link {
+  color: #1e2821;
+}
+
+/* 状态提示 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+/* 分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+/* 交互动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.nav-ghost-btn:hover .arrow {
+  transform: translateX(-4px);
+}
+
+.archive-row:hover .action-link .arrow,
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .archive-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .header-stats {
+    flex-wrap: wrap;
+    gap: 2rem;
+  }
+
+  .archive-row {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 2.5rem 0;
+  }
+
+  .row-time-col {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .huge-date {
+    font-size: 2.2rem;
+    margin: 0;
+  }
+
+  .risk-badge {
+    margin-top: 0;
+  }
+
+  .row-action-col {
+    justify-content: flex-start;
+    margin-top: 1rem;
+  }
+}
 </style>
-

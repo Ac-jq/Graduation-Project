@@ -5,6 +5,8 @@ import sdu.jiaq.jqpro.dto.statistics.AssessmentStatisticsResponse;
 import sdu.jiaq.jqpro.dto.statistics.OverviewStatisticsResponse;
 import sdu.jiaq.jqpro.dto.statistics.ResourceStatisticsResponse;
 import sdu.jiaq.jqpro.dto.statistics.StatisticsExportRowResponse;
+import sdu.jiaq.jqpro.dto.statistics.UserInterventionEffectExportRow;
+import sdu.jiaq.jqpro.dto.statistics.UserEngagementStatisticsResponse;
 
 import java.util.List;
 
@@ -21,5 +23,9 @@ public interface StatisticsService {
 
     AppointmentStatisticsResponse getAppointments();
 
+    UserEngagementStatisticsResponse getUserEngagements();
+
     List<StatisticsExportRowResponse> exportByDimension(String dimension);
+
+    List<UserInterventionEffectExportRow> listUserInterventionEffectRows();
 }

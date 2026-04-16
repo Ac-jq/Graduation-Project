@@ -14,10 +14,17 @@ const assessmentStore = useAssessmentStore()
 const loading = ref(false)
 const errorMessage = ref('')
 const scales = ref<ScaleSummary[]>([])
+const currentPage = ref(1)
+const pageSize = 6
 
 const totalQuestions = computed(() =>
     scales.value.reduce((sum, item) => sum + item.totalQuestions, 0)
 )
+const totalPages = computed(() => Math.max(1, Math.ceil(scales.value.length / pageSize)))
+const pagedScales = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return scales.value.slice(start, start + pageSize)
+})
 
 const averageQuestions = computed(() => {
   if (!scales.value.length) return 0
@@ -32,6 +39,8 @@ function resolveScaleLabel(code: string): string {
   switch (code) {
     case 'PHQ9': return '情绪状态'
     case 'GAD7': return '焦虑筛查'
+    case 'SLEEP6': return '睡眠状态'
+    case 'STRESS8': return '压力观察'
     default: return '标准量表'
   }
 }
@@ -43,11 +52,26 @@ async function loadScales(): Promise<void> {
   try {
     const response = await fetchScaleListApi()
     scales.value = response
+    currentPage.value = 1
     assessmentStore.setScales(scales.value)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -66,7 +90,7 @@ onMounted(() => {
 
       <header class="editorial-hero">
         <div class="hero-meta">
-          <span class="hero-tag">Assessment Studio</span>
+          <span class="hero-tag">量表目录</span>
         </div>
         <h1 class="hero-title">自我察觉的刻度</h1>
         <p class="hero-lead">
@@ -101,7 +125,7 @@ onMounted(() => {
 
       <section v-else class="scale-journal">
         <article
-            v-for="scale in scales"
+            v-for="scale in pagedScales"
             :key="scale.id"
             class="scale-row"
             :class="`scale-row--${resolveScaleTone(scale.code)}`"
@@ -137,6 +161,28 @@ onMounted(() => {
           </div>
         </article>
       </section>
+
+      <nav class="pagination-nav" v-if="totalPages > 1">
+        <button
+            class="page-btn"
+            :disabled="currentPage <= 1"
+            @click="prevPage"
+        >
+          <span class="arrow">←</span> 上一页
+        </button>
+
+        <div class="page-indicator">
+          <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+        </div>
+
+        <button
+            class="page-btn"
+            :disabled="currentPage >= totalPages"
+            @click="nextPage"
+        >
+          下一页 <span class="arrow">→</span>
+        </button>
+      </nav>
 
     </div>
   </main>
@@ -475,5 +521,59 @@ onMounted(() => {
   .stat-divider {
     display: none;
   }
+}
+
+/* 优雅的分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
 }
 </style>

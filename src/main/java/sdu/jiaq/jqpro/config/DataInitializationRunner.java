@@ -147,6 +147,7 @@ public class DataInitializationRunner implements CommandLineRunner {
         );
         upsertStudentProfile(studentUser, counselorUser.getId());
         upsertCounselorRelation(counselorUser.getId(), studentUser.getId());
+        assignDefaultStudentAvatars();
     }
 
     private SysUser upsertUser(
@@ -191,7 +192,7 @@ public class DataInitializationRunner implements CommandLineRunner {
             profile = new StudentProfile();
             profile.setUserId(studentUser.getId());
         }
-        profile.setAvatarUrl("https://example.com/avatar/student-20230001.png");
+        profile.setAvatarUrl("http://127.0.0.1:8080/assets/avatars/presets/avatar-01.jpg");
         profile.setCollege("软件学院");
         profile.setGrade("2023级");
         profile.setGender("男");
@@ -220,6 +221,22 @@ public class DataInitializationRunner implements CommandLineRunner {
         relation.setCounselorUserId(counselorUserId);
         relation.setStudentUserId(studentUserId);
         counselorStudentMapper.insert(relation);
+    }
+
+    private void assignDefaultStudentAvatars() {
+        List<StudentProfile> profiles = studentProfileMapper.selectList(null);
+        for (StudentProfile profile : profiles) {
+            String avatarUrl = profile.getAvatarUrl();
+            if (avatarUrl != null && !avatarUrl.isBlank() && !avatarUrl.contains("example.com/avatar")) {
+                continue;
+            }
+            int presetIndex = (int) ((profile.getUserId() == null ? 1 : profile.getUserId()) % 10);
+            if (presetIndex == 0) {
+                presetIndex = 10;
+            }
+            profile.setAvatarUrl("http://127.0.0.1:8080/assets/avatars/presets/avatar-" + String.format("%02d", presetIndex) + ".jpg");
+            studentProfileMapper.updateById(profile);
+        }
     }
 
     private void initScales() {
@@ -454,47 +471,17 @@ public class DataInitializationRunner implements CommandLineRunner {
     private void initResources() {
         String assetBaseUrl = "http://127.0.0.1:8080/assets/resources";
         offlineLegacyDemoResources();
-        ResourceCategory relaxCategory = saveCategoryIfAbsent("情绪舒缓", "帮助学生进行放松、减压和情绪稳定。", 1);
-        ResourceCategory growthCategory = saveCategoryIfAbsent("自助成长", "帮助学生建立习惯、提升自我认知与求助意识。", 2);
-        ResourceTag breathTag = saveTagIfAbsent("呼吸训练", "短时放松训练");
-        ResourceTag sleepTag = saveTagIfAbsent("睡眠", "睡眠卫生与改善方法");
-        ResourceTag stressTag = saveTagIfAbsent("学业压力", "学习与考试压力调节");
-        saveResourceIfAbsent(
-                relaxCategory.getId(),
-                "三分钟呼吸放松",
-                "通过短时呼吸练习帮助学生快速降低紧张感。",
-                "AUDIO",
-                "https://example.com/resources/breathing",
-                "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
-                List.of(breathTag.getId(), stressTag.getId())
-        );
-        saveResourceIfAbsent(
-                growthCategory.getId(),
-                "睡眠习惯自查清单",
-                "从作息、手机使用和环境布置三个方面帮助学生建立睡眠卫生习惯。",
-                "ARTICLE",
-                "https://example.com/resources/sleep-checklist",
-                "https://images.unsplash.com/photo-1495195134817-aeb325a55b65?auto=format&fit=crop&w=800&q=80",
-                List.of(sleepTag.getId())
-        );
-        saveResourceIfAbsent(
-                growthCategory.getId(),
-                "考试周减压工具包",
-                "整合时间切分、情绪记录和求助提醒三个模块，帮助学生在考试周保持节奏。",
-                "LINK",
-                "https://example.com/resources/exam-pressure",
-                "https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=800&q=80",
-                List.of(stressTag.getId())
-        );
-
         ResourceCategory relaxVideoCategory = saveCategoryIfAbsent("舒缓放松", "用于承载减压、呼吸放松与感官安抚类资源。", 1);
         ResourceCategory sleepCategory = saveCategoryIfAbsent("睡眠修复", "用于承载睡前整理、作息修复与环境调整类资源。", 2);
         ResourceCategory studyCategory = saveCategoryIfAbsent("学习节律", "用于承载考试周节奏管理、专注恢复与校园支持类资源。", 3);
+        ResourceCategory imageryCategory = saveCategoryIfAbsent("图像引导", "用于承载图像卡片、视觉引导与轻量情绪整理内容。", 4);
 
         ResourceTag groundingTag = saveTagIfAbsent("呼吸练习", "适合短时间快速降噪与回到当下的练习。");
         ResourceTag windDownTag = saveTagIfAbsent("睡前放松", "适合夜间整理情绪、降低唤醒水平的内容。");
         ResourceTag finalsTag = saveTagIfAbsent("考试周", "适合考试周压力管理与节律修复。");
         ResourceTag supportTag = saveTagIfAbsent("校园支持", "强调校园场景中的稳定支持与求助提醒。");
+        ResourceTag focusTag = saveTagIfAbsent("专注恢复", "适合在分心、拖延和脑内噪音偏高时使用。");
+        ResourceTag imageryTag = saveTagIfAbsent("视觉安抚", "适合通过图像与色彩快速稳定状态。");
 
         saveOrUpdateResourceSeed(
                 relaxVideoCategory.getId(),
@@ -502,7 +489,7 @@ public class DataInitializationRunner implements CommandLineRunner {
                 "一段适合 1 到 2 分钟观看的舒缓视频，可在紧张、心跳偏快或注意力发散时先做减速过渡。",
                 "VIDEO",
                 assetBaseUrl + "/videos/breathing-garden.mp4",
-                assetBaseUrl + "/images/breathing-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-01.jpg",
                 List.of(groundingTag.getId(), supportTag.getId())
         );
         saveOrUpdateResourceSeed(
@@ -511,7 +498,7 @@ public class DataInitializationRunner implements CommandLineRunner {
                 "整理灯光、手机、呼吸节奏和床边环境的睡前卡片，适合在宿舍里快速完成。",
                 "ARTICLE",
                 assetBaseUrl + "/articles/sleep-reset-guide.html",
-                assetBaseUrl + "/images/sleep-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-02.jpg",
                 List.of(windDownTag.getId(), supportTag.getId())
         );
         saveOrUpdateResourceSeed(
@@ -520,7 +507,7 @@ public class DataInitializationRunner implements CommandLineRunner {
                 "把复习、休息、饮水和求助提醒放进同一页，帮助学生在高压周期内稳定节奏。",
                 "ARTICLE",
                 assetBaseUrl + "/articles/exam-rhythm-toolkit.html",
-                assetBaseUrl + "/images/study-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-03.jpg",
                 List.of(finalsTag.getId(), supportTag.getId())
         );
         saveOrUpdateResourceSeed(
@@ -529,8 +516,98 @@ public class DataInitializationRunner implements CommandLineRunner {
                 "一段可用于放空视线和短暂停顿的校园氛围短片，适合作为长时间学习后的切换点。",
                 "VIDEO",
                 assetBaseUrl + "/videos/campus-rhythm.mp4",
-                assetBaseUrl + "/images/study-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-04.jpg",
                 List.of(finalsTag.getId(), supportTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                studyCategory.getId(),
+                "晨间专注启动页",
+                "适合早上开机、准备进入学习状态时快速阅读的短篇图文，帮助把注意力收回来。",
+                "ARTICLE",
+                assetBaseUrl + "/articles/morning-focus-ritual.html",
+                assetBaseUrl + "/images/resource-cover-05.jpg",
+                List.of(focusTag.getId(), supportTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                sleepCategory.getId(),
+                "宿舍夜谈后情绪收束页",
+                "适合在宿舍聊天、刷手机或熄灯前后阅读，帮助把情绪从热闹过渡回平稳。",
+                "ARTICLE",
+                assetBaseUrl + "/articles/night-reset-notes.html",
+                assetBaseUrl + "/images/resource-cover-06.jpg",
+                List.of(windDownTag.getId(), imageryTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                relaxVideoCategory.getId(),
+                "窗边云层慢行短片",
+                "画面节奏缓慢，适合在呼吸偏急、脑内过载或连续学习后做一分钟放空。",
+                "VIDEO",
+                assetBaseUrl + "/videos/calm-clip-01.mp4",
+                assetBaseUrl + "/images/resource-cover-07.jpg",
+                List.of(groundingTag.getId(), imageryTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                relaxVideoCategory.getId(),
+                "雨后树影安定练习",
+                "把树影与光线作为视觉锚点，适合在焦躁、心烦或需要重新落地时观看。",
+                "VIDEO",
+                assetBaseUrl + "/videos/calm-clip-02.mp4",
+                assetBaseUrl + "/images/resource-cover-08.jpg",
+                List.of(groundingTag.getId(), supportTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                imageryCategory.getId(),
+                "情绪体温计图卡",
+                "一张可直接查看的图像卡片，帮助学生快速描述当前状态并决定是自助缓解还是主动求助。",
+                "IMAGE",
+                assetBaseUrl + "/images/emotion-board.jpg",
+                assetBaseUrl + "/images/resource-cover-09.jpg",
+                List.of(imageryTag.getId(), supportTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                imageryCategory.getId(),
+                "晨光静观图卡",
+                "适合在起床后、课前或心绪发散时快速看一眼的安定图卡，帮助视线先落下来。",
+                "IMAGE",
+                assetBaseUrl + "/images/breathing-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-10.jpg",
+                List.of(imageryTag.getId(), groundingTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                imageryCategory.getId(),
+                "夜色整理图卡",
+                "适合在夜晚收尾时查看的图像卡片，用来提醒自己把灯光、手机和呼吸节奏一起放缓。",
+                "IMAGE",
+                assetBaseUrl + "/images/sleep-cover.jpg",
+                assetBaseUrl + "/images/resource-cover-11.jpg",
+                List.of(imageryTag.getId(), windDownTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                relaxVideoCategory.getId(),
+                "专注前的呼吸引导",
+                "一段简短音频，可在学习前先做一次节律整理，帮助从分散状态回到可专注状态。",
+                "AUDIO",
+                assetBaseUrl + "/audio/pause-breathing-loop.mp3",
+                assetBaseUrl + "/images/resource-cover-12.jpg",
+                List.of(focusTag.getId(), groundingTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                sleepCategory.getId(),
+                "睡前白噪音片段",
+                "适合宿舍入睡前使用的轻量白噪音片段，用来削弱环境噪音并把注意力从外界收回来。",
+                "AUDIO",
+                assetBaseUrl + "/audio/pause-breathing-loop.mp3",
+                assetBaseUrl + "/images/resource-cover-13.jpg",
+                List.of(windDownTag.getId(), supportTag.getId())
+        );
+        saveOrUpdateResourceSeed(
+                studyCategory.getId(),
+                "校园步调观察短片",
+                "一段节奏更慢的校园步行视角短片，适合在学习间隙切换视线与呼吸。",
+                "VIDEO",
+                assetBaseUrl + "/videos/campus-rhythm.mp4",
+                assetBaseUrl + "/images/resource-cover-14.jpg",
+                List.of(finalsTag.getId(), imageryTag.getId())
         );
         offlineLegacyDemoResources();
     }

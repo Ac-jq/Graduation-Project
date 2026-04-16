@@ -12,60 +12,61 @@ const loading = ref(false)
 const errorMessage = ref('')
 const appointments = ref<Appointment[]>([])
 
+// 分页状态
+const currentPage = ref(1)
+const pageSize = 6
+const totalPages = computed(() => Math.max(1, Math.ceil(appointments.value.length / pageSize)))
+const pagedAppointments = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return appointments.value.slice(start, start + pageSize)
+})
+
 const activeCount = computed(() =>
-  appointments.value.filter((item) => item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS').length
+    appointments.value.filter((item) => item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS').length
 )
 
 const completedCount = computed(() =>
-  appointments.value.filter((item) => item.status === 'COMPLETED').length
+    appointments.value.filter((item) => item.status === 'COMPLETED').length
 )
 
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value))
+// 为画报风排版拆分日期和时间
+function getDayMonth(value: string): string {
+  const d = new Date(value)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
+function getTimeSpan(start: string, end: string): string {
+  const s = new Date(start)
+  const e = new Date(end)
+  const formatTime = (date: Date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  return `${formatTime(s)} - ${formatTime(e)}`
+}
+
+function formatFullDate(value: string): string {
+  const d = new Date(value)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
 }
 
 function resolveStatusLabel(status: string): string {
   switch (status) {
-    case 'PENDING':
-      return '待处理'
-    case 'ACCEPTED':
-      return '已接受'
-    case 'IN_PROGRESS':
-      return '沟通中'
-    case 'COMPLETED':
-      return '已完成'
-    case 'REJECTED':
-      return '未通过'
-    case 'CANCELLED':
-      return '已取消'
-    default:
-      return status
+    case 'PENDING': return '等待确认'
+    case 'ACCEPTED': return '约定期'
+    case 'IN_PROGRESS': return '正在沟通'
+    case 'COMPLETED': return '已结束'
+    case 'REJECTED': return '未能安排'
+    case 'CANCELLED': return '已取消'
+    default: return status
   }
 }
 
 function resolveStatusTone(status: string): AppointmentTone {
   switch (status) {
-    case 'ACCEPTED':
-      return 'accepted'
-    case 'IN_PROGRESS':
-      return 'active'
-    case 'COMPLETED':
-      return 'done'
-    case 'PENDING':
-      return 'pending'
-    default:
-      return 'muted'
+    case 'ACCEPTED': return 'accepted'
+    case 'IN_PROGRESS': return 'active'
+    case 'COMPLETED': return 'done'
+    case 'PENDING': return 'pending'
+    default: return 'muted'
   }
-}
-
-function resolveInitials(value: string | null | undefined, fallback = '咨询'): string {
-  const source = (value || fallback).replace(/\s+/g, '')
-  return source.slice(0, 2).toUpperCase()
 }
 
 function canOpenChat(status: string): boolean {
@@ -78,10 +79,25 @@ async function loadAppointments(): Promise<void> {
 
   try {
     appointments.value = await fetchStudentAppointmentsApi()
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -95,573 +111,594 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="appointment-list-page">
-    <div class="page-shell">
-      <header class="page-hero">
-        <div class="hero-copy">
-          <div class="hero-eyebrow-row">
-            <p class="eyebrow">预约台账</p>
-            <span class="hero-badge">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M7.25 3.5V6" />
-                <path d="M16.75 3.5V6" />
-                <path d="M3.5 9.25h17" />
-                <path d="M5.25 5.25h13.5A1.75 1.75 0 0 1 20.5 7v11.25A1.75 1.75 0 0 1 18.75 20H5.25A1.75 1.75 0 0 1 3.5 18.25V7A1.75 1.75 0 0 1 5.25 5.25Z" />
-              </svg>
-              安排与跟进一处查看
-            </span>
-          </div>
-          <h1>把已发起的预约集中放在一处，追踪进度，也保留后续沟通入口。</h1>
-          <p class="lead">
-            这里会呈现你所有真实预约记录。预约进入可沟通状态后，可以直接从当前卡片进入私密聊天室，
-            不需要再重新查找入口。
-          </p>
+  <main class="editorial-appointment-page">
+    <div class="page-container">
 
-          <div class="hero-metrics">
-            <article class="metric-card">
-              <span>预约总数</span>
-              <strong>{{ appointments.length }}</strong>
-              <p>按时间完整留档，方便回看</p>
-            </article>
-            <article class="metric-card">
-              <span>处理中</span>
-              <strong>{{ activeCount }}</strong>
-              <p>已接受或正在沟通的预约</p>
-            </article>
-            <article class="metric-card metric-card--warm">
-              <span>已完成</span>
-              <strong>{{ completedCount }}</strong>
-              <p>可继续回看结论与沟通结果</p>
-            </article>
-          </div>
+      <header class="journal-header">
+        <div class="header-main">
+          <span class="header-tag">Consultation Journal</span>
+          <h1 class="header-title">会谈札记</h1>
+          <p class="header-desc">
+            这里按时间轴记录了你所有的预约行程与沟通轨迹。<br>
+            当预约被受理后，你可以直接从这里的条目中推开那扇“私密聊天室”的门。
+          </p>
         </div>
 
-        <aside class="hero-aside">
-          <div class="hero-aside-card">
-            <div class="hero-aside-card__top">
-              <span>贴心提示</span>
-              <div class="hero-aside-card__icon">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M12 20.25s-6.75-4.02-6.75-9.28A3.97 3.97 0 0 1 12 7.89a3.97 3.97 0 0 1 6.75 3.08c0 5.26-6.75 9.28-6.75 9.28Z" />
-                </svg>
-              </div>
-            </div>
-            <strong>允许慢一点</strong>
-            <p>如果暂时不想立刻进入对话，也可以先回看预约状态，等准备好再开始沟通。</p>
+        <div class="header-stats">
+          <div class="stat-item">
+            <span class="stat-label">历史总计</span>
+            <span class="stat-value">{{ loading ? '-' : appointments.length }}</span>
           </div>
-        </aside>
+          <div class="stat-item">
+            <span class="stat-label">即将进行 / 沟通中</span>
+            <span class="stat-value">{{ loading ? '-' : activeCount }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">已沉淀</span>
+            <span class="stat-value">{{ loading ? '-' : completedCount }}</span>
+          </div>
+        </div>
       </header>
 
-      <section class="list-panel">
-        <div class="section-head section-head-inline">
-          <div>
-            <p class="section-kicker">预约记录</p>
-            <h2>我的预约</h2>
-          </div>
-          <span class="status-chip">{{ loading ? '加载中' : `${appointments.length} 条记录` }}</span>
+      <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+
+      <div v-if="loading" class="loading-state">
+        <div class="spinner"></div>
+        <p>正在翻阅记录...</p>
+      </div>
+
+      <div v-else-if="!appointments.length" class="empty-state">
+        <h2 class="empty-title">尚未留下足迹</h2>
+        <p class="empty-desc">这里还是一张白纸，当你准备好倾诉时，可以去挑选一个安静的时段。</p>
+        <button class="ghost-btn" @click="router.push({ name: 'student-appointment-slots' })">
+          挑选可预约时段 <span class="arrow">→</span>
+        </button>
+      </div>
+
+      <section v-else class="journal-list">
+
+        <div class="list-head">
+          <span class="list-kicker">所有条目</span>
+          <span class="list-note">允许慢一点。如果还没准备好，你可以只是在这里看看，等准备好了再进入对话。</span>
         </div>
 
-        <p v-if="loading" class="state-text">正在同步预约记录...</p>
-        <p v-else-if="!appointments.length" class="state-text">
-          你还没有预约记录，先前往可预约时段页面发起一条新的预约。
-        </p>
-
-        <div v-else class="appointment-stack">
-          <article
-            v-for="appointment in appointments"
+        <article
+            v-for="appointment in pagedAppointments"
             :key="appointment.appointmentId"
-            class="appointment-card"
-            :class="`appointment-card--${resolveStatusTone(appointment.status)}`"
-          >
-            <div class="appointment-card__glow"></div>
+            class="journal-entry"
+            :class="`entry--${resolveStatusTone(appointment.status)}`"
+        >
+          <div class="entry-date-col">
+            <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
+            <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
+            <span class="status-pill">{{ resolveStatusLabel(appointment.status) }}</span>
+          </div>
 
-            <div class="appointment-topline">
-              <div class="appointment-identity">
-                <div class="appointment-avatar">
-                  {{ resolveInitials(appointment.counselorName, appointment.anonymousName) }}
-                </div>
-                <div>
-                  <p class="appointment-title">预约 #{{ appointment.appointmentId }}</p>
-                  <p class="appointment-time">
-                    {{ formatDateTime(appointment.startTime) }} - {{ formatDateTime(appointment.endTime) }}
-                  </p>
-                </div>
-              </div>
-
-              <span class="status-pill" :class="`status-pill--${resolveStatusTone(appointment.status)}`">
-                {{ resolveStatusLabel(appointment.status) }}
-              </span>
+          <div class="entry-content-col">
+            <div class="entry-topline">
+              <h3 class="counselor-name">
+                与 咨询师 {{ appointment.counselorName || '待安排' }} 的会谈
+              </h3>
+              <span class="entry-id">#{{ appointment.appointmentId }}</span>
             </div>
 
-            <p class="issue-summary">{{ appointment.issueSummary }}</p>
-
-            <div class="appointment-meta">
-              <span class="info-chip">匿名名称 · {{ appointment.anonymousName }}</span>
-              <span class="info-chip">咨询师 · {{ appointment.counselorName || '待分配' }}</span>
-              <span class="info-chip">创建于 {{ formatDateTime(appointment.createdAt) }}</span>
-            </div>
+            <blockquote class="issue-quote">
+              “{{ appointment.issueSummary || '未填写具体摘要...' }}”
+            </blockquote>
 
             <div v-if="appointment.resultMessage" class="result-message">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M12 4.75v14.5" />
-                <path d="M4.75 12h14.5" />
-              </svg>
-              <p>{{ appointment.resultMessage }}</p>
+              <strong>系统/回复：</strong> {{ appointment.resultMessage }}
             </div>
 
-            <div class="appointment-footer">
-              <div class="appointment-footer__note">
-                <span>状态会影响是否开放私密聊天室入口</span>
+            <div class="entry-footer">
+              <div class="meta-tags">
+                <span>身份：{{ appointment.anonymousName }}</span>
+                <span class="dot">·</span>
+                <span>创建于 {{ formatFullDate(appointment.createdAt) }}</span>
               </div>
 
               <button
-                v-if="canOpenChat(appointment.status)"
-                class="ghost-button"
-                type="button"
-                @click="openChat(appointment.appointmentId)"
+                  v-if="canOpenChat(appointment.status)"
+                  class="action-chat-btn"
+                  @click="openChat(appointment.appointmentId)"
               >
-                进入私密聊天室
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M5 12h14" />
-                  <path d="m13 6 6 6-6 6" />
-                </svg>
+                进入私密聊天室 <span class="arrow">→</span>
               </button>
+              <span v-else class="disabled-action">聊天室未开放</span>
             </div>
-          </article>
-        </div>
+          </div>
+        </article>
 
-        <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+            <span class="arrow">←</span> 往前翻
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+            往后翻 <span class="arrow">→</span>
+          </button>
+        </nav>
+
       </section>
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.appointment-list-page {
-  min-height: 100%;
-  padding: 0.4rem 0 2.4rem;
-  color: #2c3028;
+/* 全局极简白纸底色 */
+.editorial-appointment-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 8rem;
+  box-sizing: border-box;
 }
 
-.page-shell {
-  max-width: 1280px;
+.page-container {
+  max-width: 1060px;
   margin: 0 auto;
 }
 
-.page-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
-  gap: 1.5rem;
-  align-items: stretch;
-  margin-bottom: 1.6rem;
-}
-
-.hero-copy,
-.hero-aside-card,
-.metric-card,
-.list-panel,
-.appointment-card {
-  border: 1px solid rgba(78, 86, 77, 0.05);
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(248, 244, 237, 0.86) 100%);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
-  backdrop-filter: blur(16px);
-}
-
-.hero-copy {
-  padding: 1.8rem;
-}
-
-.hero-eyebrow-row {
+/* 头部排版 */
+.journal-header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.85rem;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-bottom: 3rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.12);
+  gap: 4rem;
 }
 
-.eyebrow,
-.section-kicker,
-.metric-card span,
-.hero-aside-card__top span {
-  margin: 0;
-  font: 800 0.74rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.18em;
+.header-main {
+  max-width: 580px;
+}
+
+.header-tag {
+  display: block;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
   text-transform: uppercase;
-  color: #7b6857;
+  margin-bottom: 1rem;
 }
 
-.hero-badge,
-.status-chip,
-.info-chip,
+.header-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1.2rem 0;
+  letter-spacing: 0.05em;
+}
+
+.header-desc {
+  font-size: 1.05rem;
+  color: #6a7c70;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.header-stats {
+  display: flex;
+  gap: 3rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stat-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #8a9c90;
+}
+
+.stat-value {
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  color: #2a362e;
+  line-height: 1;
+}
+
+/* 列表头部 */
+.list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 0 1rem;
+}
+
+.list-kicker {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e2821;
+}
+
+.list-note {
+  font-size: 0.9rem;
+  color: #8a9c90;
+  font-style: italic;
+  max-width: 400px;
+  text-align: right;
+}
+
+/* 札记条目（无框排版，依靠极大的留白区分） */
+.journal-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.journal-entry {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 4rem;
+  padding: 3.5rem 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.06);
+  transition: background 0.4s ease;
+}
+
+.journal-entry:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+/* 左侧巨幕日期 */
+.entry-date-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.huge-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 3.8rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #2a362e;
+  line-height: 1;
+  margin-bottom: 0.2rem;
+  transition: color 0.3s ease;
+}
+
+.time-span {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.05rem;
+  color: #8a9c90;
+  font-weight: 500;
+}
+
 .status-pill {
   display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.52rem 0.8rem;
-  border-radius: 999px;
-  font: 800 0.72rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.hero-badge {
-  background: rgba(97, 122, 105, 0.12);
-  color: #5e7465;
-}
-
-.hero-badge svg,
-.hero-aside-card__icon svg,
-.result-message svg,
-.ghost-button svg {
-  width: 18px;
-  height: 18px;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.hero-copy h1,
-.section-head h2,
-.appointment-title {
-  margin: 0;
+  align-self: flex-start;
+  margin-top: 1rem;
   font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
   font-weight: 600;
-}
-
-.hero-copy h1 {
-  margin-top: 0.95rem;
-  font-size: clamp(2rem, 3.2vw, 3.45rem);
-  line-height: 1.12;
-}
-
-.lead,
-.metric-card p,
-.issue-summary,
-.appointment-time,
-.appointment-meta,
-.result-message p,
-.error-text,
-.state-text,
-.appointment-footer__note span,
-.hero-aside-card p {
-  font-family: 'Manrope', sans-serif;
-}
-
-.lead {
-  margin: 1rem 0 0;
-  max-width: 720px;
-  font-size: 1rem;
-  line-height: 1.84;
-  color: rgba(44, 48, 40, 0.74);
-}
-
-.hero-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin-top: 1.6rem;
-}
-
-.metric-card {
-  padding: 1.2rem 1.25rem;
-}
-
-.metric-card--warm {
-  background:
-    linear-gradient(180deg, rgba(255, 249, 241, 0.96) 0%, rgba(249, 242, 232, 0.88) 100%);
-}
-
-.metric-card strong,
-.hero-aside-card strong {
-  display: block;
-  margin-top: 0.68rem;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.72rem;
-  font-weight: 600;
-  color: #283128;
-}
-
-.metric-card p {
-  margin: 0.7rem 0 0;
-  font-size: 0.88rem;
-  line-height: 1.72;
-  color: rgba(44, 48, 40, 0.66);
-}
-
-.hero-aside-card {
-  height: 100%;
-  padding: 1.55rem;
-  background:
-    radial-gradient(circle at top right, rgba(107, 134, 114, 0.16), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 246, 239, 0.88) 100%);
-}
-
-.hero-aside-card__top {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-}
-
-.hero-aside-card__icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  background: rgba(97, 122, 105, 0.12);
-  color: #5e7465;
-}
-
-.hero-aside-card p {
-  margin: 0.9rem 0 0;
-  font-size: 0.92rem;
-  line-height: 1.82;
-  color: rgba(44, 48, 40, 0.68);
-}
-
-.list-panel {
-  padding: 1.55rem;
-}
-
-.section-head {
-  margin-bottom: 1.15rem;
-}
-
-.section-head-inline {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: end;
-}
-
-.status-chip {
-  background: rgba(255, 250, 240, 0.82);
-  color: #696152;
-  border: 1px solid rgba(88, 93, 84, 0.12);
-}
-
-.appointment-stack {
-  display: grid;
-  gap: 1.1rem;
-}
-
-.appointment-card {
-  position: relative;
-  overflow: hidden;
-  padding: 1.45rem;
+  padding: 0.4rem 1rem;
+  border-radius: 100px;
+  background: rgba(130, 150, 138, 0.15);
+  color: #5c6b60;
   transition: all 0.3s ease;
 }
 
-.appointment-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 34px rgba(55, 67, 57, 0.1);
+/* 不同状态下，左侧锚点的颜色暗示 */
+.entry--accepted .huge-date, .entry--active .huge-date {
+  color: #3b4d40;
+}
+.entry--accepted .status-pill, .entry--active .status-pill {
+  background: #2a362e;
+  color: #ffffff;
 }
 
-.appointment-card__glow {
-  position: absolute;
-  right: -2rem;
-  bottom: -2.5rem;
-  width: 7.5rem;
-  height: 7.5rem;
-  border-radius: 999px;
-  opacity: 0.48;
-  pointer-events: none;
+.entry--done .huge-date {
+  color: #7b8c80;
 }
 
-.appointment-card--pending .appointment-card__glow {
-  background: radial-gradient(circle, rgba(210, 177, 120, 0.28), transparent 70%);
+.entry--pending .status-pill {
+  background: rgba(193, 150, 83, 0.15);
+  color: #9e7330;
 }
 
-.appointment-card--accepted .appointment-card__glow,
-.appointment-card--active .appointment-card__glow {
-  background: radial-gradient(circle, rgba(107, 134, 114, 0.26), transparent 70%);
+.entry--muted .huge-date {
+  color: #b5c2b9;
 }
 
-.appointment-card--done .appointment-card__glow {
-  background: radial-gradient(circle, rgba(132, 156, 164, 0.24), transparent 70%);
+/* 右侧内容区 */
+.entry-content-col {
+  display: flex;
+  flex-direction: column;
 }
 
-.appointment-topline {
+.entry-topline {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
-  align-items: start;
-  margin-bottom: 0.95rem;
-}
-
-.appointment-identity {
-  display: flex;
-  gap: 0.95rem;
   align-items: center;
+  margin-bottom: 1.5rem;
 }
 
-.appointment-avatar {
-  width: 3.4rem;
-  height: 3.4rem;
-  border-radius: 18px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  background: linear-gradient(135deg, #6f8774, #ccd7c7);
-  color: #fffdf8;
-  font: 700 0.92rem/1 'Manrope', sans-serif;
-}
-
-.appointment-title {
-  font-size: 1.3rem;
-  line-height: 1.24;
-}
-
-.appointment-time {
-  margin: 0.45rem 0 0;
-  font-size: 0.9rem;
-  color: rgba(44, 48, 40, 0.62);
-}
-
-.status-pill {
-  flex-shrink: 0;
-}
-
-.status-pill--pending {
-  background: rgba(216, 182, 120, 0.16);
-  color: #996d28;
-}
-
-.status-pill--accepted {
-  background: rgba(98, 129, 107, 0.14);
-  color: #5a725f;
-}
-
-.status-pill--active {
-  background: rgba(79, 116, 134, 0.15);
-  color: #406879;
-}
-
-.status-pill--done {
-  background: rgba(113, 140, 150, 0.15);
-  color: #59737d;
-}
-
-.status-pill--muted {
-  background: rgba(128, 124, 117, 0.12);
-  color: #716960;
-}
-
-.issue-summary {
+.counselor-name {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #1e2821;
   margin: 0;
-  font-size: 0.98rem;
-  line-height: 1.84;
-  color: rgba(44, 48, 40, 0.74);
 }
 
-.appointment-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 1rem;
+.entry-id {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.95rem;
+  color: #b5c2b9;
 }
 
-.info-chip {
-  background: rgba(255, 255, 255, 0.76);
-  color: rgba(68, 74, 66, 0.7);
+/* 摘录样式的正文 */
+.issue-quote {
+  margin: 0 0 2rem 0;
+  padding-left: 1.5rem;
+  border-left: 2px solid rgba(42, 54, 46, 0.15);
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #4a5c51;
 }
 
 .result-message {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 0.7rem;
-  align-items: start;
-  margin-top: 1rem;
-  padding: 1rem 1.05rem;
-  border-radius: 18px;
-  background: rgba(248, 240, 231, 0.9);
-  color: #8a533e;
+  margin-bottom: 2rem;
+  padding: 1.2rem 1.5rem;
+  background: rgba(245, 240, 235, 0.6);
+  border-radius: 12px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #8c6a5c;
 }
 
-.result-message p {
-  margin: 0;
-  font-size: 0.92rem;
-  line-height: 1.78;
+.result-message strong {
+  font-weight: 600;
+  color: #6b4d42;
 }
 
-.appointment-footer {
+.entry-footer {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
   align-items: center;
-  margin-top: 1.15rem;
+  margin-top: auto;
 }
 
-.appointment-footer__note span {
-  display: block;
-  font-size: 0.84rem;
-  line-height: 1.68;
-  color: rgba(44, 48, 40, 0.58);
+.meta-tags {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  color: #8a9c90;
 }
 
-.ghost-button {
+.dot {
+  margin: 0 0.8rem;
+  color: #cbd5cf;
+}
+
+/* 按钮交互 */
+.action-chat-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  transition: color 0.3s ease;
+}
+
+.action-chat-btn:hover {
+  color: #5c6b60;
+}
+
+.disabled-action {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: #b5c2b9;
+}
+
+/* 状态样式 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.6rem;
+  color: #2a362e;
+  margin: 0 0 1rem 0;
+}
+
+.empty-desc {
+  margin-bottom: 2rem;
+}
+
+.ghost-btn {
+  background: transparent;
+  border: 1px solid rgba(42, 54, 46, 0.3);
+  color: #2a362e;
+  padding: 1rem 2.2rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  border: 1px solid rgba(55, 67, 57, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  color: #2c3028;
-  min-height: 3rem;
-  padding: 0 1.05rem;
-  font: 800 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
+  gap: 0.5rem;
   transition: all 0.3s ease;
 }
 
-.ghost-button:hover {
-  transform: translateY(-2px);
-  border-color: rgba(55, 67, 57, 0.2);
-  box-shadow: 0 16px 30px rgba(55, 67, 57, 0.08);
+.ghost-btn:hover {
+  background: rgba(42, 54, 46, 0.05);
+  border-color: #2a362e;
 }
 
-.state-text,
-.error-text {
-  margin: 0.8rem 0 0;
-  font-size: 0.96rem;
-  line-height: 1.8;
+/* 分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
 }
 
-.error-text {
-  font-weight: 700;
-  color: #a64939;
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
 }
 
-@media (max-width: 980px) {
-  .page-hero {
-    grid-template-columns: 1fr;
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.action-chat-btn:hover .arrow,
+.ghost-btn:hover .arrow,
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .journal-entry {
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 2.5rem;
   }
 
-  .hero-metrics {
-    grid-template-columns: 1fr;
+  .huge-date {
+    font-size: 3rem;
   }
 }
 
-@media (max-width: 760px) {
-  .hero-copy,
-  .hero-aside-card,
-  .list-panel,
-  .appointment-card {
-    padding: 1.25rem;
-  }
-
-  .appointment-topline,
-  .section-head-inline,
-  .appointment-footer {
+@media (max-width: 768px) {
+  .journal-header {
     flex-direction: column;
-    align-items: start;
+    align-items: flex-start;
+    gap: 2rem;
+  }
+
+  .header-stats {
+    flex-wrap: wrap;
+    gap: 2rem;
+  }
+
+  .list-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0;
+  }
+
+  .list-note {
+    text-align: left;
+  }
+
+  .journal-entry {
+    grid-template-columns: 1fr; /* 移动端改为单列，巨型日期居顶 */
+    gap: 1.5rem;
+    padding: 2.5rem 0;
+  }
+
+  .huge-date {
+    font-size: 2.5rem;
+    display: inline-block;
+    margin-right: 1rem;
+  }
+
+  .time-span {
+    display: inline-block;
+  }
+
+  .status-pill {
+    margin-top: 0;
+    margin-left: 1rem;
+  }
+
+  .entry-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1.5rem;
   }
 }
 </style>

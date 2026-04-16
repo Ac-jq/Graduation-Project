@@ -2,6 +2,7 @@ import { get, post, put } from './http'
 import type {
   AdminUserQuery,
   AdminUserSummary,
+  AvatarUploadResponse,
   CounselorStudentSummary,
   CreateCounselorRequest,
   StudentProfile,
@@ -14,6 +15,16 @@ export function fetchStudentProfileApi(): Promise<StudentProfile> {
 
 export function updateStudentProfileApi(payload: UpdateStudentProfileRequest): Promise<StudentProfile> {
   return put<StudentProfile>('/student/profile/me', payload)
+}
+
+export function uploadStudentAvatarApi(file: File): Promise<AvatarUploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post<AvatarUploadResponse>('/student/profile/avatar', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
 }
 
 export function fetchCounselorStudentsApi(): Promise<CounselorStudentSummary[]> {

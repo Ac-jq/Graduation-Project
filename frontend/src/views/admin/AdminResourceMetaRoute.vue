@@ -86,54 +86,101 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-meta-page">
-    <div class="page-shell">
-      <header class="hero-copy">
-        <p class="eyebrow">资源元数据中心</p>
-        <h1>集中维护资源分类与标签体系，让内容治理保持统一口径。</h1>
+  <section class="admin-editorial-page">
+    <div class="admin-editorial-shell">
+      <header class="admin-editorial-hero">
+        <div class="admin-editorial-copy">
+          <p class="admin-editorial-eyebrow">资源元数据中心</p>
+          <h1 class="admin-editorial-title">统一维护分类与标签，让资源治理口径保持稳定一致。</h1>
+          <p class="admin-editorial-lead">所有创建与更新动作仍然调用原有元数据接口，这里只把信息编排和卡片结构统一为学生端同源的视觉语言。</p>
+        </div>
+        <div class="admin-editorial-hero-side">
+          <article class="admin-editorial-stat">
+            <p class="admin-editorial-label">分类数量</p>
+            <strong>{{ categories.length }}</strong>
+          </article>
+          <article class="admin-editorial-stat">
+            <p class="admin-editorial-label">标签数量</p>
+            <strong>{{ tags.length }}</strong>
+          </article>
+        </div>
       </header>
 
-      <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
 
-      <div class="meta-grid">
-        <section class="glass-panel panel">
-          <div class="section-head"><p class="section-kicker">Categories</p><h2>分类管理</h2></div>
-          <div class="form-grid">
-            <label><span>名称</span><input v-model="categoryForm.name" type="text"></label>
-            <label><span>排序</span><input v-model.number="categoryForm.sortNo" type="number"></label>
-            <label><span>状态</span><input v-model="categoryForm.status" type="text"></label>
-            <label class="wide"><span>描述</span><input v-model="categoryForm.description" type="text"></label>
+      <div class="admin-editorial-grid admin-editorial-grid--equal">
+        <section class="admin-editorial-panel admin-editorial-panel--mesh">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">分类管理</p>
+            <h2>新增或更新分类</h2>
           </div>
-          <div class="action-row">
-            <button class="primary-button" type="button" :disabled="processing" @click="createCategory">新增分类</button>
+
+          <div class="admin-editorial-form">
+            <label class="admin-editorial-field">
+              <span>名称</span>
+              <input v-model="categoryForm.name" type="text">
+            </label>
+            <label class="admin-editorial-field">
+              <span>排序</span>
+              <input v-model.number="categoryForm.sortNo" type="number">
+            </label>
+            <label class="admin-editorial-field">
+              <span>状态</span>
+              <input v-model="categoryForm.status" type="text">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>描述</span>
+              <input v-model="categoryForm.description" type="text">
+            </label>
           </div>
-          <div class="list-stack">
-            <article v-for="category in categories" :key="category.categoryId" class="list-card">
-              <div class="list-topline">
+
+          <div class="admin-editorial-actions" style="margin-top: 1rem;">
+            <button class="admin-editorial-button" type="button" :disabled="processing" @click="createCategory">新增分类</button>
+          </div>
+
+          <div class="admin-editorial-board" style="margin-top: 1rem;">
+            <article v-for="category in categories" :key="category.categoryId" class="admin-editorial-card">
+              <div class="admin-editorial-card__topline">
                 <div>
-                  <p class="list-code">Category #{{ category.categoryId }}</p>
+                  <p class="admin-editorial-code">分类 #{{ category.categoryId }}</p>
                   <h3>{{ category.name }}</h3>
                 </div>
-                <span class="status-pill">{{ category.status || 'ACTIVE' }}</span>
+                <span class="admin-editorial-status">{{ category.status || 'ACTIVE' }}</span>
               </div>
               <p>{{ category.description || '无描述' }}</p>
-              <button class="ghost-button" type="button" :disabled="processing" @click="updateCategory(category.categoryId)">用当前表单更新此分类</button>
+              <div class="admin-editorial-card__footer">
+                <span class="admin-editorial-note">排序 {{ category.sortNo }}</span>
+                <button class="admin-editorial-ghost" type="button" :disabled="processing" @click="updateCategory(category.categoryId)">用当前表单更新</button>
+              </div>
             </article>
           </div>
         </section>
 
-        <section class="glass-panel panel">
-          <div class="section-head"><p class="section-kicker">Tags</p><h2>标签管理</h2></div>
-          <div class="form-grid">
-            <label><span>名称</span><input v-model="tagForm.name" type="text"></label>
-            <label class="wide"><span>描述</span><input v-model="tagForm.description" type="text"></label>
+        <section class="admin-editorial-panel">
+          <div class="admin-editorial-section">
+            <p class="admin-editorial-kicker">标签管理</p>
+            <h2>新增标签并查看现有体系</h2>
           </div>
-          <div class="action-row">
-            <button class="primary-button" type="button" :disabled="processing" @click="createTag">新增标签</button>
+
+          <div class="admin-editorial-form">
+            <label class="admin-editorial-field">
+              <span>名称</span>
+              <input v-model="tagForm.name" type="text">
+            </label>
+            <label class="admin-editorial-field wide">
+              <span>描述</span>
+              <input v-model="tagForm.description" type="text">
+            </label>
           </div>
-          <div class="list-stack">
-            <article v-for="tag in tags" :key="tag.tagId" class="list-card">
-              <p class="list-code">Tag #{{ tag.tagId }}</p>
+
+          <div class="admin-editorial-actions" style="margin-top: 1rem;">
+            <button class="admin-editorial-button" type="button" :disabled="processing" @click="createTag">新增标签</button>
+          </div>
+
+          <div v-if="loading" class="admin-editorial-empty">正在同步分类与标签…</div>
+          <div v-else class="admin-editorial-board" style="margin-top: 1rem;">
+            <article v-for="tag in tags" :key="tag.tagId" class="admin-editorial-card">
+              <p class="admin-editorial-code">标签 #{{ tag.tagId }}</p>
               <h3>{{ tag.name }}</h3>
               <p>{{ tag.description || '无描述' }}</p>
             </article>
@@ -145,8 +192,5 @@ onMounted(() => {
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-.admin-meta-page{min-height:100vh;padding:44px 28px 72px;color:#272f27;background:linear-gradient(180deg,#f4efe6 0%,#f8f4ed 100%)}.page-shell{max-width:1320px;margin:0 auto}.hero-copy{border-top:1px solid rgba(59,69,59,.16);padding-top:18px;margin-bottom:28px}.eyebrow,.section-kicker,.list-code,.form-grid span{margin:0 0 10px;font:700 .76rem/1 'Manrope',sans-serif;letter-spacing:.22em;text-transform:uppercase;color:#7b6857}.hero-copy h1,.section-head h2,.list-card h3{margin:0;font-family:'Noto Serif SC',serif;font-weight:600}.hero-copy h1{font-size:clamp(2rem,3vw,3.2rem);line-height:1.16}.meta-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}.glass-panel,.list-card{border:1px solid rgba(77,86,77,.14);background:rgba(255,252,247,.76);box-shadow:0 24px 70px rgba(91,80,66,.08);backdrop-filter:blur(16px)}.panel{padding:24px}.section-head{margin-bottom:18px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.form-grid label{display:grid;gap:8px}.wide{grid-column:1/-1}input{width:100%;box-sizing:border-box;border:1px solid rgba(80,88,79,.16);background:rgba(255,255,255,.74);padding:14px 16px;font:500 .95rem/1.4 'Manrope',sans-serif;color:#272f27;outline:none}.action-row{display:flex;gap:12px;margin:16px 0}.primary-button,.ghost-button{padding:12px 16px;font:700 .82rem/1 'Manrope',sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.primary-button{border:none;background:linear-gradient(135deg,#253128 0%,#47564b 100%);color:#f8f5ef}.ghost-button{border:1px solid rgba(54,65,56,.2);background:rgba(255,255,255,.58);color:#272f27}.list-stack{display:grid;gap:14px}.list-card{padding:16px}.list-topline{display:flex;justify-content:space-between;gap:16px;align-items:start}.status-pill{border:1px solid rgba(97,111,98,.15);background:rgba(242,244,237,.94);padding:8px 12px;font:700 .74rem/1 'Manrope',sans-serif;letter-spacing:.12em;text-transform:uppercase;color:#66735f}.list-card p,.error-text{font:400 .92rem/1.8 'Manrope',sans-serif;color:rgba(39,47,39,.68)}.error-text{margin-bottom:16px;color:#a44f46}
-@media (max-width:980px){.admin-meta-page{padding:28px 16px 46px}.meta-grid,.form-grid{grid-template-columns:1fr}}
+@import './admin-editorial.css';
 </style>
-

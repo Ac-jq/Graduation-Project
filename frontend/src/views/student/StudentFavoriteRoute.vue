@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchStudentFavoritesApi, removeStudentFavoriteApi } from '@/api/resource'
 import type { ResourceSummary } from '@/api/types'
@@ -10,6 +10,24 @@ const loading = ref(false)
 const removing = ref(false)
 const errorMessage = ref('')
 const favorites = ref<ResourceSummary[]>([])
+const currentPage = ref(1)
+const pageSize = 6
+const totalPages = computed(() => Math.max(1, Math.ceil(favorites.value.length / pageSize)))
+const pagedFavorites = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return favorites.value.slice(start, start + pageSize)
+})
+
+function resolveResourceType(type: string): string {
+  switch (type) {
+    case 'ARTICLE': return '图文阅览'
+    case 'VIDEO': return '视频影像'
+    case 'AUDIO': return '声音片段'
+    case 'IMAGE': return '图像内容'
+    case 'LINK': return '外部指引'
+    default: return type
+  }
+}
 
 async function loadFavorites(): Promise<void> {
   loading.value = true
@@ -17,10 +35,25 @@ async function loadFavorites(): Promise<void> {
 
   try {
     favorites.value = await fetchStudentFavoritesApi()
+    currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
@@ -85,7 +118,7 @@ onMounted(() => {
       </div>
 
       <section v-else class="media-grid">
-        <article v-for="resource in favorites" :key="resource.resourceId" class="media-card">
+        <article v-for="resource in pagedFavorites" :key="resource.resourceId" class="media-card">
 
           <div class="media-cover" @click="openResource(resource.resourceId)">
             <img
@@ -93,7 +126,7 @@ onMounted(() => {
                 class="cover-image"
                 alt="资源封面"
             />
-            <span class="media-type-badge">{{ resource.resourceType }}</span>
+            <span class="media-type-badge">{{ resolveResourceType(resource.resourceType) }}</span>
             <div class="play-overlay">
               <span class="play-text">查看内容</span>
             </div>
@@ -138,6 +171,28 @@ onMounted(() => {
 
         </article>
       </section>
+
+      <nav class="pagination-nav" v-if="totalPages > 1">
+        <button
+            class="page-btn"
+            :disabled="currentPage <= 1"
+            @click="prevPage"
+        >
+          <span class="arrow">←</span> 上一页
+        </button>
+
+        <div class="page-indicator">
+          <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+        </div>
+
+        <button
+            class="page-btn"
+            :disabled="currentPage >= totalPages"
+            @click="nextPage"
+        >
+          下一页 <span class="arrow">→</span>
+        </button>
+      </nav>
 
     </div>
   </main>
@@ -526,5 +581,59 @@ onMounted(() => {
   .media-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* 优雅的分页器 */
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
 }
 </style>

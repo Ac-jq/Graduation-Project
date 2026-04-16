@@ -1,0 +1,375 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+
+.admin-editorial-page {
+  min-height: 100vh;
+  padding: 3rem 1.5rem 5rem;
+  color: #2a362e;
+  background:
+    radial-gradient(circle at top right, rgba(178, 156, 129, 0.18), transparent 18%),
+    radial-gradient(circle at left 28%, rgba(186, 205, 194, 0.18), transparent 24%),
+    linear-gradient(180deg, #f8f4ed 0%, #f3efe7 100%);
+  font-family: 'Manrope', sans-serif;
+}
+
+.admin-editorial-shell {
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.admin-editorial-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 1.5rem;
+  align-items: end;
+  margin-bottom: 2rem;
+}
+
+.admin-editorial-copy {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.admin-editorial-eyebrow,
+.admin-editorial-kicker,
+.admin-editorial-label,
+.admin-editorial-code,
+.admin-editorial-field span,
+.admin-editorial-chip,
+.admin-editorial-note {
+  margin: 0 0 0.65rem;
+  font: 700 0.76rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #85786b;
+}
+
+.admin-editorial-title,
+.admin-editorial-section h2,
+.admin-editorial-card h3,
+.admin-editorial-metric strong,
+.admin-editorial-stat strong {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+}
+
+.admin-editorial-title {
+  font-size: clamp(2.2rem, 4vw, 3.9rem);
+  line-height: 1.08;
+  color: #1e2821;
+}
+
+.admin-editorial-lead,
+.admin-editorial-copy p,
+.admin-editorial-card p,
+.admin-editorial-meta,
+.admin-editorial-empty,
+.admin-editorial-alert,
+.admin-editorial-field input,
+.admin-editorial-field textarea,
+.admin-editorial-field select {
+  font-family: 'Manrope', sans-serif;
+}
+
+.admin-editorial-lead {
+  margin: 1rem 0 0;
+  max-width: 760px;
+  color: rgba(42, 54, 46, 0.7);
+  line-height: 1.85;
+}
+
+.admin-editorial-panel,
+.admin-editorial-card,
+.admin-editorial-stat,
+.admin-editorial-metric {
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(248, 246, 242, 0.86));
+  backdrop-filter: blur(24px);
+  box-shadow: 0 40px 80px rgba(54, 66, 58, 0.06);
+}
+
+.admin-editorial-hero-side {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-editorial-stat {
+  padding: 1.25rem;
+}
+
+.admin-editorial-stat strong {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 1.6rem;
+}
+
+.admin-editorial-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  gap: 1.5rem;
+}
+
+.admin-editorial-grid--equal {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-editorial-panel {
+  padding: 1.5rem;
+}
+
+.admin-editorial-panel--mesh {
+  background:
+    radial-gradient(circle at top left, rgba(155, 187, 171, 0.22), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(218, 184, 142, 0.2), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(248, 246, 242, 0.88));
+}
+
+.admin-editorial-section {
+  margin-bottom: 1.25rem;
+}
+
+.admin-editorial-section--inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+}
+
+.admin-editorial-badge,
+.admin-editorial-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  color: #6f7b71;
+  font: 700 0.72rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.admin-editorial-stack,
+.admin-editorial-list,
+.admin-editorial-actions,
+.admin-editorial-form,
+.admin-editorial-metrics,
+.admin-editorial-row {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-editorial-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.admin-editorial-metric {
+  padding: 1.15rem 1.1rem;
+}
+
+.admin-editorial-metric strong {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 1.55rem;
+}
+
+.admin-editorial-card {
+  padding: 1.25rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+button.admin-editorial-card {
+  width: 100%;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-editorial-card:hover,
+.admin-editorial-button:hover,
+.admin-editorial-ghost:hover,
+.admin-editorial-danger:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 48px 88px rgba(54, 66, 58, 0.09);
+}
+
+.admin-editorial-card__topline,
+.admin-editorial-card__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.admin-editorial-card__footer {
+  align-items: center;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-editorial-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  margin-top: 0.9rem;
+  color: rgba(42, 54, 46, 0.64);
+  font-size: 0.88rem;
+}
+
+.admin-editorial-actions {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.admin-editorial-button,
+.admin-editorial-ghost,
+.admin-editorial-danger {
+  min-height: 3rem;
+  padding: 0.95rem 1.25rem;
+  border-radius: 999px;
+  font: 700 0.82rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-editorial-button {
+  border: none;
+  color: #fffdf8;
+  background: linear-gradient(135deg, #2d3b31 0%, #617a69 100%);
+}
+
+.admin-editorial-ghost {
+  border: 1px solid rgba(42, 54, 46, 0.1);
+  color: #2a362e;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.admin-editorial-danger {
+  border: 1px solid rgba(155, 88, 80, 0.14);
+  color: #9b5850;
+  background: rgba(155, 88, 80, 0.08);
+}
+
+.admin-editorial-field {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.admin-editorial-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-editorial-form .wide {
+  grid-column: 1 / -1;
+}
+
+.admin-editorial-field input,
+.admin-editorial-field textarea,
+.admin-editorial-field select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3.15rem;
+  padding: 0.95rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  background: rgba(255, 255, 255, 0.72);
+  color: #2a362e;
+  outline: none;
+  resize: vertical;
+}
+
+.admin-editorial-field textarea {
+  min-height: 6rem;
+}
+
+.admin-editorial-alert {
+  margin: 0 0 1rem;
+  color: #9b5850;
+  line-height: 1.8;
+}
+
+.admin-editorial-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: rgba(42, 54, 46, 0.62);
+  line-height: 1.8;
+}
+
+.admin-editorial-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.admin-editorial-chip-button {
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+  color: #2a362e;
+  padding: 0.85rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font: 600 0.88rem/1.5 'Manrope', sans-serif;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-editorial-chip-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 54px rgba(54, 66, 58, 0.08);
+}
+
+.admin-editorial-compare {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.admin-editorial-compare > div {
+  padding: 0.95rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.admin-editorial-compare label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #8a7d70;
+  font: 700 0.72rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.admin-editorial-compare p {
+  margin: 0;
+  line-height: 1.75;
+  color: #2a362e;
+}
+
+.admin-editorial-board {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 1100px) {
+  .admin-editorial-hero,
+  .admin-editorial-grid,
+  .admin-editorial-grid--equal,
+  .admin-editorial-form,
+  .admin-editorial-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-editorial-page {
+    padding: 2rem 1rem 4rem;
+  }
+
+  .admin-editorial-actions,
+  .admin-editorial-metrics {
+    grid-template-columns: 1fr;
+  }
+}

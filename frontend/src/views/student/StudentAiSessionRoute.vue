@@ -27,6 +27,32 @@ const sessionStatusLabel = computed(() => {
 })
 const activeRiskLevel = computed(() => activeSession.value?.riskLevel || 'LOW')
 
+function resolveRiskLevelLabel(level: string | null | undefined): string {
+  switch (level) {
+    case 'HIGH':
+      return '高关注'
+    case 'MEDIUM':
+      return '中等波动'
+    case 'LOW':
+      return '平稳'
+    default:
+      return '平稳'
+  }
+}
+
+function resolveSessionStatusText(status: string | null | undefined): string {
+  switch (status) {
+    case 'ACTIVE':
+      return '进行中'
+    case 'ARCHIVED':
+      return '已归档'
+    case 'CLOSED':
+      return '已结束'
+    default:
+      return '进行中'
+  }
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) {
     return '暂无'
@@ -155,7 +181,7 @@ onMounted(() => {
 
         <div class="session-header__main">
           <div class="session-header__copy">
-            <p class="eyebrow">AI Mentor Session</p>
+            <p class="eyebrow">AI 导师会话</p>
             <h1>{{ activeSession?.title || `倾诉会话 #${sessionId || '-'}` }}</h1>
             <p class="lead">
               在这里把难以整理的情绪慢慢说出来。AI 导师会先接住你的感受，再帮你把问题拆小。
@@ -170,7 +196,7 @@ onMounted(() => {
             </div>
             <div class="meta-card">
               <span class="meta-label">风险等级</span>
-              <strong :class="riskTone(activeRiskLevel)">{{ activeRiskLevel }}</strong>
+              <strong :class="riskTone(activeRiskLevel)">{{ resolveRiskLevelLabel(activeRiskLevel) }}</strong>
               <p>最近活跃：{{ formatDateTime(activeSession?.lastActiveAt || activeSession?.createdAt) }}</p>
             </div>
           </div>
@@ -180,7 +206,7 @@ onMounted(() => {
       <div class="session-grid">
         <aside class="session-side">
           <article class="side-card side-card--warm">
-            <p class="side-kicker">Gentle Prompt</p>
+            <p class="side-kicker">温和提示</p>
             <h2>探索内在的平静</h2>
             <p>
               这里不是任务面板，而是一个可以慢下来整理自己状态的地方。你可以说事件，也可以只说感受。
@@ -188,7 +214,7 @@ onMounted(() => {
           </article>
 
           <article class="side-card">
-            <p class="side-kicker">Conversation Notes</p>
+            <p class="side-kicker">对话提示</p>
             <ul class="ritual-list">
               <li>先描述你现在最强烈的感受。</li>
               <li>如果不想说完整故事，只写一小段也可以。</li>
@@ -197,7 +223,7 @@ onMounted(() => {
           </article>
 
           <article class="side-card side-card--muted">
-            <p class="side-kicker">Session Detail</p>
+            <p class="side-kicker">会话详情</p>
             <dl class="detail-grid">
               <div>
                 <dt>会话编号</dt>
@@ -209,7 +235,7 @@ onMounted(() => {
               </div>
               <div>
                 <dt>当前状态</dt>
-                <dd>{{ activeSession?.status || 'ACTIVE' }}</dd>
+                <dd>{{ resolveSessionStatusText(activeSession?.status) }}</dd>
               </div>
               <div>
                 <dt>消息数量</dt>
@@ -223,12 +249,12 @@ onMounted(() => {
           <div class="chat-card">
             <header class="chat-card__header">
               <div>
-                <p class="side-kicker">Dialogue</p>
+                <p class="side-kicker">对话记录</p>
                 <h2>把还没有说出口的话，交给这个安静空间</h2>
               </div>
               <span class="online-pill">
                 <span class="online-pill__dot"></span>
-                DeepSeek 已接入
+                DeepSeek 模型已接入
               </span>
             </header>
 
@@ -254,7 +280,7 @@ onMounted(() => {
                     <span>{{ message.senderType === 'STUDENT' ? '你' : 'AI 导师' }}</span>
                     <span>{{ formatDateTime(message.createdAt) }}</span>
                     <span v-if="message.riskLevel" :class="['risk-badge', riskTone(message.riskLevel)]">
-                      {{ message.riskLevel }}
+                      {{ resolveRiskLevelLabel(message.riskLevel) }}
                     </span>
                   </div>
                   <p class="message-bubble__content">{{ message.content }}</p>

@@ -4,14 +4,15 @@
       <div class="sidebar-brand">
         <div class="brand-mark"></div>
         <div>
-          <p class="brand-eyebrow">Mental Service Hub</p>
+          <p class="brand-eyebrow">心理服务工作台</p>
           <strong class="brand-name">JQPro</strong>
         </div>
       </div>
 
       <div class="user-card">
         <div class="user-avatar">
-          {{ currentUser?.displayName?.slice(0, 1) || 'U' }}
+          <img v-if="sidebarAvatarUrl" :src="sidebarAvatarUrl" alt="avatar" class="user-avatar__img">
+          <span v-else>{{ currentUser?.displayName?.slice(0, 1) || 'U' }}</span>
         </div>
         <div class="user-copy">
           <strong>{{ currentUser?.displayName || '未登录用户' }}</strong>
@@ -20,8 +21,8 @@
       </div>
 
       <div class="sidebar-note">
-        <span class="sidebar-note-label">陪伴式心理支持</span>
-        <p>在每一次浏览、测评与咨询之间，保持温柔、清晰、值得信赖的体验。</p>
+        <span class="sidebar-note-label">{{ sidebarNote.label }}</span>
+        <p>{{ sidebarNote.copy }}</p>
       </div>
 
       <nav class="sidebar-nav" aria-label="工作台导航">
@@ -64,8 +65,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { fetchStudentProfileApi } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
 
 type NavIconName =
@@ -134,8 +136,24 @@ const navIcons: Record<NavIconName, string[]> = {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const assetOrigin = `${window.location.protocol}//${window.location.hostname}:8080`
+const studentAvatarStorageKey = 'jqpro.student-avatar-url'
+const avatarEventName = 'jqpro:student-avatar-updated'
+const studentAvatarUrl = ref(localStorage.getItem(studentAvatarStorageKey))
 
 const currentUser = computed(() => authStore.currentUser)
+const sidebarAvatarUrl = computed(() => {
+  if (currentUser.value?.roleCode === 'STUDENT') {
+    return studentAvatarUrl.value || `${assetOrigin}/assets/avatars/roles/student-default.jpg`
+  }
+  if (currentUser.value?.roleCode === 'COUNSELOR') {
+    return `${assetOrigin}/assets/avatars/roles/counselor-default.jpg`
+  }
+  if (currentUser.value?.roleCode === 'ADMIN') {
+    return `${assetOrigin}/assets/avatars/roles/admin-default.jpg`
+  }
+  return null
+})
 
 const themeClass = computed(() => {
   switch (currentUser.value?.roleCode) {
@@ -195,9 +213,12 @@ const navItems = computed<NavItem[]>(() => {
     case 'ADMIN':
       return [
         { path: '/admin', label: '管理首页', caption: '系统总览', icon: 'home' },
+        { path: '/admin/users', label: '用户管理', caption: '学生与咨询师账号治理', icon: 'users' },
         { path: '/admin/scales', label: '量表管理', caption: '量表与规则维护', icon: 'layers' },
         { path: '/admin/resources', label: '资源管理', caption: '心理资源与分类', icon: 'folder' },
-        { path: '/admin/statistics', label: '统计分析', caption: '系统指标与趋势', icon: 'chart' }
+        { path: '/admin/statistics', label: '统计分析', caption: '系统指标与趋势', icon: 'chart' },
+        { path: '/admin/ai-tasks', label: 'AI 运维', caption: '自然语言解析与确认执行', icon: 'heart' },
+        { path: '/admin/audit-logs', label: '审计日志', caption: '关键操作回溯', icon: 'bell' }
       ]
     default:
       return []
@@ -208,10 +229,58 @@ function isNavItemActive(path: string): boolean {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
+const sidebarNote = computed(() => {
+  switch (currentUser.value?.roleCode) {
+    case 'ADMIN':
+      return {
+        label: '治理与校准',
+        copy: '在资源、量表、用户与审计之间保持统一节奏，让治理操作清晰、克制、可追踪。'
+      }
+    case 'COUNSELOR':
+      return {
+        label: '陪伴式支持',
+        copy: '把预约、沟通与学生状态收束在同一节奏里，保持温和、清晰、值得信赖的体验。'
+      }
+    default:
+      return {
+        label: '陪伴式心理支持',
+        copy: '在每一次浏览、测评与咨询之间，保持温柔、清晰、值得信赖的体验。'
+      }
+  }
+})
+
 async function handleLogout(): Promise<void> {
   await authStore.signOut(true)
   await router.push('/login')
 }
+
+function syncStudentAvatar(): void {
+  studentAvatarUrl.value = localStorage.getItem(studentAvatarStorageKey)
+}
+
+async function syncStudentAvatarFromProfile(): Promise<void> {
+  if (currentUser.value?.roleCode !== 'STUDENT') {
+    return
+  }
+  try {
+    const profile = await fetchStudentProfileApi()
+    if (profile.avatarUrl) {
+      localStorage.setItem(studentAvatarStorageKey, profile.avatarUrl)
+      studentAvatarUrl.value = profile.avatarUrl
+    }
+  } catch {
+    // 保持静默，避免因为头像拉取失败影响整体导航可用性。
+  }
+}
+
+onMounted(() => {
+  window.addEventListener(avatarEventName, syncStudentAvatar)
+  void syncStudentAvatarFromProfile()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener(avatarEventName, syncStudentAvatar)
+})
 </script>
 
 <style scoped>
@@ -250,18 +319,19 @@ async function handleLogout(): Promise<void> {
 }
 
 .theme-admin {
-  --bg-sidebar: rgba(20, 24, 29, 0.88);
-  --sidebar-edge: rgba(255, 255, 255, 0.05);
-  --text-primary: #ebf0f5;
-  --text-secondary: #93a0af;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --accent: #e8a93e;
-  --accent-soft: rgba(232, 169, 62, 0.16);
-  --nav-hover-bg: rgba(255, 255, 255, 0.08);
-  --active-text: #403117;
+  --bg-sidebar: rgba(255, 250, 244, 0.88);
+  --sidebar-edge: rgba(255, 255, 255, 0.72);
+  --text-primary: #232b25;
+  --text-secondary: #7e756c;
+  --border-color: rgba(45, 52, 45, 0.08);
+  --accent: #8c7357;
+  --accent-soft: rgba(140, 115, 87, 0.14);
+  --nav-hover-bg: rgba(255, 255, 255, 0.66);
+  --active-text: #47392b;
   background:
-      radial-gradient(circle at top right, rgba(232, 169, 62, 0.12), transparent 18%),
-      linear-gradient(180deg, #11151b 0%, #171c23 100%);
+      radial-gradient(circle at top right, rgba(173, 151, 122, 0.18), transparent 18%),
+      radial-gradient(circle at left 38%, rgba(191, 207, 197, 0.16), transparent 24%),
+      linear-gradient(180deg, #f7f2e9 0%, #f5f1ea 100%);
 }
 
 .workspace-sidebar {
@@ -284,9 +354,9 @@ async function handleLogout(): Promise<void> {
 
 .theme-admin .workspace-sidebar {
   background:
-      linear-gradient(180deg, var(--bg-sidebar), rgba(17, 21, 27, 0.94)),
+      linear-gradient(180deg, var(--bg-sidebar), rgba(255, 255, 255, 0.58)),
       linear-gradient(180deg, transparent, transparent);
-  box-shadow: 24px 0 48px rgba(0, 0, 0, 0.22);
+  box-shadow: 24px 0 48px rgba(58, 52, 46, 0.08);
 }
 
 .sidebar-brand {
@@ -357,6 +427,14 @@ async function handleLogout(): Promise<void> {
   color: white;
   font-weight: 700;
   font-size: 1rem;
+  overflow: hidden;
+}
+
+.user-avatar__img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .user-copy {

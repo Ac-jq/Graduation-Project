@@ -18,5 +18,9 @@ public class AssessmentScaleSummaryResponse {
 
     private long reportCount;
 
+    private int minScore;
+
+    private int maxScore;
+
     private double averageScore;
 }

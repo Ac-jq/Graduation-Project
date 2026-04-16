@@ -15,6 +15,9 @@ import sdu.jiaq.jqpro.dto.statistics.ResourceCategoryStatisticsResponse;
 import sdu.jiaq.jqpro.dto.statistics.ResourceStatisticsResponse;
 import sdu.jiaq.jqpro.dto.statistics.StatisticsExportRowResponse;
 import sdu.jiaq.jqpro.dto.statistics.TopResourceStatisticsResponse;
+import sdu.jiaq.jqpro.dto.statistics.UserEngagementItemResponse;
+import sdu.jiaq.jqpro.dto.statistics.UserEngagementStatisticsResponse;
+import sdu.jiaq.jqpro.dto.statistics.UserInterventionEffectExportRow;
 import sdu.jiaq.jqpro.entity.AiChatSession;
 import sdu.jiaq.jqpro.entity.ConsultAppointment;
 import sdu.jiaq.jqpro.entity.MentalResource;
@@ -24,6 +27,7 @@ import sdu.jiaq.jqpro.entity.ResourceCategory;
 import sdu.jiaq.jqpro.entity.ResourceFavorite;
 import sdu.jiaq.jqpro.entity.ResourceViewLog;
 import sdu.jiaq.jqpro.entity.StudentProfile;
+import sdu.jiaq.jqpro.entity.SysAuditLog;
 import sdu.jiaq.jqpro.entity.SysUser;
 import sdu.jiaq.jqpro.mapper.AiChatSessionMapper;
 import sdu.jiaq.jqpro.mapper.ConsultAppointmentMapper;
@@ -34,14 +38,15 @@ import sdu.jiaq.jqpro.mapper.ResourceCategoryMapper;
 import sdu.jiaq.jqpro.mapper.ResourceFavoriteMapper;
 import sdu.jiaq.jqpro.mapper.ResourceViewLogMapper;
 import sdu.jiaq.jqpro.mapper.StudentProfileMapper;
+import sdu.jiaq.jqpro.mapper.SysAuditLogMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.StatisticsService;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,12 +56,15 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Statistics service implementation.
+ * 统计服务实现。
  */
 @Service
 public class StatisticsServiceImpl implements StatisticsService {
 
+    private static final DateTimeFormatter EXPORT_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     private final SysUserMapper sysUserMapper;
+    private final SysAuditLogMapper sysAuditLogMapper;
     private final StudentProfileMapper studentProfileMapper;
     private final MentalScaleReportMapper mentalScaleReportMapper;
     private final MentalScaleMapper mentalScaleMapper;
@@ -68,6 +76,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final ResourceViewLogMapper resourceViewLogMapper;
 
     public StatisticsServiceImpl(SysUserMapper sysUserMapper,
+                                 SysAuditLogMapper sysAuditLogMapper,
                                  StudentProfileMapper studentProfileMapper,
                                  MentalScaleReportMapper mentalScaleReportMapper,
                                  MentalScaleMapper mentalScaleMapper,
@@ -78,6 +87,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                                  ResourceFavoriteMapper resourceFavoriteMapper,
                                  ResourceViewLogMapper resourceViewLogMapper) {
         this.sysUserMapper = sysUserMapper;
+        this.sysAuditLogMapper = sysAuditLogMapper;
         this.studentProfileMapper = studentProfileMapper;
         this.mentalScaleReportMapper = mentalScaleReportMapper;
         this.mentalScaleMapper = mentalScaleMapper;
@@ -172,13 +182,18 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<AssessmentScaleSummaryResponse> scales = reports.stream()
                 .collect(Collectors.groupingBy(MentalScaleReport::getScaleId))
                 .entrySet().stream()
-                .map(entry -> AssessmentScaleSummaryResponse.builder()
-                        .scaleId(entry.getKey())
-                        .scaleName(scaleMap.containsKey(entry.getKey()) ? scaleMap.get(entry.getKey()).getName() : "未知量表")
-                        .participantCount(entry.getValue().stream().map(MentalScaleReport::getUserId).distinct().count())
-                        .reportCount(entry.getValue().size())
-                        .averageScore(entry.getValue().stream().mapToInt(MentalScaleReport::getTotalScore).average().orElse(0))
-                        .build())
+                .map(entry -> {
+                    List<MentalScaleReport> scaleReports = entry.getValue();
+                    return AssessmentScaleSummaryResponse.builder()
+                            .scaleId(entry.getKey())
+                            .scaleName(scaleMap.containsKey(entry.getKey()) ? scaleMap.get(entry.getKey()).getName() : "未知量表")
+                            .participantCount(scaleReports.stream().map(MentalScaleReport::getUserId).distinct().count())
+                            .reportCount(scaleReports.size())
+                            .minScore(scaleReports.stream().mapToInt(MentalScaleReport::getTotalScore).min().orElse(0))
+                            .maxScore(scaleReports.stream().mapToInt(MentalScaleReport::getTotalScore).max().orElse(0))
+                            .averageScore(scaleReports.stream().mapToInt(MentalScaleReport::getTotalScore).average().orElse(0))
+                            .build();
+                })
                 .sorted(Comparator.comparing(AssessmentScaleSummaryResponse::getScaleId))
                 .toList();
 
@@ -310,6 +325,76 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     @Override
+    public UserEngagementStatisticsResponse getUserEngagements() {
+        List<SysUser> students = listUsersByRole(RoleConstants.STUDENT);
+        if (students.isEmpty()) {
+            return UserEngagementStatisticsResponse.builder()
+                    .totalStudents(0)
+                    .activeStudents(0)
+                    .highlyEngagedStudents(0)
+                    .items(List.of())
+                    .build();
+        }
+
+        Map<Long, StudentProfile> profileMap = studentProfileMapper.selectList(null).stream()
+                .collect(Collectors.toMap(StudentProfile::getUserId, Function.identity()));
+        Map<Long, List<MentalScaleReport>> reportMap = mentalScaleReportMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(MentalScaleReport::getUserId));
+        Map<Long, List<AiChatSession>> aiSessionMap = aiChatSessionMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(AiChatSession::getStudentUserId));
+        Map<Long, List<ConsultAppointment>> appointmentMap = consultAppointmentMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(ConsultAppointment::getStudentUserId));
+        Map<Long, List<ResourceViewLog>> viewMap = resourceViewLogMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(ResourceViewLog::getStudentUserId));
+        Map<Long, List<ResourceFavorite>> favoriteMap = resourceFavoriteMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(ResourceFavorite::getStudentUserId));
+
+        List<UserEngagementItemResponse> items = students.stream()
+                .map(student -> {
+                    List<MentalScaleReport> reports = reportMap.getOrDefault(student.getId(), List.of());
+                    List<AiChatSession> sessions = aiSessionMap.getOrDefault(student.getId(), List.of());
+                    List<ConsultAppointment> appointments = appointmentMap.getOrDefault(student.getId(), List.of());
+                    List<ResourceViewLog> views = viewMap.getOrDefault(student.getId(), List.of());
+                    List<ResourceFavorite> favorites = favoriteMap.getOrDefault(student.getId(), List.of());
+                    StudentProfile profile = profileMap.get(student.getId());
+
+                    long assessmentCount = reports.size();
+                    long aiSessionCount = sessions.size();
+                    long appointmentCount = appointments.size();
+                    long resourceViewCount = views.size();
+                    long favoriteCount = favorites.size();
+                    long engagementScore = assessmentCount + aiSessionCount + appointmentCount + resourceViewCount + favoriteCount;
+
+                    return UserEngagementItemResponse.builder()
+                            .userId(student.getId())
+                            .displayName(student.getDisplayName())
+                            .studentNo(student.getStudentNo())
+                            .college(profile == null ? null : profile.getCollege())
+                            .grade(profile == null ? null : profile.getGrade())
+                            .assessmentCount(assessmentCount)
+                            .averageScore(reports.stream().mapToInt(MentalScaleReport::getTotalScore).average().orElse(0))
+                            .aiSessionCount(aiSessionCount)
+                            .appointmentCount(appointmentCount)
+                            .resourceViewCount(resourceViewCount)
+                            .favoriteCount(favoriteCount)
+                            .engagementScore(engagementScore)
+                            .latestActivityAt(resolveLatestActivityAt(reports, sessions, appointments, views, favorites))
+                            .build();
+                })
+                .sorted(Comparator.comparingLong(UserEngagementItemResponse::getEngagementScore).reversed()
+                        .thenComparing(item -> item.getLatestActivityAt() == null ? LocalDateTime.MIN : item.getLatestActivityAt(), Comparator.reverseOrder())
+                        .thenComparing(UserEngagementItemResponse::getUserId))
+                .toList();
+
+        return UserEngagementStatisticsResponse.builder()
+                .totalStudents(students.size())
+                .activeStudents(items.stream().filter(item -> item.getEngagementScore() > 0).count())
+                .highlyEngagedStudents(items.stream().filter(item -> item.getEngagementScore() >= 5).count())
+                .items(items)
+                .build();
+    }
+
+    @Override
     public List<StatisticsExportRowResponse> exportByDimension(String dimension) {
         String normalizedDimension = dimension == null ? "" : dimension.trim().toLowerCase();
         if (!Set.of("college", "grade", "gender").contains(normalizedDimension)) {
@@ -359,11 +444,202 @@ public class StatisticsServiceImpl implements StatisticsService {
                 .toList();
     }
 
+    @Override
+    public List<UserInterventionEffectExportRow> listUserInterventionEffectRows() {
+        List<SysUser> students = listUsersByRole(RoleConstants.STUDENT);
+        if (students.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, StudentProfile> profileMap = studentProfileMapper.selectList(null).stream()
+                .collect(Collectors.toMap(StudentProfile::getUserId, Function.identity()));
+        Map<Long, List<MentalScaleReport>> reportMap = mentalScaleReportMapper.selectList(new LambdaQueryWrapper<MentalScaleReport>()
+                        .orderByAsc(MentalScaleReport::getCreatedAt, MentalScaleReport::getId))
+                .stream()
+                .collect(Collectors.groupingBy(MentalScaleReport::getUserId));
+        Map<Long, String> scaleNameMap = mentalScaleMapper.selectList(null).stream()
+                .collect(Collectors.toMap(MentalScale::getId, MentalScale::getName));
+        Map<Long, Long> aiSessionCountMap = aiChatSessionMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(AiChatSession::getStudentUserId, Collectors.counting()));
+        Map<Long, Long> resourceViewCountMap = resourceViewLogMapper.selectList(null).stream()
+                .collect(Collectors.groupingBy(ResourceViewLog::getStudentUserId, Collectors.counting()));
+        Map<Long, Long> loginDayCountMap = sysAuditLogMapper.selectList(new LambdaQueryWrapper<SysAuditLog>()
+                        .eq(SysAuditLog::getActionCode, "LOGIN"))
+                .stream()
+                .filter(item -> item.getCreatedAt() != null)
+                .collect(Collectors.groupingBy(SysAuditLog::getUserId,
+                        Collectors.collectingAndThen(
+                                Collectors.mapping(item -> item.getCreatedAt().toLocalDate(), Collectors.toSet()),
+                                dates -> (long) dates.size()
+                        )));
+
+        return students.stream()
+                .sorted(Comparator.comparing(SysUser::getId))
+                .map(student -> buildInterventionEffectRow(
+                        student,
+                        profileMap.get(student.getId()),
+                        reportMap.getOrDefault(student.getId(), List.of()),
+                        scaleNameMap,
+                        loginDayCountMap.getOrDefault(student.getId(), 0L),
+                        resourceViewCountMap.getOrDefault(student.getId(), 0L),
+                        aiSessionCountMap.getOrDefault(student.getId(), 0L)
+                ))
+                .toList();
+    }
+
     private List<SysUser> listUsersByRole(String roleCode) {
         return sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>().eq(SysUser::getRoleCode, roleCode));
     }
 
     private String normalizeDimensionValue(String value) {
         return value == null || value.isBlank() ? "未填写" : value;
+    }
+
+    private UserInterventionEffectExportRow buildInterventionEffectRow(SysUser student,
+                                                                       StudentProfile profile,
+                                                                       List<MentalScaleReport> reports,
+                                                                       Map<Long, String> scaleNameMap,
+                                                                       long loginDayCount,
+                                                                       long resourceViewCount,
+                                                                       long aiSessionCount) {
+        if (reports.isEmpty()) {
+            return UserInterventionEffectExportRow.builder()
+                    .userName(resolveUserName(student))
+                    .studentNo(normalizeExportText(student.getStudentNo()))
+                    .organizationName(resolveOrganizationName(profile))
+                    .loginDayCount(loginDayCount)
+                    .resourceViewCount(resourceViewCount)
+                    .aiSessionCount(aiSessionCount)
+                    .firstAssessmentTime("暂无测评记录")
+                    .firstScaleName("暂无测评记录")
+                    .firstRiskLevel("暂无测评记录")
+                    .latestAssessmentTime("暂无测评记录")
+                    .latestScaleName("暂无测评记录")
+                    .latestRiskLevel("暂无测评记录")
+                    .scoreDeltaText("--")
+                    .statusTransition("暂无测评记录")
+                    .evaluationLabel("暂无测评记录")
+                    .build();
+        }
+
+        MentalScaleReport firstReport = reports.get(0);
+        MentalScaleReport latestReport = reports.get(reports.size() - 1);
+        int scoreDelta = latestReport.getTotalScore() - firstReport.getTotalScore();
+        String firstRiskLabel = resolveRiskLevelLabel(firstReport.getLevelCode());
+        String latestRiskLabel = resolveRiskLevelLabel(latestReport.getLevelCode());
+
+        return UserInterventionEffectExportRow.builder()
+                .userName(resolveUserName(student))
+                .studentNo(normalizeExportText(student.getStudentNo()))
+                .organizationName(resolveOrganizationName(profile))
+                .loginDayCount(loginDayCount)
+                .resourceViewCount(resourceViewCount)
+                .aiSessionCount(aiSessionCount)
+                .firstAssessmentTime(formatExportTime(firstReport.getCreatedAt()))
+                .firstScaleName(scaleNameMap.getOrDefault(firstReport.getScaleId(), "未知量表"))
+                .firstScore(firstReport.getTotalScore())
+                .firstRiskLevel(firstRiskLabel)
+                .latestAssessmentTime(formatExportTime(latestReport.getCreatedAt()))
+                .latestScaleName(scaleNameMap.getOrDefault(latestReport.getScaleId(), "未知量表"))
+                .latestScore(latestReport.getTotalScore())
+                .latestRiskLevel(latestRiskLabel)
+                .scoreDeltaText(formatScoreDelta(scoreDelta))
+                .statusTransition(firstRiskLabel + " -> " + latestRiskLabel)
+                .evaluationLabel(resolveEvaluationLabel(scoreDelta))
+                .build();
+    }
+
+    private String resolveUserName(SysUser student) {
+        if (student.getDisplayName() != null && !student.getDisplayName().isBlank()) {
+            return student.getDisplayName();
+        }
+        if (student.getRealName() != null && !student.getRealName().isBlank()) {
+            return student.getRealName();
+        }
+        if (student.getAccount() != null && !student.getAccount().isBlank()) {
+            return student.getAccount();
+        }
+        return "未命名用户";
+    }
+
+    private String resolveOrganizationName(StudentProfile profile) {
+        if (profile == null) {
+            return "未填写";
+        }
+        boolean hasCollege = profile.getCollege() != null && !profile.getCollege().isBlank();
+        boolean hasGrade = profile.getGrade() != null && !profile.getGrade().isBlank();
+        if (hasCollege && hasGrade) {
+            return profile.getCollege() + " / " + profile.getGrade();
+        }
+        if (hasGrade) {
+            return profile.getGrade();
+        }
+        if (hasCollege) {
+            return profile.getCollege();
+        }
+        return "未填写";
+    }
+
+    private String normalizeExportText(String value) {
+        return value == null || value.isBlank() ? "未填写" : value;
+    }
+
+    private String resolveRiskLevelLabel(String levelCode) {
+        if (levelCode == null || levelCode.isBlank()) {
+            return "未评级";
+        }
+        return switch (levelCode.trim().toUpperCase()) {
+            case "LOW" -> "低风险";
+            case "MEDIUM" -> "中风险";
+            case "HIGH" -> "高风险";
+            default -> levelCode;
+        };
+    }
+
+    private String formatExportTime(LocalDateTime value) {
+        return value == null ? "未记录" : value.format(EXPORT_TIME_FORMATTER);
+    }
+
+    private String formatScoreDelta(int scoreDelta) {
+        if (scoreDelta > 0) {
+            return "+" + scoreDelta + "分";
+        }
+        if (scoreDelta < 0) {
+            return scoreDelta + "分";
+        }
+        return "0分";
+    }
+
+    private String resolveEvaluationLabel(int scoreDelta) {
+        if (scoreDelta <= -10) {
+            return "显著改善";
+        }
+        if (scoreDelta <= -3) {
+            return "有所缓解";
+        }
+        if (scoreDelta < 3) {
+            return "无明显变化";
+        }
+        return "风险加剧";
+    }
+
+    private LocalDateTime resolveLatestActivityAt(List<MentalScaleReport> reports,
+                                                  List<AiChatSession> sessions,
+                                                  List<ConsultAppointment> appointments,
+                                                  List<ResourceViewLog> views,
+                                                  List<ResourceFavorite> favorites) {
+        return java.util.stream.Stream.of(
+                        reports.stream().map(MentalScaleReport::getCreatedAt).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null),
+                        sessions.stream().map(item -> item.getLastActiveAt() == null ? item.getCreatedAt() : item.getLastActiveAt())
+                                .filter(Objects::nonNull)
+                                .max(LocalDateTime::compareTo)
+                                .orElse(null),
+                        appointments.stream().map(ConsultAppointment::getCreatedAt).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null),
+                        views.stream().map(ResourceViewLog::getCreatedAt).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null),
+                        favorites.stream().map(ResourceFavorite::getCreatedAt).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null)
+                )
+                .filter(Objects::nonNull)
+                .max(LocalDateTime::compareTo)
+                .orElse(null);
     }
 }

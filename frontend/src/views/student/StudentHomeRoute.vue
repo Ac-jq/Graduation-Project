@@ -25,6 +25,27 @@ const showDropdown = ref(false)
 
 const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
 
+function resolveLevelLabel(levelCode?: string | null): string {
+  switch (levelCode) {
+    case 'LOW': return '状态平稳'
+    case 'MEDIUM': return '需适度关注'
+    case 'HIGH': return '建议重点关注'
+    default: return '待生成'
+  }
+}
+
+function resolveAppointmentStatusLabel(status?: string | null): string {
+  switch (status) {
+    case 'PENDING': return '待处理'
+    case 'ACCEPTED': return '已接受'
+    case 'IN_PROGRESS': return '沟通中'
+    case 'COMPLETED': return '已完成'
+    case 'REJECTED': return '未通过'
+    case 'CANCELLED': return '已取消'
+    default: return '待预约'
+  }
+}
+
 async function loadDashboard(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
@@ -192,7 +213,7 @@ onMounted(() => {
               <div class="aura-text">
                 <div class="aura-indicator">
                   <span class="pulse-dot" />
-                  <span>{{ activeSession ? 'AI Session Active' : 'AI Session Ready' }}</span>
+                  <span>{{ activeSession ? 'AI 会话已接通' : 'AI 会话已就绪' }}</span>
                 </div>
                 <h2>无论昼夜，随时倾听心声。</h2>
               </div>
@@ -217,7 +238,7 @@ onMounted(() => {
                 </div>
                 <h3>{{ latestReport?.scaleName || '尚无测评报告' }}</h3>
                 <div class="status-tags">
-                  <span class="tag tag--clay">{{ latestReport?.levelCode || '待生成' }}</span>
+                  <span class="tag tag--clay">{{ resolveLevelLabel(latestReport?.levelCode) }}</span>
                   <span class="tag-text">{{ latestReport ? `总分 ${latestReport.totalScore}` : '完成测评后展示' }}</span>
                 </div>
               </article>
@@ -229,7 +250,7 @@ onMounted(() => {
                 </div>
                 <h3>{{ latestAppointment ? '一对一心理辅导（匿名）' : '尚无预约记录' }}</h3>
                 <div class="status-tags">
-                  <span class="tag tag--sage">{{ latestAppointment?.status || '待预约' }}</span>
+                  <span class="tag tag--sage">{{ resolveAppointmentStatusLabel(latestAppointment?.status) }}</span>
                   <span class="tag-text">
                     {{ latestAppointment
                       ? `${new Date(latestAppointment.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} - ${new Date(latestAppointment.endTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`

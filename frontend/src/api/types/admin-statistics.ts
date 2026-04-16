@@ -21,6 +21,8 @@ export interface AssessmentScaleSummary {
   scaleName: string
   participantCount: number
   reportCount: number
+  minScore: number
+  maxScore: number
   averageScore: number
 }
 
@@ -84,6 +86,29 @@ export interface AppointmentStatistics {
   pendingCount: number
   collegeDistribution: NamedMetric[]
   counselorLoads: CounselorAppointmentStatistics[]
+}
+
+export interface UserEngagementItem {
+  userId: number
+  displayName: string
+  studentNo?: string | null
+  college?: string | null
+  grade?: string | null
+  assessmentCount: number
+  averageScore: number
+  aiSessionCount: number
+  appointmentCount: number
+  resourceViewCount: number
+  favoriteCount: number
+  engagementScore: number
+  latestActivityAt?: string | null
+}
+
+export interface UserEngagementStatistics {
+  totalStudents: number
+  activeStudents: number
+  highlyEngagedStudents: number
+  items: UserEngagementItem[]
 }
 
 export interface StatisticsExportQuery {

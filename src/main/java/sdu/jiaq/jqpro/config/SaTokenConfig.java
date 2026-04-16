@@ -5,7 +5,11 @@ import cn.dev33.satoken.router.SaRouter;
 import cn.dev33.satoken.stp.StpUtil;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 /**
  * Sa-Token 全局配置。
@@ -28,5 +32,12 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         )
                         .check(r -> StpUtil.checkLogin())))
                 .addPathPatterns("/**");
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        Path avatarDir = Paths.get(System.getProperty("user.dir"), ".local", "user-assets");
+        registry.addResourceHandler("/user-assets/**")
+                .addResourceLocations(avatarDir.toUri().toString());
     }
 }
