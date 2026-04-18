@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { resolveRoleHome } from '@/core/session'
@@ -14,6 +14,13 @@ const form = reactive({
 })
 const submitting = ref(false)
 const submitError = ref('')
+const passwordVisible = ref(false)
+
+const passwordInputType = computed(() => (passwordVisible.value ? 'text' : 'password'))
+
+function togglePasswordVisible(): void {
+  passwordVisible.value = !passwordVisible.value
+}
 
 async function submitLogin(): Promise<void> {
   submitting.value = true
@@ -80,14 +87,32 @@ async function submitLogin(): Promise<void> {
 
             <div class="input-group">
               <label for="password">安全密钥</label>
-              <input
-                  id="password"
-                  v-model="form.password"
-                  type="password"
-                  autocomplete="current-password"
-                  placeholder="请输入登录密码"
-                  :disabled="submitting"
-              >
+              <div class="password-field">
+                <input
+                    id="password"
+                    v-model="form.password"
+                    :type="passwordInputType"
+                    autocomplete="current-password"
+                    placeholder="请输入登录密码"
+                    :disabled="submitting"
+                >
+                <button
+                    class="password-toggle"
+                    type="button"
+                    :disabled="submitting"
+                    @click="togglePasswordVisible"
+                    aria-label="切换密码显示状态"
+                >
+                  <svg v-if="passwordVisible" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <div v-if="submitError" class="error-banner" role="alert">
@@ -116,12 +141,12 @@ async function submitLogin(): Promise<void> {
 
 /* 全局视图背景 */
 .login-viewport {
-  --bg-viewport: #E8E5DF; /* 更深一点的外层底色，突显画板 */
-  --bg-frame: #F4F1EA;    /* 画板内部底色，呼应学生端主题 */
+  --bg-viewport: #E8E5DF;
+  --bg-frame: #F4F1EA;
   --text-main: #2C302B;
   --text-muted: #7A7D75;
-  --border-color: rgba(44, 48, 43, 0.15); /* 明确的边框颜色 */
-  --accent: #6A7A6B;      /* 鼠尾草绿 */
+  --border-color: rgba(44, 48, 43, 0.15);
+  --accent: #6A7A6B;
 
   display: flex;
   align-items: center;
@@ -151,7 +176,7 @@ async function submitLogin(): Promise<void> {
   height: min(800px, 90vh);
   background-color: var(--bg-frame);
   border: 1px solid var(--border-color);
-  border-radius: 24px; /* 呼应学生端的圆角 */
+  border-radius: 24px;
   overflow: hidden;
   position: relative;
   z-index: 1;
@@ -248,8 +273,8 @@ async function submitLogin(): Promise<void> {
 /* 右侧表单区：通过左边框与视觉区明确分割 */
 .interaction-panel {
   flex: 1;
-  border-left: 1px solid var(--border-color); /* 明确的中轴线边框 */
-  background-color: #FFFFFF; /* 右侧微微提亮 */
+  border-left: 1px solid var(--border-color);
+  background-color: #FFFFFF;
   padding: 4rem;
   display: flex;
   align-items: center;
@@ -302,7 +327,7 @@ async function submitLogin(): Promise<void> {
   background: var(--bg-frame);
   border: 1px solid var(--border-color);
   padding: 1rem 1.2rem;
-  border-radius: 12px; /* 柔和的边框内角 */
+  border-radius: 12px;
   font-family: 'Manrope', sans-serif;
   font-size: 1rem;
   color: var(--text-main);
@@ -318,6 +343,49 @@ async function submitLogin(): Promise<void> {
 
 .input-group input::placeholder {
   color: rgba(122, 125, 117, 0.5);
+}
+
+.password-field {
+  position: relative;
+}
+
+/* 修改：因为去掉了汉字只保留图标，右侧内边距相应减小，确保账号和密码输入框等长 */
+.password-field input {
+  width: 100%;
+  padding-right: 3rem;
+  box-sizing: border-box;
+}
+
+/* 隐藏浏览器自带的密码显示/清除图标（主要针对 Edge） */
+.password-field input::-ms-reveal,
+.password-field input::-ms-clear {
+  display: none;
+}
+
+/* 修改：移除多余字体属性，采用 flex 居中图标 */
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 1rem;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: opacity 0.3s ease, color 0.3s ease;
+}
+
+.password-toggle:hover:not(:disabled) {
+  color: var(--text-main);
+}
+
+.password-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .error-banner {
@@ -395,7 +463,7 @@ async function submitLogin(): Promise<void> {
 /* 响应式调整 */
 @media (max-width: 900px) {
   .login-viewport {
-    padding: 0; /* 移动端去掉外围边距 */
+    padding: 0;
   }
 
   .login-frame {
@@ -412,7 +480,7 @@ async function submitLogin(): Promise<void> {
   }
 
   .decorative-graphic {
-    display: none; /* 移动端隐藏装饰图形节省空间 */
+    display: none;
   }
 
   .interaction-panel {

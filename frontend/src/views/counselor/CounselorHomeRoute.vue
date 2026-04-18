@@ -4,20 +4,25 @@ import { useRouter } from 'vue-router'
 import { fetchCounselorAppointmentsApi } from '@/api/appointment'
 import { fetchNotificationsApi } from '@/api/notification'
 import { fetchCounselorStudentsApi } from '@/api/user'
+import { useAuthStore } from '@/stores/auth'
 import type { Appointment, CounselorStudentSummary, NotificationItem } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const loading = ref(false)
 const errorMessage = ref('')
 const students = ref<CounselorStudentSummary[]>([])
 const appointments = ref<Appointment[]>([])
 const notifications = ref<NotificationItem[]>([])
+const showDropdown = ref(false)
 
 const pendingAppointments = computed(() => appointments.value.filter((item) => item.status === 'PENDING'))
 const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read))
 const latestStudent = computed(() => students.value[0] ?? null)
 const latestAppointment = computed(() => appointments.value[0] ?? null)
+const currentUser = computed(() => authStore.currentUser)
+const roleAvatarUrl = computed(() => `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/counselor-default.jpg`)
 
 function formatDateTime(value: string | Date): string {
   const d = new Date(value)
@@ -65,6 +70,28 @@ async function openLatestStudentReports(): Promise<void> {
   await router.push({ name: 'counselor-student-reports', params: { studentUserId: latestStudent.value.studentUserId } })
 }
 
+async function handleDropdownClick(action: 'role' | 'home' | 'security' | 'logout'): Promise<void> {
+  showDropdown.value = false
+
+  if (action === 'role') {
+    await router.push({ name: 'counselor-account' })
+    return
+  }
+
+  if (action === 'home') {
+    await router.push({ name: 'counselor-home' })
+    return
+  }
+
+  if (action === 'security') {
+    await router.push({ name: 'counselor-account' })
+    return
+  }
+
+  await authStore.signOut(true)
+  await router.push('/login')
+}
+
 onMounted(() => {
   void loadDashboard()
 })
@@ -73,6 +100,39 @@ onMounted(() => {
 <template>
   <main class="editorial-desk-page">
     <div class="desk-container">
+      <header class="glass-nav">
+        <div class="brand-mark">
+          心语<span>空间</span>
+        </div>
+
+        <div class="nav-actions">
+          <button class="notification-btn" type="button" @click="openNotifications">
+            <span v-if="unreadNotifications.length" class="notification-dot" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+          </button>
+
+          <div class="profile-dropdown-wrapper" @mouseleave="showDropdown = false">
+            <button class="avatar-btn" type="button" @click="showDropdown = !showDropdown">
+              <img :src="roleAvatarUrl" alt="咨询师头像">
+              <span class="avatar-name">{{ currentUser?.displayName || currentUser?.realName || '咨询师' }}</span>
+              <svg class="chevron" :class="{ 'chevron-up': showDropdown }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            <transition name="fade-slide">
+              <ul v-show="showDropdown" class="dropdown-menu">
+                <li @click="handleDropdownClick('role')">角色信息</li>
+                <li @click="handleDropdownClick('home')">首页</li>
+                <li @click="handleDropdownClick('security')">账户安全</li>
+                <li class="logout" @click="handleDropdownClick('logout')">退出登录</li>
+              </ul>
+            </transition>
+          </div>
+        </div>
+      </header>
 
       <header class="desk-hero">
         <div class="hero-copy">
@@ -218,6 +278,186 @@ onMounted(() => {
 .desk-container {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.glass-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 32px;
+  margin-bottom: 1.5rem;
+  background: rgba(253, 251, 247, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(44, 53, 45, 0.04);
+}
+
+.brand-mark {
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 900;
+  font-size: 1.4rem;
+  letter-spacing: 0.15em;
+}
+
+.brand-mark span {
+  color: #8fa08e;
+  font-style: italic;
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.notification-btn {
+  position: relative;
+  background: rgba(44, 53, 45, 0.04);
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #2c352d;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.notification-btn:hover {
+  background: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(44, 53, 45, 0.06);
+}
+
+.notification-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.notification-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e88656;
+  box-shadow: 0 0 0 2px #fdfbf7;
+}
+
+.profile-dropdown-wrapper {
+  position: relative;
+}
+
+.avatar-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 10px 4px 4px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.avatar-btn:hover {
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(44, 53, 45, 0.06);
+  transform: translateY(-1px);
+}
+
+.avatar-btn img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.avatar-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.chevron {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chevron-up {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 140px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(44, 53, 45, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(135, 126, 115, 0.12);
+  list-style: none;
+  padding: 8px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transform-origin: top right;
+}
+
+.dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+}
+
+.dropdown-menu li {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-menu li:hover {
+  background: rgba(143, 160, 142, 0.1);
+  color: #8fa08e;
+  transform: translateX(4px);
+}
+
+.dropdown-menu li.logout {
+  color: #d16b6b;
+  border-top: 1px solid rgba(44, 53, 45, 0.04);
+  margin-top: 4px;
+  border-radius: 0 0 8px 8px;
+}
+
+.dropdown-menu li.logout:hover {
+  background: rgba(209, 107, 107, 0.08);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
 }
 
 /* 案头导语区 */

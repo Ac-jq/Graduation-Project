@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { acceptAppointmentApi, fetchCounselorAppointmentsApi, rejectAppointmentApi } from '@/api/appointment'
 import type { Appointment, AppointmentActionRequest } from '@/api/types'
@@ -13,15 +13,35 @@ const processing = ref(false)
 const errorMessage = ref('')
 const appointments = ref<Appointment[]>([])
 const actionForm = reactive<Record<number, AppointmentActionRequest>>({})
+const searchKeyword = ref('')
 
 // 分页状态
 const currentPage = ref(1)
 const pageSize = 6
 
-const totalPages = computed(() => Math.max(1, Math.ceil(appointments.value.length / pageSize)))
+const filteredAppointments = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return appointments.value
+  }
+
+  return appointments.value.filter((appointment) => {
+    const fields = [
+      String(appointment.appointmentId),
+      appointment.anonymousName,
+      appointment.counselorName,
+      appointment.issueSummary,
+      appointment.status,
+      appointment.resultMessage
+    ]
+    return fields.some((field) => (field ?? '').toLowerCase().includes(keyword))
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredAppointments.value.length / pageSize)))
 const pagedAppointments = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return appointments.value.slice(start, start + pageSize)
+  return filteredAppointments.value.slice(start, start + pageSize)
 })
 
 const pendingCount = computed(() => appointments.value.filter(a => a.status === 'PENDING').length)
@@ -136,6 +156,10 @@ async function openChat(appointmentId: number): Promise<void> {
 onMounted(() => {
   void loadAppointments()
 })
+
+watch(searchKeyword, () => {
+  currentPage.value = 1
+})
 </script>
 
 <template>
@@ -178,6 +202,12 @@ onMounted(() => {
       <section v-else class="ledger-section">
 
         <div class="list-toolbar">
+          <input
+              v-model.trim="searchKeyword"
+              class="toolbar-search"
+              type="search"
+              placeholder="搜索预约编号、来访者、摘要或状态"
+          >
           <span class="toolbar-status">
             当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页
           </span>
@@ -376,12 +406,32 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 2rem;
   padding: 0 0.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .toolbar-status {
   font-family: 'Noto Serif SC', serif;
   font-size: 0.95rem;
   color: #8a9c90;
+}
+
+.toolbar-search {
+  min-width: 300px;
+  padding: 0.9rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: #2a362e;
+  font: 500 0.95rem/1 'Manrope', sans-serif;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-search:focus {
+  outline: none;
+  border-color: rgba(92, 107, 96, 0.18);
+  box-shadow: 0 16px 32px rgba(54, 66, 58, 0.08);
+  transform: translateY(-1px);
 }
 
 /* 接诊流行排版 */

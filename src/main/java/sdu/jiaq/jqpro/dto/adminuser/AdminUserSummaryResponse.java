@@ -32,5 +32,7 @@ public class AdminUserSummaryResponse {
 
     private String grade;
 
+    private String phone;
+
     private LocalDateTime createdAt;
 }

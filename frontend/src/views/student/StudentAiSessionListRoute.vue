@@ -12,14 +12,12 @@ const errorMessage = ref('')
 const sessions = ref<AiChatSession[]>([])
 const currentPage = ref(1)
 const pageSize = 6
+
 const createForm = reactive({
   title: ''
 })
 
 const totalSessions = computed(() => sessions.value.length)
-const activeSessions = computed(() => sessions.value.filter((session) => session.status === 'ACTIVE').length)
-const flaggedSessions = computed(() => sessions.value.filter((session) => Boolean(session.riskFlag)).length)
-const latestSession = computed(() => sessions.value[0] ?? null)
 const totalPages = computed(() => Math.max(1, Math.ceil(sessions.value.length / pageSize)))
 const pagedSessions = computed(() => {
   const start = (currentPage.value - 1) * pageSize
@@ -27,45 +25,17 @@ const pagedSessions = computed(() => {
 })
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return '刚刚开始'
-  }
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
-
-function resolveRiskLabel(session: AiChatSession): string {
-  if (session.riskFlag) {
-    return '需要更多支持'
-  }
-  if (session.riskLevel === 'HIGH') {
-    return '高关注'
-  }
-  if (session.riskLevel === 'MEDIUM') {
-    return '中等波动'
-  }
-  return '平稳对话'
-}
-
-function resolveRiskClass(session: AiChatSession): string {
-  if (session.riskFlag || session.riskLevel === 'HIGH') {
-    return 'risk-pill risk-pill--high'
-  }
-  if (session.riskLevel === 'MEDIUM') {
-    return 'risk-pill risk-pill--medium'
-  }
-  return 'risk-pill risk-pill--low'
+  if (!value) return '刚刚'
+  const d = new Date(value)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 function resolveSessionStatusText(status: string | null | undefined): string {
   switch (status) {
-    case 'ACTIVE':
-      return '进行中'
-    case 'ARCHIVED':
-      return '已归档'
-    case 'CLOSED':
-      return '已结束'
-    default:
-      return '进行中'
+    case 'ACTIVE': return '进行中'
+    case 'ARCHIVED': return '已封存'
+    case 'CLOSED': return '已结束'
+    default: return '进行中'
   }
 }
 
@@ -123,715 +93,451 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="ai-list-page">
-    <div class="page-shell">
-      <header class="hero-board">
-        <div class="hero-copy">
-          <p class="eyebrow">AI 倾诉会话库</p>
-          <h1>把今天没说完的话，留在一个安静又高级的空间里。</h1>
-          <p class="lead">
-            这里不是普通列表页，而是你与 AI 导师每一次对话的归档画板。你可以重新回到某条线索，也可以开启一段新的倾诉，
-            让复杂情绪在更有秩序的界面里被慢慢整理出来。
-          </p>
+  <main class="split-editorial-page">
+    <div class="page-container">
 
-          <div class="hero-actions">
-            <button class="hero-action hero-action--dark" type="button" @click="createSession" :disabled="creating">
-              {{ creating ? '正在开启会话…' : '立刻发起新的倾诉' }}
-            </button>
-            <span class="hero-note">支持继续旧会话，也支持用一个新标题重新开始。</span>
-          </div>
-        </div>
+      <aside class="editorial-sidebar">
+        <div class="sidebar-sticky">
 
-        <div class="hero-side">
-          <article class="featured-orb">
-            <p class="card-kicker">最新会话</p>
-            <h2>{{ latestSession?.title || '还没有任何会话' }}</h2>
-            <p>
-              {{ latestSession?.summaryText || '第一条会话会出现在这里，成为整个页面的视觉焦点。' }}
+          <header class="side-header">
+            <span class="eyebrow">Mindful Journal</span>
+            <h1 class="side-title">倾诉手札</h1>
+            <p class="side-lead">
+              把平时难以消化的情绪和没有说出口的话，留在这个安静的画板里。你可以随时回顾过去的记录，或者开启一段新的倾诉。
             </p>
-            <div class="featured-meta">
-              <span>{{ latestSession ? formatDateTime(latestSession.lastActiveAt || latestSession.createdAt) : '等待开始' }}</span>
-              <button
-                v-if="latestSession"
-                class="featured-link"
-                type="button"
-                @click="openSession(latestSession.sessionId)"
-              >
-                继续这一段 →
-              </button>
-            </div>
-          </article>
-        </div>
-      </header>
+          </header>
 
-      <section class="studio-grid">
-        <div class="studio-column studio-column--left">
-          <article class="metric-panel glass-panel">
-            <div class="metric-head">
-              <p class="card-kicker">会话概览</p>
-              <span class="metric-caption">同步你与 AI 导师的全部轨迹</span>
-            </div>
-            <div class="metric-grid">
-              <div class="metric-card">
-                <span class="metric-label">全部会话</span>
-                <strong>{{ totalSessions }}</strong>
-              </div>
-              <div class="metric-card">
-                <span class="metric-label">活跃会话</span>
-                <strong>{{ activeSessions }}</strong>
-              </div>
-              <div class="metric-card metric-card--accent">
-                <span class="metric-label">重点关注</span>
-                <strong>{{ flaggedSessions }}</strong>
-              </div>
-            </div>
-          </article>
+          <div class="thick-accent-line"></div>
 
-          <article class="compose-panel glass-panel">
-            <div class="compose-copy">
-              <p class="card-kicker">新建会话</p>
-              <h2>给这一段情绪，一个恰到好处的题目。</h2>
-              <p>
-                你可以写“最近的学业疲惫”“晚上总是睡不沉”，也可以什么都不填，让系统帮你留出一个新的入口。
-              </p>
-            </div>
+          <div class="compose-module">
+            <h3 class="module-title">开启新的对话</h3>
+            <p class="module-text">
+              给这次的心情起个名字。留空也可以，系统会自动为你准备好空间。
+            </p>
 
-            <label class="field-label" for="session-title">会话标题</label>
             <input
-              id="session-title"
-              v-model="createForm.title"
-              class="text-input"
-              type="text"
-              maxlength="100"
-              placeholder="例如：这周的心口发紧、对未来的担心、难以入睡的夜晚"
+                v-model="createForm.title"
+                class="sleek-input"
+                type="text"
+                maxlength="100"
+                placeholder="例如：这周的学业焦虑、失眠的夜晚..."
             />
 
-            <div class="compose-footer">
-              <p class="helper-text">留空也可以，系统会用“新的倾诉会话”作为默认标题。</p>
-              <button class="create-button" type="button" :disabled="creating" @click="createSession">
-                {{ creating ? '创建中…' : '创建并进入' }}
-              </button>
-            </div>
-          </article>
+            <button class="action-btn" type="button" :disabled="creating" @click="createSession">
+              {{ creating ? '准备房间中...' : '进入安静房间' }} <span class="arrow">→</span>
+            </button>
+          </div>
 
-          <article class="ritual-panel">
-            <p class="card-kicker">倾诉建议</p>
-            <ul>
+          <div class="side-tips">
+            <h3 class="tips-title">倾诉建议</h3>
+            <ul class="tips-list">
               <li>先写感受，不必急着把整件事解释清楚。</li>
               <li>如果你只想说一句话，也可以直接开始。</li>
-              <li>当你愿意时，再把它扩展成一段更完整的对话。</li>
+              <li>当你愿意时，AI 导师会陪你把它扩展成一段更完整的对话。</li>
             </ul>
-          </article>
+          </div>
+
+        </div>
+      </aside>
+
+      <section class="editorial-stream-area">
+
+        <div class="stream-toolbar">
+          <span class="toolbar-status">你的记忆抽屉：共 {{ totalSessions }} 段档案</span>
         </div>
 
-        <div class="studio-column studio-column--right">
-          <div class="section-head">
-            <div>
-              <p class="card-kicker">历史会话</p>
-              <h2>把每一次波动，都整理成有分寸的留白与层次。</h2>
-            </div>
-            <span class="section-badge">{{ loading ? '正在同步' : `${totalSessions} 条记录` }}</span>
+        <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+
+        <div class="archive-wrapper">
+
+          <div v-if="loading" class="loading-state">
+            <div class="spinner"></div>
+            <p>正在同步你的过往记录...</p>
           </div>
 
-          <div v-if="loading" class="state-panel">正在加载你的 AI 会话档案…</div>
-          <div v-else-if="errorMessage" class="state-panel state-panel--error">{{ errorMessage }}</div>
-          <div v-else-if="!sessions.length" class="state-panel">
-            还没有任何会话。左侧已经为你预留了新建入口，从一句最真实的话开始就够了。
+          <div v-else-if="!sessions.length" class="empty-state">
+            <p class="empty-desc">当前还没有记录。<br>在左侧输入你此刻的想法，开启你的第一条手札。</p>
           </div>
 
-          <div v-else class="session-gallery">
+          <div v-else class="archive-stream">
             <article
-              v-for="(session, index) in pagedSessions"
-              :key="session.sessionId"
-              class="session-card"
-              :class="{ 'session-card--featured': index === 0 }"
-              @click="openSession(session.sessionId)"
+                v-for="(session, index) in pagedSessions"
+                :key="session.sessionId"
+                class="archive-row"
+                @click="openSession(session.sessionId)"
             >
-              <div class="session-topline">
-                <span class="session-order">会话 {{ String(index + 1).padStart(2, '0') }}</span>
-                <span :class="resolveRiskClass(session)">{{ resolveRiskLabel(session) }}</span>
+              <div class="row-left">
+                <span class="session-id">#{{ session.sessionId }}</span>
+                <span class="session-date">{{ formatDateTime(session.createdAt) }}</span>
+                <span class="session-status">{{ resolveSessionStatusText(session.status) }}</span>
               </div>
 
-              <h3>{{ session.title || `未命名会话 #${session.sessionId}` }}</h3>
-              <p class="session-summary">
-                {{ session.summaryText || '还没有摘要。进入会话后，新的对话会自动在这里留下痕迹。' }}
-              </p>
+              <div class="row-center">
+                <h3 class="session-title">{{ session.title || '未命名会话' }}</h3>
+                <p class="session-summary">{{ session.summaryText || '暂无对话内容。进入房间后，你写下的话会作为摘要展示在这里。' }}</p>
+              </div>
 
-              <div class="session-footer">
-                <div class="session-meta">
-                  <span>{{ resolveSessionStatusText(session.status) }}</span>
-                  <span>创建于 {{ formatDateTime(session.createdAt) }}</span>
-                  <span v-if="session.lastActiveAt">最近活跃 {{ formatDateTime(session.lastActiveAt) }}</span>
-                </div>
-                <span class="session-link">进入对话 →</span>
+              <div class="row-right">
+                <span class="action-link">继续对话 <span class="arrow">→</span></span>
               </div>
             </article>
           </div>
-
-          <nav class="pagination-nav" v-if="totalPages > 1">
-            <button
-                class="page-btn"
-                :disabled="currentPage <= 1"
-                @click="prevPage"
-            >
-              <span class="arrow">←</span> 上一页
-            </button>
-
-            <div class="page-indicator">
-              <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
-            </div>
-
-            <button
-                class="page-btn"
-                :disabled="currentPage >= totalPages"
-                @click="nextPage"
-            >
-              下一页 <span class="arrow">→</span>
-            </button>
-          </nav>
         </div>
+
+        <nav class="pagination-nav" v-if="totalPages > 1">
+          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+            <span class="arrow">←</span> 上一页
+          </button>
+
+          <div class="page-indicator">
+            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+          </div>
+
+          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+            下一页 <span class="arrow">→</span>
+          </button>
+        </nav>
+
       </section>
+
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.ai-list-page {
-  min-height: 100%;
-  padding: 22px 0 40px;
-  color: #283129;
+/* 全局极简纸张底色 */
+.split-editorial-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 8rem;
+  box-sizing: border-box;
 }
 
-.page-shell {
-  max-width: 1520px;
+.page-container {
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 0 18px;
-}
-
-.hero-board {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
-  gap: 24px;
-  margin-bottom: 28px;
-}
-
-.hero-copy,
-.glass-panel,
-.ritual-panel,
-.featured-orb,
-.session-card {
-  border-radius: 30px;
-  background: rgba(255, 252, 247, 0.88);
-  box-shadow: 0 24px 64px rgba(67, 55, 39, 0.08);
-  backdrop-filter: blur(18px);
-}
-
-.hero-copy {
-  padding: 34px 36px 36px;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(202, 217, 206, 0.66), transparent 26%),
-    radial-gradient(circle at 86% 16%, rgba(235, 208, 181, 0.78), transparent 24%),
-    linear-gradient(140deg, rgba(255, 250, 244, 0.94), rgba(251, 247, 241, 0.92));
-}
-
-.eyebrow,
-.card-kicker,
-.field-label,
-.metric-label,
-.session-order {
-  margin: 0;
-  font: 700 0.76rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #8a7661;
-}
-
-.hero-copy h1,
-.compose-copy h2,
-.section-head h2,
-.featured-orb h2,
-.session-card h3 {
-  margin: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.hero-copy h1 {
-  max-width: 10.5em;
-  margin-top: 14px;
-  font-size: clamp(2.8rem, 4vw, 5rem);
-  line-height: 1.02;
-}
-
-.lead,
-.compose-copy p,
-.helper-text,
-.featured-orb p,
-.metric-caption,
-.session-summary,
-.session-meta,
-.state-panel,
-.ritual-panel ul {
-  font-family: 'Manrope', sans-serif;
-}
-
-.lead {
-  max-width: 760px;
-  margin: 20px 0 0;
-  font-size: 1rem;
-  line-height: 1.95;
-  color: rgba(40, 49, 41, 0.68);
-}
-
-.hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  margin-top: 30px;
-}
-
-.hero-action {
-  border: none;
-  border-radius: 999px;
-  padding: 16px 24px;
-  font: 700 0.84rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease, opacity 0.28s ease;
-}
-
-.hero-action--dark {
-  background: linear-gradient(135deg, #253129, #485c4d);
-  color: #fffdf8;
-  box-shadow: 0 18px 34px rgba(37, 49, 41, 0.18);
-}
-
-.hero-action:hover:not(:disabled),
-.create-button:hover:not(:disabled),
-.session-card:hover,
-.featured-link:hover {
-  transform: translateY(-2px);
-}
-
-.hero-action:disabled,
-.create-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.hero-note {
-  font: 600 0.92rem/1.7 'Manrope', sans-serif;
-  color: rgba(40, 49, 41, 0.58);
-}
-
-.hero-side {
-  display: flex;
-}
-
-.featured-orb {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(178, 202, 185, 0.8), transparent 26%),
-    radial-gradient(circle at 82% 24%, rgba(235, 199, 169, 0.9), transparent 22%),
-    radial-gradient(circle at 56% 86%, rgba(248, 240, 229, 0.88), transparent 40%),
-    linear-gradient(145deg, rgba(252, 248, 242, 0.96), rgba(255, 253, 248, 0.94));
-}
-
-.featured-orb::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
-  background-size: 38px 38px;
-  opacity: 0.22;
-  pointer-events: none;
-}
-
-.featured-orb h2 {
-  margin-top: 14px;
-  font-size: clamp(1.8rem, 2.4vw, 2.8rem);
-  line-height: 1.12;
-}
-
-.featured-orb p {
-  position: relative;
-  z-index: 1;
-  margin: 16px 0 0;
-  max-width: 28rem;
-  color: rgba(40, 49, 41, 0.72);
-  line-height: 1.85;
-}
-
-.featured-meta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  margin-top: 28px;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(40, 49, 41, 0.56);
-}
-
-.featured-link {
-  border: none;
-  background: rgba(255, 255, 255, 0.76);
-  padding: 12px 16px;
-  border-radius: 999px;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  color: #3f5347;
-  cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease;
-}
-
-.studio-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.78fr) minmax(0, 1.22fr);
-  gap: 24px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 6rem;
   align-items: start;
 }
 
-.studio-column {
-  display: grid;
-  gap: 20px;
+/* ================= 左侧控制台 ================= */
+.editorial-sidebar {
+  position: relative;
 }
 
-.glass-panel {
-  padding: 26px;
-}
-
-.metric-head {
+.sidebar-sticky {
+  position: sticky;
+  top: 4rem;
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: baseline;
-  margin-bottom: 20px;
+  flex-direction: column;
+  gap: 3rem;
 }
 
-.metric-caption {
-  color: rgba(40, 49, 41, 0.54);
-  font-size: 0.88rem;
+.side-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+.eyebrow {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
+  text-transform: uppercase;
 }
 
-.metric-card {
-  padding: 18px;
-  border-radius: 22px;
-  background: rgba(250, 245, 238, 0.82);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-}
-
-.metric-card--accent {
-  background: linear-gradient(135deg, rgba(242, 231, 221, 0.94), rgba(250, 243, 235, 0.94));
-}
-
-.metric-card strong {
-  display: block;
-  margin-top: 10px;
+.side-title {
   font-family: 'Noto Serif SC', serif;
-  font-size: 2rem;
+  font-size: 2.6rem;
   font-weight: 600;
+  color: #1e2821;
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
 }
 
-.compose-panel {
-  background:
-    linear-gradient(180deg, rgba(255, 252, 247, 0.92), rgba(252, 248, 241, 0.92));
+.side-lead {
+  font-size: 1.05rem;
+  color: #5c6b60;
+  line-height: 1.8;
+  margin: 0;
 }
 
-.compose-copy h2 {
-  margin-top: 12px;
-  font-size: 2rem;
-  line-height: 1.15;
+.thick-accent-line {
+  width: 100%;
+  height: 4px;
+  background: #2a362e;
 }
 
-.compose-copy p {
-  margin: 16px 0 0;
-  color: rgba(40, 49, 41, 0.68);
-  line-height: 1.84;
+/* 新建模块 */
+.compose-module {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.field-label {
-  display: block;
-  margin-top: 24px;
-  margin-bottom: 10px;
+.module-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0;
 }
 
-.text-input {
+.module-text {
+  font-size: 0.95rem;
+  line-height: 1.8;
+  color: #5c6b60;
+  margin: 0;
+}
+
+.sleek-input {
   width: 100%;
   border: none;
+  border-bottom: 1px dashed rgba(42, 54, 46, 0.25);
+  background: transparent;
+  padding: 0.8rem 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  color: #1e2821;
   outline: none;
-  border-radius: 22px;
-  background: #f5efe7;
-  padding: 18px 20px;
-  font: 500 0.98rem/1.5 'Manrope', sans-serif;
-  color: #283129;
-  transition: box-shadow 0.28s ease, transform 0.28s ease;
+  transition: border-color 0.3s ease;
+  margin-bottom: 0.5rem;
 }
 
-.text-input:focus {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 36px rgba(79, 95, 83, 0.12);
+.sleek-input::placeholder {
+  color: #b5c2b9;
+  font-style: italic;
 }
 
-.compose-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  margin-top: 18px;
+.sleek-input:focus {
+  border-bottom-color: #2a362e;
+  border-bottom-style: solid;
 }
 
-.helper-text {
-  margin: 0;
-  color: rgba(40, 49, 41, 0.56);
-  line-height: 1.72;
-}
-
-.create-button {
-  flex-shrink: 0;
+.action-btn {
+  align-self: flex-start;
+  background: #2a362e;
   border: none;
-  border-radius: 18px;
-  padding: 14px 18px;
-  background: linear-gradient(135deg, #2c382f, #55695b);
-  color: #fffdf9;
-  font: 700 0.82rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  color: #ffffff;
+  padding: 1.2rem 2.2rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease, opacity 0.28s ease;
-}
-
-.create-button:hover:not(:disabled) {
-  box-shadow: 0 16px 28px rgba(44, 56, 47, 0.18);
-}
-
-.ritual-panel {
-  padding: 24px 26px;
-  background: linear-gradient(180deg, rgba(244, 238, 230, 0.82), rgba(255, 252, 246, 0.84));
-}
-
-.ritual-panel ul {
-  margin: 16px 0 0;
-  padding-left: 1.2rem;
-  color: rgba(40, 49, 41, 0.72);
-  line-height: 1.9;
-}
-
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: end;
-}
-
-.section-head h2 {
-  margin-top: 12px;
-  max-width: 12em;
-  font-size: clamp(2rem, 2.8vw, 3.2rem);
-  line-height: 1.08;
-}
-
-.section-badge {
   display: inline-flex;
   align-items: center;
-  padding: 12px 16px;
-  border-radius: 999px;
-  background: rgba(255, 252, 247, 0.9);
-  box-shadow: 0 14px 32px rgba(66, 55, 39, 0.06);
-  font: 700 0.78rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #6f7d70;
+  gap: 0.6rem;
+  transition: all 0.3s ease;
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
 }
 
-.state-panel {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
-  padding: 28px;
-  border-radius: 30px;
-  background: rgba(255, 252, 247, 0.78);
-  color: rgba(40, 49, 41, 0.62);
-  text-align: center;
-  line-height: 1.9;
+.action-btn:hover:not(:disabled) {
+  background: #1c2620;
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(42, 54, 46, 0.25);
 }
 
-.state-panel--error {
-  color: #a14f42;
-  background: rgba(247, 233, 229, 0.88);
+.action-btn:disabled {
+  background: #8a9c90;
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
-.session-gallery {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+/* 提示建议区 */
+.tips-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1rem 0;
 }
 
-.session-card {
-  padding: 22px;
-  cursor: pointer;
-  transition: transform 0.32s ease, box-shadow 0.32s ease;
+.tips-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #5c6b60;
+  font-size: 0.95rem;
+  line-height: 1.8;
 }
 
-.session-card:hover {
-  box-shadow: 0 30px 72px rgba(67, 55, 39, 0.11);
+.tips-list li {
+  margin-bottom: 0.5rem;
 }
 
-.session-card--featured {
-  grid-column: span 2;
-  background:
-    radial-gradient(circle at 15% 18%, rgba(201, 217, 205, 0.54), transparent 24%),
-    radial-gradient(circle at 86% 14%, rgba(236, 205, 177, 0.56), transparent 20%),
-    linear-gradient(145deg, rgba(255, 251, 245, 0.96), rgba(252, 247, 240, 0.96));
-}
-
-.session-topline {
+/* ================= 右侧手札档案流 ================= */
+.editorial-stream-area {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
+  flex-direction: column;
 }
 
-.session-card h3 {
-  margin-top: 18px;
-  font-size: 1.7rem;
-  line-height: 1.14;
+.stream-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.15);
 }
 
-.session-card--featured h3 {
-  font-size: 2.05rem;
+.toolbar-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #8a9c90;
+}
+
+.archive-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.archive-stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.archive-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  gap: 2.5rem;
+  padding: 2.5rem 0;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  cursor: pointer;
+  transition: background 0.4s ease;
+  align-items: start;
+}
+
+.archive-row:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* 极简信息戳 */
+.row-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.2rem;
+}
+
+.session-id {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #8a9c90;
+}
+
+.session-date {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2a362e;
+}
+
+.session-status {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  color: #5c6b60;
+  margin-top: 0.5rem;
+}
+
+/* 正文标题与摘要 */
+.row-center {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.session-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0;
 }
 
 .session-summary {
-  margin: 14px 0 0;
-  color: rgba(40, 49, 41, 0.68);
-  line-height: 1.86;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  color: #7b8c80;
+  line-height: 1.8;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.session-footer {
+/* 右侧链接 */
+.row-right {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: end;
-  margin-top: 22px;
+  align-items: flex-start;
+  padding-top: 0.2rem;
 }
 
-.session-meta {
+.action-link {
+  background: transparent;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #b5c2b9;
+  transition: color 0.3s ease;
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  font-size: 0.84rem;
-  color: rgba(40, 49, 41, 0.56);
-}
-
-.session-link {
-  flex-shrink: 0;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #55675c;
-}
-
-.risk-pill {
-  display: inline-flex;
   align-items: center;
-  padding: 9px 12px;
-  border-radius: 999px;
-  font: 700 0.74rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  gap: 0.5rem;
 }
 
-.risk-pill--low {
-  background: rgba(235, 242, 235, 0.92);
-  color: #5f7767;
+.archive-row:hover .action-link {
+  color: #2a362e;
 }
 
-.risk-pill--medium {
-  background: rgba(244, 233, 220, 0.94);
-  color: #9b6e49;
+/* 状态样式 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
 }
 
-.risk-pill--high {
-  background: rgba(244, 228, 225, 0.94);
-  color: #9e5043;
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 8rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
 }
 
-@media (max-width: 1200px) {
-  .hero-board,
-  .studio-grid {
-    grid-template-columns: 1fr;
-  }
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
 }
 
-@media (max-width: 840px) {
-  .page-shell {
-    padding: 0 8px;
-  }
-
-  .metric-grid,
-  .session-gallery {
-    grid-template-columns: 1fr;
-  }
-
-  .session-card--featured {
-    grid-column: span 1;
-  }
-
-  .compose-footer,
-  .section-head,
-  .session-footer,
-  .featured-meta,
-  .metric-head {
-    flex-direction: column;
-    align-items: start;
-  }
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-@media (max-width: 640px) {
-  .ai-list-page {
-    padding: 8px 0 24px;
-  }
-
-  .hero-copy,
-  .glass-panel,
-  .ritual-panel,
-  .featured-orb,
-  .session-card {
-    border-radius: 24px;
-  }
-
-  .hero-copy {
-    padding: 26px 22px 28px;
-  }
-
-  .hero-copy h1,
-  .section-head h2,
-  .compose-copy h2,
-  .featured-orb h2 {
-    font-size: 1.95rem;
-  }
+.empty-desc {
+  line-height: 1.8;
 }
 
-/* 优雅的分页器 */
+/* 分页器 */
 .pagination-nav {
   display: flex;
   justify-content: center;
@@ -877,11 +583,51 @@ onMounted(() => {
   font-weight: 600;
 }
 
+/* 动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.action-btn:hover:not(:disabled) .arrow,
+.archive-row:hover .action-link .arrow,
 .page-btn:hover:not(:disabled) .arrow:last-child {
   transform: translateX(4px);
 }
-
 .page-btn:hover:not(:disabled) .arrow:first-child {
   transform: translateX(-4px);
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .page-container {
+    grid-template-columns: 1fr;
+    gap: 4rem;
+  }
+
+  .sidebar-sticky {
+    position: relative;
+    top: 0;
+  }
+
+  .archive-row {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 2rem 0;
+  }
+
+  .row-left {
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .row-right {
+    margin-top: 1rem;
+  }
+
+  .action-link {
+    color: #2a362e;
+  }
 }
 </style>

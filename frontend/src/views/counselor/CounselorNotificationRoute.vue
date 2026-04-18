@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { fetchNotificationsApi, markAllNotificationsReadApi, markNotificationReadApi } from '@/api/notification'
 import type { NotificationItem } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
@@ -8,6 +8,7 @@ const loading = ref(false)
 const processing = ref(false)
 const errorMessage = ref('')
 const notifications = ref<NotificationItem[]>([])
+const searchKeyword = ref('')
 
 // 前端分页状态
 const currentPage = ref(1)
@@ -20,10 +21,28 @@ const readRate = computed(() => {
   return Math.round(((notifications.value.length - unreadCount.value) / notifications.value.length) * 100)
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(notifications.value.length / pageSize)))
+const filteredNotifications = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return notifications.value
+  }
+
+  return notifications.value.filter((notification) => {
+    const fields = [
+      String(notification.notificationId),
+      notification.title,
+      notification.contentText,
+      notification.createdAt,
+      notification.readAt
+    ]
+    return fields.some((field) => (field ?? '').toLowerCase().includes(keyword))
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredNotifications.value.length / pageSize)))
 const pagedNotifications = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return notifications.value.slice(start, start + pageSize)
+  return filteredNotifications.value.slice(start, start + pageSize)
 })
 
 function formatFullDate(value: string | null): string {
@@ -103,6 +122,10 @@ async function markAllRead(): Promise<void> {
 onMounted(() => {
   void loadNotifications()
 })
+
+watch(searchKeyword, () => {
+  currentPage.value = 1
+})
 </script>
 
 <template>
@@ -149,6 +172,12 @@ onMounted(() => {
       <section v-else class="dispatch-list-section">
 
         <div class="list-toolbar">
+          <input
+              v-model.trim="searchKeyword"
+              class="toolbar-search"
+              type="search"
+              placeholder="搜索标题、内容或通知编号"
+          >
           <span class="toolbar-status">
             {{ unreadCount > 0 ? `当前仍有 ${unreadCount} 条 Pending 简报` : '所有系统简报均已查阅' }}
           </span>
@@ -326,6 +355,8 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 2rem;
   padding: 0 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .toolbar-status {
@@ -333,6 +364,24 @@ onMounted(() => {
   font-size: 1.05rem;
   font-weight: 600;
   color: #1e2821;
+}
+
+.toolbar-search {
+  min-width: 300px;
+  padding: 0.9rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: #2a362e;
+  font: 500 0.95rem/1 'Manrope', sans-serif;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-search:focus {
+  outline: none;
+  border-color: rgba(92, 107, 96, 0.18);
+  box-shadow: 0 16px 32px rgba(54, 66, 58, 0.08);
+  transform: translateY(-1px);
 }
 
 .action-link {

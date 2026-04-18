@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchCounselorStudentsApi } from '@/api/user'
 import type { CounselorStudentSummary } from '@/api/types'
@@ -9,15 +9,34 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const students = ref<CounselorStudentSummary[]>([])
+const searchKeyword = ref('')
 
 // 前端切片分页状态
 const currentPage = ref(1)
 const pageSize = 8
 
-const totalPages = computed(() => Math.max(1, Math.ceil(students.value.length / pageSize)))
+const filteredStudents = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+  if (!keyword) {
+    return students.value
+  }
+
+  return students.value.filter((student) => {
+    const fields = [
+      student.studentName,
+      student.studentNo,
+      student.college,
+      student.grade,
+      student.gender
+    ]
+    return fields.some((field) => (field ?? '').toLowerCase().includes(keyword))
+  })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredStudents.value.length / pageSize)))
 const pagedStudents = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return students.value.slice(start, start + pageSize)
+  return filteredStudents.value.slice(start, start + pageSize)
 })
 
 async function loadStudents(): Promise<void> {
@@ -64,6 +83,10 @@ function resolveInitial(name: string | null | undefined): string {
 onMounted(() => {
   void loadStudents()
 })
+
+watch(searchKeyword, () => {
+  currentPage.value = 1
+})
 </script>
 
 <template>
@@ -102,6 +125,12 @@ onMounted(() => {
       <section v-else class="roster-section">
 
         <div class="list-toolbar">
+          <input
+              v-model.trim="searchKeyword"
+              class="toolbar-search"
+              type="search"
+              placeholder="搜索姓名、学号、学院或年级"
+          >
           <span class="toolbar-status">当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页</span>
         </div>
 
@@ -249,12 +278,32 @@ onMounted(() => {
   align-items: center;
   margin-bottom: 1.5rem;
   padding: 0 0.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .toolbar-status {
   font-family: 'Noto Serif SC', serif;
   font-size: 0.95rem;
   color: #8a9c90;
+}
+
+.toolbar-search {
+  min-width: 280px;
+  padding: 0.9rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: #2a362e;
+  font: 500 0.95rem/1 'Manrope', sans-serif;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-search:focus {
+  outline: none;
+  border-color: rgba(92, 107, 96, 0.18);
+  box-shadow: 0 16px 32px rgba(54, 66, 58, 0.08);
+  transform: translateY(-1px);
 }
 
 /* 无边框名册列表 */

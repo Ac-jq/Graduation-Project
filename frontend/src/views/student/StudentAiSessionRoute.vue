@@ -19,62 +19,25 @@ const messageViewport = ref<HTMLElement | null>(null)
 
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
 const activeSession = computed(() => sessions.value.find((item) => item.sessionId === sessionId.value) ?? null)
-const sessionStatusLabel = computed(() => {
-  if (activeSession.value?.riskFlag) {
-    return '需要更多现实支持'
-  }
-  return '平稳陪伴中'
-})
-const activeRiskLevel = computed(() => activeSession.value?.riskLevel || 'LOW')
-
-function resolveRiskLevelLabel(level: string | null | undefined): string {
-  switch (level) {
-    case 'HIGH':
-      return '高关注'
-    case 'MEDIUM':
-      return '中等波动'
-    case 'LOW':
-      return '平稳'
-    default:
-      return '平稳'
-  }
-}
 
 function resolveSessionStatusText(status: string | null | undefined): string {
   switch (status) {
-    case 'ACTIVE':
-      return '进行中'
-    case 'ARCHIVED':
-      return '已归档'
-    case 'CLOSED':
-      return '已结束'
-    default:
-      return '进行中'
+    case 'ACTIVE': return '进行中'
+    case 'ARCHIVED': return '已归档'
+    case 'CLOSED': return '已结束'
+    default: return '进行中'
   }
 }
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) {
-    return '暂无'
-  }
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
-}
-
-function riskTone(level: string | null | undefined): string {
-  if (level === 'HIGH') {
-    return 'risk-high'
-  }
-  if (level === 'MEDIUM') {
-    return 'risk-medium'
-  }
-  return 'risk-low'
+  if (!value) return '暂无'
+  const d = new Date(value)
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 async function scrollToBottom(smooth = true): Promise<void> {
   await nextTick()
-  if (!messageViewport.value) {
-    return
-  }
+  if (!messageViewport.value) return
   messageViewport.value.scrollTo({
     top: messageViewport.value.scrollHeight,
     behavior: smooth ? 'smooth' : 'auto'
@@ -112,9 +75,7 @@ async function goBack(): Promise<void> {
 }
 
 async function sendMessage(): Promise<void> {
-  if (!sessionId.value || sending.value) {
-    return
-  }
+  if (!sessionId.value || sending.value) return
 
   const content = draft.value.trim()
   if (!content) {
@@ -130,15 +91,13 @@ async function sendMessage(): Promise<void> {
     draft.value = ''
     messages.value = [...messages.value, response.studentMessage, response.aiMessage]
     sessions.value = sessions.value.map((item) =>
-      item.sessionId === sessionId.value
-        ? {
-            ...item,
-            summaryText: response.studentMessage.content.slice(0, 80),
-            riskFlag: response.riskFlag,
-            riskLevel: response.riskLevel,
-            lastActiveAt: response.aiMessage.createdAt
-          }
-        : item
+        item.sessionId === sessionId.value
+            ? {
+              ...item,
+              summaryText: response.studentMessage.content.slice(0, 80),
+              lastActiveAt: response.aiMessage.createdAt
+            }
+            : item
     )
     await scrollToBottom()
   } catch (error) {
@@ -171,631 +130,567 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="ai-session-page">
-    <div class="session-shell">
-      <div class="session-header">
-        <button class="ghost-link" type="button" @click="goBack">
-          <span class="ghost-link__icon">←</span>
-          返回会话列表
-        </button>
+  <main class="split-editorial-page">
+    <div class="page-container">
 
-        <div class="session-header__main">
-          <div class="session-header__copy">
-            <p class="eyebrow">AI 导师会话</p>
-            <h1>{{ activeSession?.title || `倾诉会话 #${sessionId || '-'}` }}</h1>
-            <p class="lead">
-              在这里把难以整理的情绪慢慢说出来。AI 导师会先接住你的感受，再帮你把问题拆小。
+      <aside class="editorial-sidebar">
+        <div class="sidebar-sticky">
+
+          <nav class="dossier-nav">
+            <button class="ghost-link" type="button" @click="goBack">
+              <span class="arrow">←</span> 封存并返回列表
+            </button>
+          </nav>
+
+          <header class="side-header">
+            <span class="eyebrow">Mindful Journal</span>
+            <h1 class="side-title">{{ activeSession?.title || `倾诉会话 #${sessionId || '-'}` }}</h1>
+            <p class="side-lead">
+              这里不是任务面板，而是一个可以慢下来整理自己状态的地方。不需要有“秒回”的压力。
             </p>
-          </div>
+          </header>
 
-          <div class="session-header__meta">
-            <div class="meta-card meta-card--mesh">
-              <span class="meta-label">会话状态</span>
-              <strong>{{ sessionStatusLabel }}</strong>
-              <p>{{ activeSession?.summaryText || '刚开始也没关系，先从你现在最想说的一句话开始。' }}</p>
-            </div>
-            <div class="meta-card">
-              <span class="meta-label">风险等级</span>
-              <strong :class="riskTone(activeRiskLevel)">{{ resolveRiskLevelLabel(activeRiskLevel) }}</strong>
-              <p>最近活跃：{{ formatDateTime(activeSession?.lastActiveAt || activeSession?.createdAt) }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+          <div class="thick-accent-line"></div>
 
-      <div class="session-grid">
-        <aside class="session-side">
-          <article class="side-card side-card--warm">
-            <p class="side-kicker">温和提示</p>
-            <h2>探索内在的平静</h2>
-            <p>
-              这里不是任务面板，而是一个可以慢下来整理自己状态的地方。你可以说事件，也可以只说感受。
-            </p>
-          </article>
-
-          <article class="side-card">
-            <p class="side-kicker">对话提示</p>
-            <ul class="ritual-list">
-              <li>先描述你现在最强烈的感受。</li>
+          <div class="side-tips">
+            <h3 class="tips-title">对话引导</h3>
+            <ul class="tips-list">
+              <li>你可以说具体的事件，也可以只描述模糊的感受。</li>
               <li>如果不想说完整故事，只写一小段也可以。</li>
-              <li>若涉及安全风险，请尽快联系老师、家人或线下支持。</li>
+              <li>AI 导师会在这里安静地倾听。</li>
             </ul>
-          </article>
+          </div>
 
-          <article class="side-card side-card--muted">
-            <p class="side-kicker">会话详情</p>
-            <dl class="detail-grid">
+          <div class="side-meta">
+            <dl class="meta-grid">
               <div>
                 <dt>会话编号</dt>
                 <dd>#{{ sessionId || '-' }}</dd>
               </div>
               <div>
-                <dt>创建时间</dt>
+                <dt>开启时间</dt>
                 <dd>{{ formatDateTime(activeSession?.createdAt) }}</dd>
               </div>
               <div>
                 <dt>当前状态</dt>
                 <dd>{{ resolveSessionStatusText(activeSession?.status) }}</dd>
               </div>
-              <div>
-                <dt>消息数量</dt>
-                <dd>{{ messages.length }}</dd>
-              </div>
             </dl>
-          </article>
-        </aside>
+          </div>
 
-        <main class="session-main">
-          <div class="chat-card">
-            <header class="chat-card__header">
-              <div>
-                <p class="side-kicker">对话记录</p>
-                <h2>把还没有说出口的话，交给这个安静空间</h2>
-              </div>
-              <span class="online-pill">
-                <span class="online-pill__dot"></span>
-                DeepSeek 模型已接入
-              </span>
-            </header>
+        </div>
+      </aside>
 
-            <div v-if="loading" class="state-panel">正在同步当前会话内容...</div>
-            <div v-else-if="errorMessage" class="state-panel state-panel--error">{{ errorMessage }}</div>
-            <div v-else-if="!messages.length" class="state-panel">
-              当前还没有消息。先写下此刻最想被看见的一句话，AI 导师会基于真实模型回复你。
-            </div>
+      <section class="editorial-chat-area">
 
-            <div v-else ref="messageViewport" class="message-viewport">
-              <article
+        <div class="connection-status">
+          <div class="status-indicator"></div>
+          <span class="status-text">DeepSeek 认知模型已接入并准备倾听</span>
+        </div>
+
+        <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+
+        <div class="transcript-wrapper" ref="messageViewport">
+
+          <div v-if="loading" class="loading-state">
+            <div class="spinner"></div>
+            <p>正在展卷记录...</p>
+          </div>
+
+          <div v-else-if="!messages.length" class="empty-state">
+            <p class="empty-desc">当前还没有记录。<br>试着写下此刻最想被看见的一句话，AI 导师会在这里回应你。</p>
+          </div>
+
+          <div v-else class="transcript-stream">
+            <article
                 v-for="message in messages"
                 :key="message.messageId"
-                class="message-bubble"
-                :class="message.senderType === 'STUDENT' ? 'message-bubble--student' : 'message-bubble--ai'"
-              >
-                <div class="message-bubble__avatar" :class="message.senderType === 'STUDENT' ? 'is-student' : 'is-ai'">
-                  {{ message.senderType === 'STUDENT' ? '我' : 'AI' }}
-                </div>
-
-                <div class="message-bubble__body">
-                  <div class="message-bubble__meta">
-                    <span>{{ message.senderType === 'STUDENT' ? '你' : 'AI 导师' }}</span>
-                    <span>{{ formatDateTime(message.createdAt) }}</span>
-                    <span v-if="message.riskLevel" :class="['risk-badge', riskTone(message.riskLevel)]">
-                      {{ resolveRiskLevelLabel(message.riskLevel) }}
-                    </span>
-                  </div>
-                  <p class="message-bubble__content">{{ message.content }}</p>
-                  <p v-if="message.hitKeywords" class="message-bubble__tip">风险提示关键词：{{ message.hitKeywords }}</p>
-                </div>
-              </article>
-            </div>
-
-            <footer class="composer-card">
-              <label class="composer-label" for="student-ai-composer">输入你此刻最想说的话</label>
-              <textarea
-                id="student-ai-composer"
-                v-model="draft"
-                class="composer-input"
-                rows="4"
-                maxlength="1000"
-                placeholder="例如：我最近总觉得胸口发紧，晚上躺下后脑子停不下来，不知道该怎么让自己松下来。"
-                @keydown="handleComposerKeydown"
-              />
-              <div class="composer-footer">
-                <p class="composer-hint">
-                  Enter 发送，Shift + Enter 换行。AI 导师使用真实模型回复，不再使用本地兜底话术。
-                </p>
-                <button class="send-button" type="button" :disabled="sending" @click="sendMessage">
-                  {{ sending ? '正在发送...' : '发送给 AI 导师' }}
-                </button>
+                class="transcript-row"
+                :class="message.senderType === 'STUDENT' ? 'is-student' : 'is-ai'"
+            >
+              <div class="row-actor">
+                <span class="actor-name">{{ message.senderType === 'STUDENT' ? 'YOU' : 'AI MENTOR' }}</span>
+                <span class="actor-time">{{ formatDateTime(message.createdAt) }}</span>
               </div>
-            </footer>
+
+              <div class="row-content">
+                <p class="message-content">{{ message.content }}</p>
+              </div>
+            </article>
           </div>
-        </main>
-      </div>
+        </div>
+
+        <footer class="composer-desk">
+          <label class="composer-label" for="student-ai-composer">记录此刻的感受...</label>
+          <textarea
+              id="student-ai-composer"
+              v-model="draft"
+              class="sleek-textarea"
+              rows="3"
+              maxlength="1000"
+              placeholder="例如：我最近总觉得胸口发紧，晚上躺下后脑子停不下来..."
+              @keydown="handleComposerKeydown"
+          />
+          <div class="composer-footer">
+            <p class="composer-hint">
+              Enter 直接发送，Shift + Enter 换行。
+            </p>
+            <button class="action-btn" type="button" :disabled="sending || !draft.trim()" @click="sendMessage">
+              {{ sending ? '传递中...' : '发送' }} <span class="arrow">→</span>
+            </button>
+          </div>
+        </footer>
+
+      </section>
+
     </div>
-  </section>
+  </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-.ai-session-page {
-  min-height: 100%;
-  padding: 20px 0 36px;
-  color: #263228;
+/* 全局极简纸张底色 */
+.split-editorial-page {
+  min-height: 100vh;
+  background: #fcfbf9;
+  color: #1e2821;
+  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+  padding: 4rem 2vw 4rem;
+  box-sizing: border-box;
 }
 
-.session-shell {
-  max-width: 1480px;
+.page-container {
+  max-width: 1200px;
   margin: 0 auto;
+  display: grid;
+  /* 严格的左右对半分栏，左侧稍微收紧，右半部分留给聊天 */
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 6rem;
+  align-items: start;
+}
+
+/* ================= 左侧静态控制台 ================= */
+.editorial-sidebar {
+  position: relative;
+}
+
+.sidebar-sticky {
+  position: sticky;
+  top: 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+.dossier-nav {
+  margin-bottom: 1rem;
 }
 
 .ghost-link {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #5c6b60;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  border: none;
-  background: transparent;
+  gap: 0.5rem;
   padding: 0;
-  font: 700 0.8rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #6a7a6b;
-  cursor: pointer;
-  transition: transform 0.28s ease, color 0.28s ease;
+  transition: color 0.3s ease;
 }
 
 .ghost-link:hover {
-  color: #324238;
-  transform: translateX(-2px);
+  color: #1e2821;
 }
 
-.session-header {
-  display: grid;
-  gap: 22px;
-  margin-bottom: 28px;
+.side-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
-.session-header__main {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
-  gap: 24px;
-  align-items: stretch;
-}
-
-.eyebrow,
-.side-kicker,
-.meta-label,
-.composer-label {
-  margin: 0 0 10px;
-  font: 700 0.78rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #897866;
-}
-
-.session-header__copy h1,
-.chat-card__header h2,
-.side-card h2 {
-  margin: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.session-header__copy h1 {
-  max-width: 10em;
-  font-size: clamp(2.4rem, 3.6vw, 4.4rem);
-  line-height: 1.04;
-}
-
-.lead,
-.meta-card p,
-.side-card p,
-.ritual-list,
-.detail-grid,
-.message-bubble__meta,
-.message-bubble__content,
-.message-bubble__tip,
-.composer-hint,
-.state-panel {
+.eyebrow {
   font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: #8a9c90;
+  text-transform: uppercase;
 }
 
-.lead {
-  max-width: 720px;
-  margin: 18px 0 0;
-  font-size: 1rem;
-  line-height: 1.95;
-  color: rgba(38, 50, 40, 0.68);
-}
-
-.session-header__meta,
-.session-grid {
-  display: grid;
-  gap: 22px;
-}
-
-.session-header__meta {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.meta-card,
-.side-card,
-.chat-card,
-.message-bubble,
-.composer-card {
-  border-radius: 28px;
-  background: rgba(255, 253, 249, 0.9);
-  box-shadow: 0 22px 60px rgba(68, 58, 46, 0.08);
-}
-
-.meta-card,
-.side-card {
-  padding: 24px 24px 22px;
-}
-
-.meta-card strong {
-  display: block;
-  margin-bottom: 10px;
+/* 缩小的标题尺寸，克制且专业 */
+.side-title {
   font-family: 'Noto Serif SC', serif;
-  font-size: 1.55rem;
+  font-size: 2.2rem;
   font-weight: 600;
+  color: #1e2821;
+  margin: 0;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
 }
 
-.meta-card p {
+.side-lead {
+  font-size: 1.05rem;
+  color: #5c6b60;
+  line-height: 1.8;
   margin: 0;
-  color: rgba(38, 50, 40, 0.64);
+}
+
+.thick-accent-line {
+  width: 100%;
+  height: 4px;
+  background: #2a362e;
+}
+
+.tips-title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0 0 1rem 0;
+}
+
+.tips-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: #5c6b60;
+  font-size: 0.95rem;
   line-height: 1.8;
 }
 
-.meta-card--mesh {
-  position: relative;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 12% 18%, rgba(176, 198, 183, 0.72), transparent 34%),
-    radial-gradient(circle at 82% 18%, rgba(233, 203, 176, 0.78), transparent 28%),
-    radial-gradient(circle at 52% 88%, rgba(248, 240, 229, 0.9), transparent 42%),
-    linear-gradient(135deg, rgba(246, 248, 243, 0.96), rgba(255, 251, 245, 0.92));
+.tips-list li {
+  margin-bottom: 0.5rem;
 }
 
-.meta-card--mesh::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
-  background-size: 34px 34px;
-  opacity: 0.28;
-  pointer-events: none;
-}
-
-.risk-low {
-  color: #5d7567;
-}
-
-.risk-medium {
-  color: #9b6f4d;
-}
-
-.risk-high {
-  color: #9f4f43;
-}
-
-.session-grid {
-  grid-template-columns: minmax(290px, 0.68fr) minmax(0, 1.32fr);
-  align-items: start;
-}
-
-.session-side {
-  display: grid;
-  gap: 18px;
-}
-
-.side-card {
-  padding: 24px;
-}
-
-.side-card--warm {
-  background: linear-gradient(180deg, rgba(245, 239, 228, 0.96), rgba(255, 252, 247, 0.96));
-}
-
-.side-card--muted {
-  background: linear-gradient(180deg, rgba(246, 248, 242, 0.94), rgba(255, 253, 249, 0.94));
-}
-
-.side-card h2 {
-  font-size: 1.8rem;
-  line-height: 1.2;
-}
-
-.side-card p {
-  margin: 14px 0 0;
-  line-height: 1.85;
-  color: rgba(38, 50, 40, 0.68);
-}
-
-.ritual-list {
-  margin: 12px 0 0;
-  padding-left: 1.2rem;
-  line-height: 1.9;
-  color: rgba(38, 50, 40, 0.72);
-}
-
-.detail-grid {
+.meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 12px;
-}
-
-.detail-grid dt {
-  margin-bottom: 6px;
-  font-size: 0.78rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: rgba(90, 88, 79, 0.6);
-}
-
-.detail-grid dd {
+  gap: 1.5rem 1rem;
   margin: 0;
-  font-size: 0.95rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.1);
+}
+
+.meta-grid dt {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a9c90;
+  margin-bottom: 0.4rem;
+}
+
+.meta-grid dd {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  color: #2a362e;
   font-weight: 600;
-  color: #324238;
 }
 
-.chat-card {
-  min-height: 760px;
-  padding: 24px;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 20px;
-  background: linear-gradient(180deg, rgba(252, 251, 248, 0.96), rgba(255, 255, 255, 0.9));
-}
-
-.chat-card__header {
+/* ================= 右半部分会话界面 ================= */
+.editorial-chat-area {
   display: flex;
-  justify-content: space-between;
-  gap: 18px;
+  flex-direction: column;
+  height: calc(100vh - 8rem); /* 让右侧区域适应屏幕高度 */
+}
+
+/* 呼吸灯状态 */
+.connection-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 2rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(42, 54, 46, 0.08);
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5c8c6b;
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(92, 140, 107, 0.4); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(92, 140, 107, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(92, 140, 107, 0); }
+}
+
+.status-text {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #5c6b60;
+}
+
+/* 无框聊天流 */
+.transcript-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 1.5rem;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.1);
+}
+
+.transcript-wrapper::-webkit-scrollbar {
+  width: 4px;
+}
+.transcript-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(42, 54, 46, 0.15);
+  border-radius: 4px;
+}
+
+.transcript-stream {
+  display: flex;
+  flex-direction: column;
+}
+
+.transcript-row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 2rem;
+  padding: 2rem 0;
+  border-bottom: 1px dashed rgba(42, 54, 46, 0.06);
   align-items: start;
 }
 
-.chat-card__header h2 {
-  font-size: clamp(1.85rem, 2.6vw, 2.7rem);
-  line-height: 1.15;
+.transcript-row:last-child {
+  border-bottom: none;
 }
 
-.online-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  align-self: center;
-  padding: 12px 16px;
-  border-radius: 999px;
-  background: rgba(235, 242, 235, 0.9);
-  color: #4f6558;
-  font: 700 0.78rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.online-pill__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #7f9b87;
-  box-shadow: 0 0 0 10px rgba(127, 155, 135, 0.12);
-}
-
-.state-panel {
-  min-height: 240px;
-  display: grid;
-  place-items: center;
-  padding: 30px;
-  border-radius: 24px;
-  background: rgba(246, 242, 236, 0.72);
-  color: rgba(38, 50, 40, 0.65);
-  text-align: center;
-  line-height: 1.9;
-}
-
-.state-panel--error {
-  background: rgba(246, 230, 226, 0.82);
-  color: #9f4f43;
-}
-
-.message-viewport {
-  min-height: 0;
-  max-height: 62vh;
-  overflow-y: auto;
-  padding-right: 6px;
-  display: grid;
-  gap: 16px;
-}
-
-.message-viewport::-webkit-scrollbar {
-  width: 8px;
-}
-
-.message-viewport::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: rgba(100, 120, 107, 0.22);
-}
-
-.message-bubble {
-  display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
-  gap: 14px;
-  padding: 18px;
-}
-
-.message-bubble--student {
-  background: linear-gradient(180deg, rgba(250, 246, 240, 0.96), rgba(255, 252, 247, 0.96));
-}
-
-.message-bubble--ai {
-  background: linear-gradient(180deg, rgba(245, 248, 243, 0.98), rgba(255, 252, 247, 0.98));
-}
-
-.message-bubble__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  font: 700 0.92rem/1 'Manrope', sans-serif;
-}
-
-.message-bubble__avatar.is-student {
-  background: linear-gradient(135deg, rgba(218, 200, 177, 0.9), rgba(239, 228, 213, 0.98));
-  color: #6f5645;
-}
-
-.message-bubble__avatar.is-ai {
-  background: linear-gradient(135deg, rgba(186, 206, 192, 0.96), rgba(234, 240, 228, 0.98));
-  color: #3d5a4b;
-}
-
-.message-bubble__body {
-  min-width: 0;
-}
-
-.message-bubble__meta {
+/* 角色与时间 */
+.row-actor {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 14px;
-  align-items: center;
-  margin-bottom: 10px;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: right;
+  padding-top: 0.4rem;
+}
+
+.actor-name {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #5c7062; /* AI导师的颜色 */
+}
+
+.is-student .actor-name {
+  color: #8c6a5c; /* 学生自身的颜色 */
+}
+
+.actor-time {
+  font-family: 'Manrope', sans-serif;
   font-size: 0.8rem;
-  letter-spacing: 0.06em;
-  color: rgba(38, 50, 40, 0.56);
+  color: #b5c2b9;
 }
 
-.risk-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+/* 消息正文 */
+.row-content {
+  display: flex;
+  flex-direction: column;
 }
 
-.message-bubble__content {
+.message-content {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  line-height: 1.9;
+  color: #1e2821;
   margin: 0;
   white-space: pre-wrap;
-  font-size: 1rem;
-  line-height: 1.9;
-  color: #263228;
 }
 
-.message-bubble__tip {
-  margin: 12px 0 0;
-  color: #985847;
-  font-size: 0.84rem;
-  line-height: 1.7;
+.is-student .message-content {
+  color: #4a5c51;
 }
 
-.composer-card {
-  padding: 22px;
-  background: linear-gradient(180deg, rgba(252, 248, 242, 0.96), rgba(255, 254, 251, 0.96));
+/* 沉浸式书写台 */
+.composer-desk {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex-shrink: 0;
 }
 
-.composer-input {
+.composer-label {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #8a9c90;
+}
+
+.sleek-textarea {
   width: 100%;
-  min-height: 128px;
-  resize: vertical;
   border: none;
+  border-bottom: 1px dashed rgba(42, 54, 46, 0.2);
+  background: transparent;
+  padding: 0.5rem 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: #1e2821;
+  resize: none;
   outline: none;
-  border-radius: 24px;
-  background: #f6f1ea;
-  padding: 18px 20px;
-  font: 500 0.98rem/1.85 'Manrope', sans-serif;
-  color: #263228;
-  transition: box-shadow 0.28s ease, transform 0.28s ease;
+  transition: border-color 0.3s ease;
 }
 
-.composer-input:focus {
-  box-shadow: 0 18px 40px rgba(79, 95, 83, 0.12);
-  transform: translateY(-1px);
+.sleek-textarea::placeholder {
+  color: #b5c2b9;
+  font-style: italic;
+}
+
+.sleek-textarea:focus {
+  border-bottom-color: #2a362e;
+  border-bottom-style: solid;
 }
 
 .composer-footer {
-  margin-top: 16px;
   display: flex;
   justify-content: space-between;
-  align-items: end;
-  gap: 16px;
+  align-items: center;
+  margin-top: 0.5rem;
 }
 
 .composer-hint {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+  color: #a3b0a7;
   margin: 0;
-  max-width: 560px;
-  color: rgba(38, 50, 40, 0.58);
-  line-height: 1.75;
 }
 
-.send-button {
-  flex-shrink: 0;
-  border: none;
-  border-radius: 18px;
-  padding: 15px 22px;
-  background: linear-gradient(135deg, #24322b, #4f6558);
-  color: #fffdf9;
-  font: 700 0.88rem/1 'Manrope', sans-serif;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+.action-btn {
+  background: transparent;
+  border: 1px solid rgba(42, 54, 46, 0.3);
+  color: #2a362e;
+  padding: 0.8rem 1.8rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.28s ease, box-shadow 0.28s ease, opacity 0.28s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  transition: all 0.3s ease;
 }
 
-.send-button:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 18px 30px rgba(36, 50, 43, 0.2);
+.action-btn:hover:not(:disabled) {
+  background: #2a362e;
+  color: #ffffff;
+  border-color: #2a362e;
+  box-shadow: 0 8px 16px rgba(42, 54, 46, 0.15);
 }
 
-.send-button:disabled {
-  opacity: 0.55;
+.action-btn:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-@media (max-width: 1200px) {
-  .session-header__main,
-  .session-grid {
+/* 状态提示 */
+.error-banner {
+  background: rgba(140, 74, 74, 0.08);
+  color: #8c4a4a;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  font-family: 'Noto Serif SC', serif;
+  margin-bottom: 2rem;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 4rem 0;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(130, 150, 138, 0.2);
+  border-top-color: #2a362e;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.empty-desc {
+  line-height: 1.8;
+}
+
+/* 交互动画 */
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.ghost-link:hover .arrow {
+  transform: translateX(-4px);
+}
+
+.action-btn:hover:not(:disabled) .arrow {
+  transform: translateX(4px);
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .page-container {
     grid-template-columns: 1fr;
+    gap: 3rem;
   }
 
-  .session-header__meta {
-    grid-template-columns: 1fr 1fr;
+  .sidebar-sticky {
+    position: relative;
+    top: 0;
+    gap: 2rem;
+  }
+
+  .editorial-chat-area {
+    height: 70vh; /* 移动端给予一定的独立滚动区域 */
   }
 }
 
-@media (max-width: 760px) {
-  .ai-session-page {
-    padding: 8px 0 24px;
-  }
-
-  .session-header__copy h1,
-  .chat-card__header h2,
-  .side-card h2 {
-    font-size: 1.9rem;
-  }
-
-  .session-header__meta,
-  .detail-grid {
+@media (max-width: 600px) {
+  .transcript-row {
     grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 1.5rem 0;
   }
 
-  .chat-card__header,
+  .row-actor {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 0.8rem;
+    text-align: left;
+    padding: 0;
+  }
+
   .composer-footer {
     flex-direction: column;
-    align-items: start;
+    align-items: flex-start;
+    gap: 1.5rem;
   }
 
-  .message-bubble {
-    grid-template-columns: 1fr;
+  .action-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

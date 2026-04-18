@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { addStudentFavoriteApi, fetchResourceDetailApi, removeStudentFavoriteApi } from '@/api/resource'
 import type { ResourceDetail } from '@/api/types'
@@ -37,7 +37,7 @@ function formatDate(value: string | null): string {
 }
 
 function resolveResourceType(type: string): string {
-  if (type === 'IMAGE') return '鍥惧儚鍐呭'
+  if (type === 'IMAGE') return '图像内容'
   switch (type) {
     case 'ARTICLE': return '图文阅览'
     case 'VIDEO': return '视频影像'
@@ -623,3 +623,4 @@ onMounted(() => void loadResourceDetail())
   }
 }
 </style>
+

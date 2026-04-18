@@ -48,6 +48,7 @@ export interface AdminUserSummary {
   status: string
   college: string | null
   grade: string | null
+  phone: string | null
   createdAt: string
 }
 
@@ -62,4 +63,16 @@ export interface CreateCounselorRequest {
   displayName: string
   realName?: string | null
   counselorNo: string
+}
+
+export interface UpdateAdminUserRequest {
+  account: string
+  displayName: string
+  realName?: string | null
+  studentNo?: string | null
+  counselorNo?: string | null
+  college?: string | null
+  grade?: string | null
+  phone?: string | null
+  password?: string | null
 }

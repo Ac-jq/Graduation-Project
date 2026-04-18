@@ -1,0 +1,4 @@
+interface:
+  display_name: "JQPro Editorial UI"
+  short_description: "Apply JQPro calming editorial frontend language"
+  default_prompt: "Apply JQPro local minimalist editorial UI language to this frontend task."

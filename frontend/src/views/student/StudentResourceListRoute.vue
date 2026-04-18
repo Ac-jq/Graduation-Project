@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchResourceCategoriesApi, fetchResourcesApi, fetchResourceTagsApi } from '@/api/resource'
@@ -38,7 +38,7 @@ function formatDate(value: string | null): string {
 }
 
 function resolveResourceType(type: string): string {
-  if (type === 'IMAGE') return '鍥惧儚鍐呭'
+  if (type === 'IMAGE') return '图像内容'
   switch (type) {
     case 'ARTICLE': return '图文阅览'
     case 'VIDEO': return '视频影像'

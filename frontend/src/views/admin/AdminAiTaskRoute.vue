@@ -15,6 +15,10 @@ const processing = ref(false)
 const errorMessage = ref('')
 const tasks = ref<AdminAiTaskSummary[]>([])
 const currentTask = ref<AdminAiTaskDetail | null>(null)
+const currentPage = ref(1)
+const currentItemPage = ref(1)
+const pageSize = 8
+const itemPageSize = 8
 const parseResult = ref<ParseAdminAiTaskResponse | null>(null)
 const form = reactive({
   instruction: ''
@@ -40,6 +44,19 @@ const canReviewCurrent = computed(() => {
     return false
   }
   return currentTask.value.parseStatus === 'READY' && currentTask.value.confirmStatus === 'PENDING'
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(tasks.value.length / pageSize)))
+const pagedTasks = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return tasks.value.slice(start, start + pageSize)
+})
+
+const taskItems = computed(() => currentTask.value?.items ?? [])
+const totalItemPages = computed(() => Math.max(1, Math.ceil(taskItems.value.length / itemPageSize)))
+const pagedTaskItems = computed(() => {
+  const start = (currentItemPage.value - 1) * itemPageSize
+  return taskItems.value.slice(start, start + itemPageSize)
 })
 
 function formatDate(value: string | null): string {
@@ -102,11 +119,40 @@ function useExample(example: string): void {
   form.instruction = example
 }
 
+function prevPage(): void {
+  if (currentPage.value > 1) {
+    currentPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextPage(): void {
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function prevItemPage(): void {
+  if (currentItemPage.value > 1) {
+    currentItemPage.value--
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+function nextItemPage(): void {
+  if (currentItemPage.value < totalItemPages.value) {
+    currentItemPage.value++
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
 async function loadTasks(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
     tasks.value = await fetchAdminAiTasksApi()
+    currentPage.value = 1
     if (!currentTask.value && tasks.value.length > 0) {
       await loadTaskDetail(tasks.value[0].taskId)
     }
@@ -122,6 +168,7 @@ async function loadTaskDetail(taskId: number): Promise<void> {
   errorMessage.value = ''
   try {
     currentTask.value = await fetchAdminAiTaskDetailApi(taskId)
+    currentItemPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -140,6 +187,7 @@ async function parseInstruction(): Promise<void> {
   try {
     parseResult.value = await parseAdminAiTaskApi({ instruction: form.instruction.trim() })
     currentTask.value = parseResult.value.task
+    currentItemPage.value = 1
     await loadTasks()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -153,6 +201,7 @@ async function confirmTask(taskId: number): Promise<void> {
   errorMessage.value = ''
   try {
     currentTask.value = await confirmAdminAiTaskApi(taskId)
+    currentItemPage.value = 1
     await loadTasks()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -166,6 +215,7 @@ async function cancelTask(taskId: number): Promise<void> {
   errorMessage.value = ''
   try {
     currentTask.value = await cancelAdminAiTaskApi(taskId)
+    currentItemPage.value = 1
     await loadTasks()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -248,28 +298,41 @@ onMounted(() => {
           </div>
 
           <div v-if="loading" class="admin-editorial-empty">正在加载任务队列…</div>
-          <div v-else-if="tasks.length" class="admin-editorial-board">
-            <button
-              v-for="task in tasks"
-              :key="task.taskId"
-              type="button"
-              class="admin-editorial-card"
-              :class="{ 'is-active': currentTask?.taskId === task.taskId }"
-              @click="loadTaskDetail(task.taskId)"
-            >
-              <div class="admin-editorial-card__topline">
-                <div>
-                  <p class="admin-editorial-code">{{ resolveTaskType(task.taskType) }}</p>
-                  <h3>#{{ task.taskId }} {{ task.summaryText || '待补充解析信息' }}</h3>
+          <template v-else-if="tasks.length">
+            <div class="admin-editorial-board">
+              <button
+                v-for="task in pagedTasks"
+                :key="task.taskId"
+                type="button"
+                class="admin-editorial-card"
+                :class="{ 'is-active': currentTask?.taskId === task.taskId }"
+                @click="loadTaskDetail(task.taskId)"
+              >
+                <div class="admin-editorial-card__topline">
+                  <div>
+                    <p class="admin-editorial-code">{{ resolveTaskType(task.taskType) }}</p>
+                    <h3>#{{ task.taskId }} {{ task.summaryText || '待补充解析信息' }}</h3>
+                  </div>
+                  <span class="admin-editorial-status">{{ resolveTaskState(task) }}</span>
                 </div>
-                <span class="admin-editorial-status">{{ resolveTaskState(task) }}</span>
+                <p>{{ task.instructionText }}</p>
+                <div class="admin-editorial-card__footer">
+                  <span class="admin-editorial-note">{{ formatDate(task.createdAt) }}</span>
+                </div>
+              </button>
+            </div>
+            <nav class="pagination-nav" v-if="totalPages > 1">
+              <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+                <span class="arrow">←</span> 往前翻
+              </button>
+              <div class="page-indicator">
+                <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
               </div>
-              <p>{{ task.instructionText }}</p>
-              <div class="admin-editorial-card__footer">
-                <span class="admin-editorial-note">{{ formatDate(task.createdAt) }}</span>
-              </div>
-            </button>
-          </div>
+              <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+                往后翻 <span class="arrow">→</span>
+              </button>
+            </nav>
+          </template>
           <div v-else class="admin-editorial-empty">当前还没有管理员 AI 运维任务。</div>
         </section>
 
@@ -308,31 +371,44 @@ onMounted(() => {
                 </div>
               </div>
 
-              <div v-if="currentTask.items.length" class="admin-editorial-board" style="margin-top: 1rem;">
-                <article v-for="item in currentTask.items" :key="item.itemId" class="admin-editorial-card">
-                  <div class="admin-editorial-card__topline">
-                    <div>
-                      <p class="admin-editorial-code">{{ resolveItemAction(item) }}</p>
-                      <h3>{{ item.targetLabel || item.targetId || '未命名目标' }}</h3>
+              <template v-if="currentTask.items.length">
+                <div class="admin-editorial-board" style="margin-top: 1rem;">
+                  <article v-for="item in pagedTaskItems" :key="item.itemId" class="admin-editorial-card">
+                    <div class="admin-editorial-card__topline">
+                      <div>
+                        <p class="admin-editorial-code">{{ resolveItemAction(item) }}</p>
+                        <h3>{{ item.targetLabel || item.targetId || '未命名目标' }}</h3>
+                      </div>
+                      <span class="admin-editorial-status">{{ item.executeStatus || 'WAITING' }}</span>
                     </div>
-                    <span class="admin-editorial-status">{{ item.executeStatus || 'WAITING' }}</span>
+                    <div class="admin-editorial-compare">
+                      <div>
+                        <label>字段</label>
+                        <p>{{ item.fieldName || '未指定' }}</p>
+                      </div>
+                      <div>
+                        <label>旧值</label>
+                        <p>{{ formatValue(item.oldValue) }}</p>
+                      </div>
+                      <div>
+                        <label>新值</label>
+                        <p>{{ formatValue(item.newValue) }}</p>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+                <nav class="pagination-nav" v-if="totalItemPages > 1">
+                  <button class="page-btn" :disabled="currentItemPage <= 1" @click="prevItemPage">
+                    <span class="arrow">←</span> 往前翻
+                  </button>
+                  <div class="page-indicator">
+                    <span>{{ currentItemPage }}</span> / <span>{{ totalItemPages }}</span>
                   </div>
-                  <div class="admin-editorial-compare">
-                    <div>
-                      <label>字段</label>
-                      <p>{{ item.fieldName || '未指定' }}</p>
-                    </div>
-                    <div>
-                      <label>旧值</label>
-                      <p>{{ formatValue(item.oldValue) }}</p>
-                    </div>
-                    <div>
-                      <label>新值</label>
-                      <p>{{ formatValue(item.newValue) }}</p>
-                    </div>
-                  </div>
-                </article>
-              </div>
+                  <button class="page-btn" :disabled="currentItemPage >= totalItemPages" @click="nextItemPage">
+                    往后翻 <span class="arrow">→</span>
+                  </button>
+                </nav>
+              </template>
               <div v-else class="admin-editorial-empty">当前任务没有拆解出可执行明细。</div>
             </article>
 
@@ -358,5 +434,63 @@ onMounted(() => {
 
 .is-active {
   box-shadow: 0 0 0 1px rgba(97, 122, 105, 0.18), 0 48px 88px rgba(54, 66, 58, 0.09);
+}
+
+.pagination-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
+}
+
+.page-btn {
+  background: transparent;
+  border: none;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #2a362e;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) {
+  color: #5c6b60;
+}
+
+.page-btn:disabled {
+  color: #cbd5cf;
+  cursor: not-allowed;
+}
+
+.page-indicator {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1rem;
+  color: #8a9c90;
+  letter-spacing: 0.1em;
+}
+
+.page-indicator span {
+  color: #2a362e;
+  font-weight: 600;
+}
+
+.arrow {
+  font-family: 'Manrope', sans-serif;
+  transition: transform 0.3s ease;
+}
+
+.page-btn:hover:not(:disabled) .arrow:last-child {
+  transform: translateX(4px);
+}
+
+.page-btn:hover:not(:disabled) .arrow:first-child {
+  transform: translateX(-4px);
 }
 </style>

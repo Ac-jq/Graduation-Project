@@ -1,4 +1,4 @@
-import { get, post, put } from './http'
+import { del, get, post, put } from './http'
 import type {
   AdminUserQuery,
   AdminUserSummary,
@@ -6,6 +6,7 @@ import type {
   CounselorStudentSummary,
   CreateCounselorRequest,
   StudentProfile,
+  UpdateAdminUserRequest,
   UpdateStudentProfileRequest
 } from './types'
 
@@ -37,6 +38,14 @@ export function fetchAdminUsersApi(query: AdminUserQuery = {}): Promise<AdminUse
 
 export function createCounselorApi(payload: CreateCounselorRequest): Promise<AdminUserSummary> {
   return post<AdminUserSummary>('/admin/users/counselors', payload)
+}
+
+export function updateAdminUserApi(userId: number, payload: UpdateAdminUserRequest): Promise<AdminUserSummary> {
+  return put<AdminUserSummary>(`/admin/users/${userId}`, payload)
+}
+
+export function deleteAdminUserApi(userId: number): Promise<void> {
+  return del<void>(`/admin/users/${userId}`)
 }
 
 export function enableUserApi(userId: number): Promise<void> {
