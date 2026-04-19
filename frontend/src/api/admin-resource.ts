@@ -6,7 +6,8 @@ import type {
   AdminResourceTag,
   CreateOrUpdateResourceCategoryRequest,
   CreateOrUpdateResourceRequest,
-  CreateResourceTagRequest
+  CreateResourceTagRequest,
+  ResourceAssetUploadResponse
 } from './types'
 
 export function fetchAdminResourcesApi(query: AdminResourceQuery = {}): Promise<AdminResourceListItem[]> {
@@ -15,6 +16,17 @@ export function fetchAdminResourcesApi(query: AdminResourceQuery = {}): Promise<
 
 export function createAdminResourceApi(payload: CreateOrUpdateResourceRequest): Promise<AdminResourceListItem> {
   return post<AdminResourceListItem>('/admin/resources', payload)
+}
+
+export function uploadAdminResourceAssetApi(file: File, coverOnly = false): Promise<ResourceAssetUploadResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('coverOnly', String(coverOnly))
+  return post<ResourceAssetUploadResponse>('/admin/resources/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
 }
 
 export function updateAdminResourceApi(resourceId: number, payload: CreateOrUpdateResourceRequest): Promise<AdminResourceListItem> {

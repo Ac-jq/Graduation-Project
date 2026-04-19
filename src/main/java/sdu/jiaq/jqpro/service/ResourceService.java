@@ -1,7 +1,9 @@
 package sdu.jiaq.jqpro.service;
 
+import org.springframework.web.multipart.MultipartFile;
 import sdu.jiaq.jqpro.dto.resource.ResourceCategoryResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceDetailResponse;
+import sdu.jiaq.jqpro.dto.resource.ResourceUploadResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceSummaryResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceTagResponse;
 import sdu.jiaq.jqpro.dto.resource.UpsertResourceCategoryRequest;
@@ -31,7 +33,11 @@ public interface ResourceService {
 
     List<ResourceCategoryResponse> listAdminCategories();
 
+    List<ResourceTagResponse> listAdminTags();
+
     List<ResourceSummaryResponse> listAdminResources(String status, String keyword);
+
+    ResourceUploadResponse uploadAdminResourceAsset(MultipartFile file, boolean coverOnly);
 
     ResourceSummaryResponse createResource(UpsertResourceRequest request);
 

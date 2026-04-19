@@ -25,6 +25,7 @@ const switchingStatus = ref(false)
 const errorMessage = ref('')
 const scaleDetail = ref<AdminScale | null>(null)
 const scaleId = computed(() => toNumberParam(route.params.scaleId))
+const currentQuestionIndex = ref(0)
 
 const form = reactive<UpsertAdminScaleRequest>({
   code: '',
@@ -67,6 +68,7 @@ function resetForm(): void {
   form.mediumThreshold = 10
   form.highThreshold = 20
   form.questions = [createDefaultQuestion(0)]
+  currentQuestionIndex.value = 0
 }
 
 function syncForm(data: AdminScale): void {
@@ -93,7 +95,11 @@ function syncForm(data: AdminScale): void {
   if (!form.questions.length) {
     form.questions = [createDefaultQuestion(0)]
   }
+  currentQuestionIndex.value = 0
 }
+
+const totalQuestions = computed(() => form.questions.length)
+const currentQuestion = computed(() => form.questions[currentQuestionIndex.value] ?? null)
 
 function reindexQuestions(): void {
   form.questions.forEach((question, questionIndex) => {
@@ -110,6 +116,7 @@ function reindexQuestions(): void {
 function addQuestion(): void {
   form.questions.push(createDefaultQuestion(form.questions.length))
   reindexQuestions()
+  currentQuestionIndex.value = form.questions.length - 1
 }
 
 function removeQuestion(questionIndex: number): void {
@@ -119,6 +126,9 @@ function removeQuestion(questionIndex: number): void {
   }
   form.questions.splice(questionIndex, 1)
   reindexQuestions()
+  if (currentQuestionIndex.value >= form.questions.length) {
+    currentQuestionIndex.value = form.questions.length - 1
+  }
 }
 
 function addOption(questionIndex: number): void {
@@ -135,6 +145,18 @@ function removeOption(questionIndex: number, optionIndex: number): void {
   }
   question.options.splice(optionIndex, 1)
   reindexQuestions()
+}
+
+function goPrevQuestion(): void {
+  if (currentQuestionIndex.value > 0) {
+    currentQuestionIndex.value--
+  }
+}
+
+function goNextQuestion(): void {
+  if (currentQuestionIndex.value < form.questions.length - 1) {
+    currentQuestionIndex.value++
+  }
 }
 
 function buildPayload(): UpsertAdminScaleRequest {
@@ -324,7 +346,7 @@ onMounted(() => {
             </label>
             <label class="admin-editorial-field wide">
               <span>作答引导语</span>
-              <textarea v-model="form.introduction" rows="4" placeholder="例如：请根据过去两周的真实状态进行选择" />
+              <textarea v-model="form.introduction" rows="4" placeholder="例如：请根据过去两周的真实状态进行选择"></textarea>
             </label>
             <label class="admin-editorial-field">
               <span>每页题数</span>
@@ -372,28 +394,35 @@ onMounted(() => {
           <div v-if="loading" class="admin-editorial-empty">正在读取量表详情...</div>
 
           <div v-else class="question-editor-stack">
-            <article
-              v-for="(question, questionIndex) in form.questions"
-              :key="`${question.questionNo}-${questionIndex}`"
-              class="question-editor-card"
-            >
+            <div class="question-editor-toolbar">
+              <div class="question-editor-progress">
+                <p class="admin-editorial-code">当前题目</p>
+                <strong>{{ currentQuestionIndex + 1 }} / {{ totalQuestions }}</strong>
+              </div>
+              <div class="question-editor-actions">
+                <button class="admin-editorial-ghost question-nav-btn" type="button" :disabled="currentQuestionIndex <= 0" @click="goPrevQuestion">上一题</button>
+                <button class="admin-editorial-ghost question-nav-btn" type="button" :disabled="currentQuestionIndex >= totalQuestions - 1" @click="goNextQuestion">下一题</button>
+              </div>
+            </div>
+
+            <article v-if="currentQuestion" :key="`${currentQuestion.questionNo}-${currentQuestionIndex}`" class="question-editor-card">
               <div class="question-editor-head">
                 <div>
-                  <p class="admin-editorial-code">题目 {{ question.questionNo }}</p>
+                  <p class="admin-editorial-code">题目 {{ currentQuestion.questionNo }}</p>
                   <h3 class="question-editor-title">配置题干与作答项</h3>
                 </div>
-                <button class="inline-danger-btn" type="button" @click="removeQuestion(questionIndex)">删除题目</button>
+                <button class="inline-danger-btn" type="button" @click="removeQuestion(currentQuestionIndex)">删除题目</button>
               </div>
 
               <div class="question-editor-grid">
                 <label class="admin-editorial-field wide">
                   <span>题干</span>
-                  <textarea v-model="question.content" rows="3" placeholder="请输入学生要看到的题目内容" />
+                  <textarea v-model="currentQuestion.content" rows="3" placeholder="请输入学生要看到的题目内容"></textarea>
                 </label>
 
                 <label class="admin-editorial-field compact-field">
                   <span>是否必答</span>
-                  <select v-model.number="question.requiredFlag">
+                  <select v-model.number="currentQuestion.requiredFlag">
                     <option :value="1">必答</option>
                     <option :value="0">可选</option>
                   </select>
@@ -403,13 +432,13 @@ onMounted(() => {
               <div class="option-editor">
                 <div class="option-editor-head">
                   <p class="admin-editorial-kicker">选项配置</p>
-                  <button class="admin-editorial-chip-button" type="button" @click="addOption(questionIndex)">新增选项</button>
+                  <button class="admin-editorial-chip-button" type="button" @click="addOption(currentQuestionIndex)">新增选项</button>
                 </div>
 
                 <div class="option-editor-list">
                   <div
-                    v-for="(option, optionIndex) in question.options"
-                    :key="`${question.questionNo}-${option.sortNo}-${optionIndex}`"
+                    v-for="(option, optionIndex) in currentQuestion.options"
+                    :key="`${currentQuestion.questionNo}-${option.sortNo}-${optionIndex}`"
                     class="option-editor-row"
                   >
                     <label class="admin-editorial-field option-code-field">
@@ -424,7 +453,7 @@ onMounted(() => {
                       <span>分值</span>
                       <input v-model.number="option.score" type="number">
                     </label>
-                    <button class="inline-danger-btn option-remove-btn" type="button" @click="removeOption(questionIndex, optionIndex)">删除</button>
+                    <button class="inline-danger-btn option-remove-btn" type="button" @click="removeOption(currentQuestionIndex, optionIndex)">删除</button>
                   </div>
                 </div>
               </div>
@@ -450,6 +479,39 @@ onMounted(() => {
 .question-editor-stack {
   display: grid;
   gap: 1rem;
+}
+
+.question-editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0;
+}
+
+.question-editor-progress {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.question-editor-progress strong {
+  color: #1e2821;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.question-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.question-nav-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .question-editor-card {
@@ -543,6 +605,15 @@ onMounted(() => {
 }
 
 @media (max-width: 820px) {
+  .question-editor-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .question-editor-actions {
+    width: 100%;
+  }
+
   .option-editor-row {
     grid-template-columns: 1fr;
   }

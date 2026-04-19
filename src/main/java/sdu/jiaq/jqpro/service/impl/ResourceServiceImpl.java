@@ -2,6 +2,8 @@ package sdu.jiaq.jqpro.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.ResourceConstants;
@@ -12,6 +14,7 @@ import sdu.jiaq.jqpro.dto.resource.ResourceCategoryResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceDetailResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceSummaryResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceTagResponse;
+import sdu.jiaq.jqpro.dto.resource.ResourceUploadResponse;
 import sdu.jiaq.jqpro.dto.resource.UpsertResourceCategoryRequest;
 import sdu.jiaq.jqpro.dto.resource.UpsertResourceRequest;
 import sdu.jiaq.jqpro.dto.resource.UpsertResourceTagRequest;
@@ -33,6 +36,11 @@ import sdu.jiaq.jqpro.service.AuditLogService;
 import sdu.jiaq.jqpro.service.ResourceService;
 
 import java.time.LocalDateTime;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,6 +48,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -47,6 +57,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class ResourceServiceImpl implements ResourceService {
+
+    private static final long MAX_RESOURCE_UPLOAD_SIZE = 200L * 1024 * 1024;
+    private static final Path RESOURCE_UPLOAD_ROOT = Paths.get(System.getProperty("user.dir"), ".local", "user-assets", "resources");
 
     private final ResourceCategoryMapper resourceCategoryMapper;
     private final ResourceTagMapper resourceTagMapper;
@@ -123,6 +136,15 @@ public class ResourceServiceImpl implements ResourceService {
         return resourceTagMapper.selectList(new LambdaQueryWrapper<ResourceTag>()
                         .in(ResourceTag::getId, tagIds)
                         .orderByAsc(ResourceTag::getName, ResourceTag::getId))
+                .stream()
+                .map(this::toTagResponse)
+                .toList();
+    }
+
+    @Override
+    public List<ResourceTagResponse> listAdminTags() {
+        return resourceTagMapper.selectList(new LambdaQueryWrapper<ResourceTag>()
+                        .orderByDesc(ResourceTag::getId))
                 .stream()
                 .map(this::toTagResponse)
                 .toList();
@@ -278,6 +300,41 @@ public class ResourceServiceImpl implements ResourceService {
                 .orderByDesc(MentalResource::getUpdatedAt, MentalResource::getId));
 
         return buildSummaryResponses(resources, null);
+    }
+
+    @Override
+    public ResourceUploadResponse uploadAdminResourceAsset(MultipartFile file, boolean coverOnly) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("请先选择要上传的文件");
+        }
+        if (file.getSize() > MAX_RESOURCE_UPLOAD_SIZE) {
+            throw new BusinessException("上传文件不能超过 200MB");
+        }
+
+        String contentType = file.getContentType();
+        if (coverOnly && (!StringUtils.hasText(contentType) || !contentType.toLowerCase(Locale.ROOT).startsWith("image/"))) {
+            throw new BusinessException("封面仅支持图片类型文件");
+        }
+
+        String extension = resolveResourceExtension(contentType, file.getOriginalFilename(), coverOnly);
+        String folderName = coverOnly ? "covers" : "contents";
+        String fileName = "resource-" + folderName + "-" + UUID.randomUUID() + extension;
+        Path targetDir = RESOURCE_UPLOAD_ROOT.resolve(folderName);
+
+        try {
+            Files.createDirectories(targetDir);
+            Path targetPath = targetDir.resolve(fileName);
+            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException exception) {
+            throw new BusinessException("资源文件上传失败，请稍后重试");
+        }
+
+        ResourceUploadResponse response = new ResourceUploadResponse();
+        response.setFileName(fileName);
+        response.setAssetUrl("http://127.0.0.1:8080/user-assets/resources/" + folderName + "/" + fileName);
+        response.setContentType(contentType);
+        response.setSize(file.getSize());
+        return response;
     }
 
     @Override
@@ -593,6 +650,37 @@ public class ResourceServiceImpl implements ResourceService {
 
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String resolveResourceExtension(String contentType, String originalFilename, boolean coverOnly) {
+        if (StringUtils.hasText(originalFilename) && originalFilename.contains(".")) {
+            String suffix = originalFilename.substring(originalFilename.lastIndexOf('.')).toLowerCase(Locale.ROOT);
+            if (coverOnly) {
+                if (List.of(".jpg", ".jpeg", ".png", ".webp", ".gif").contains(suffix)) {
+                    return ".jpeg".equals(suffix) ? ".jpg" : suffix;
+                }
+            } else if (suffix.length() <= 8) {
+                return suffix;
+            }
+        }
+
+        if (!StringUtils.hasText(contentType)) {
+            return coverOnly ? ".jpg" : ".bin";
+        }
+
+        String normalized = contentType.toLowerCase(Locale.ROOT);
+        if (normalized.contains("png")) return ".png";
+        if (normalized.contains("jpeg") || normalized.contains("jpg")) return ".jpg";
+        if (normalized.contains("webp")) return ".webp";
+        if (normalized.contains("gif")) return ".gif";
+        if (normalized.contains("mp4")) return ".mp4";
+        if (normalized.contains("webm")) return ".webm";
+        if (normalized.contains("mpeg") || normalized.contains("mp3")) return ".mp3";
+        if (normalized.contains("wav")) return ".wav";
+        if (normalized.contains("ogg")) return ".ogg";
+        if (normalized.contains("html")) return ".html";
+        if (normalized.contains("pdf")) return ".pdf";
+        return coverOnly ? ".jpg" : ".bin";
     }
 
     private static class ResourceContext {

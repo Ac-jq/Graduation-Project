@@ -13,11 +13,13 @@ const loading = ref(false)
 const errorMessage = ref('')
 const logs = ref<AuditLogItem[]>([])
 const currentPage = ref(1)
-const pageSize = 10
+const pageSize = 12
+
 const filters = reactive<AuditLogQuery>({
   actionCode: undefined,
   keyword: undefined
 })
+
 const actionCodeOptions = [
   { value: 'LOGIN', label: '用户登录' },
   { value: 'LOGOUT', label: '用户退出' },
@@ -52,8 +54,6 @@ const actionCodeOptions = [
   { value: 'ADMIN_AI_COUNSELOR_CREATE', label: 'AI 创建咨询师' }
 ]
 
-const uniqueActionCodes = computed(() => Array.from(new Set(logs.value.map((log) => log.actionCode))))
-const latestLog = computed(() => logs.value[0] ?? null)
 const totalPages = computed(() => Math.max(1, Math.ceil(logs.value.length / pageSize)))
 const pagedLogs = computed(() => {
   const start = (currentPage.value - 1) * pageSize
@@ -150,161 +150,88 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-editorial-page">
-    <div class="admin-editorial-shell">
-      <header class="admin-editorial-hero">
-        <div class="admin-editorial-copy">
-          <p class="admin-editorial-eyebrow">审计日志</p>
-          <h1 class="admin-editorial-title">在一条更清晰的日志流里回看管理员治理动作与系统关键事件。</h1>
-          <p class="admin-editorial-lead">筛选、检索和路由同步逻辑保持不变，只把原先偏后台表单式的页面整理成更接近学生端的阅读结构。</p>
-        </div>
-        <div class="admin-editorial-hero-side">
-          <article class="admin-editorial-stat">
-            <p class="admin-editorial-label">日志总数</p>
-            <strong>{{ logs.length }}</strong>
-          </article>
-          <article class="admin-editorial-stat">
-            <p class="admin-editorial-label">动作类型数</p>
-            <strong>{{ uniqueActionCodes.length }}</strong>
-          </article>
+  <section class="admin-table-page">
+    <div class="admin-table-shell">
+      <header class="admin-table-header">
+        <div>
+          <h1>审计日志</h1>
+          <p>按动作类型和关键词回溯管理员治理行为与系统关键事件。</p>
         </div>
       </header>
 
-      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="admin-table-alert">{{ errorMessage }}</p>
 
-      <section class="admin-editorial-panel admin-editorial-panel--mesh">
-        <div class="admin-editorial-section admin-editorial-section--inline">
-          <div>
-            <p class="admin-editorial-kicker">筛选条件</p>
-            <h2>按动作和关键词回溯治理过程</h2>
-          </div>
-          <span class="admin-editorial-badge">{{ latestLog ? formatDate(latestLog.createdAt) : '暂无日志' }}</span>
-        </div>
-
-        <div class="admin-editorial-form">
-          <label class="admin-editorial-field">
+      <section class="admin-table-toolbar">
+        <div class="admin-table-filters">
+          <label class="admin-table-field">
             <span>动作类型</span>
             <select v-model="filters.actionCode">
               <option :value="undefined">全部动作</option>
               <option v-for="option in actionCodeOptions" :key="option.value" :value="option.value">
-                {{ option.label }} / {{ option.value }}
+                {{ option.label }}
               </option>
             </select>
           </label>
-          <label class="admin-editorial-field">
+          <label class="admin-table-field admin-table-field--keyword">
             <span>关键词</span>
             <input v-model="filters.keyword" type="text" placeholder="输入关键词检索详情" @keyup.enter="applyFilters">
           </label>
         </div>
-
-        <div class="admin-editorial-actions" style="margin-top: 1rem;">
-          <button class="admin-editorial-button" type="button" @click="applyFilters">应用筛选</button>
-          <button class="admin-editorial-ghost" type="button" @click="resetFilters">重置</button>
+        <div class="admin-table-actions">
+          <button class="admin-table-button--secondary" type="button" @click="resetFilters">重置</button>
+          <button class="admin-table-button" type="button" @click="applyFilters">查询</button>
         </div>
       </section>
 
-      <section v-if="loading" class="admin-editorial-panel" style="margin-top: 1.5rem;">
-        <div class="admin-editorial-empty">正在加载审计日志…</div>
-      </section>
-
-      <section v-else-if="logs.length" style="margin-top: 1.5rem;">
-        <div class="admin-editorial-board">
-          <article v-for="log in pagedLogs" :key="log.logId" class="admin-editorial-card">
-            <div class="admin-editorial-card__topline">
-              <div>
-                <p class="admin-editorial-code">日志 #{{ log.logId }}</p>
-                <h3>{{ log.actionName }}</h3>
-              </div>
-              <span class="admin-editorial-status">{{ log.actionCode }}</span>
-            </div>
-            <p>{{ log.detailText }}</p>
-            <div class="admin-editorial-card__footer">
-              <div class="admin-editorial-meta">
-                <span>操作人：{{ log.userDisplayName || `用户 ${log.userId ?? '未知'}` }}</span>
-                <span>IP：{{ log.ipAddress || '未记录' }}</span>
-              </div>
-              <span class="admin-editorial-note">{{ formatDate(log.createdAt) }}</span>
-            </div>
-          </article>
-        </div>
-        <nav class="pagination-nav" v-if="totalPages > 1">
-          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
-            <span class="arrow">←</span> 往前翻
-          </button>
-          <div class="page-indicator">
-            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+      <section class="admin-table-panel">
+        <div class="admin-table-panel-header">
+          <div>
+            <h2 class="admin-table-panel-title">日志列表</h2>
+            <p class="admin-table-panel-note">共 {{ logs.length }} 条记录</p>
           </div>
-          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
-            往后翻 <span class="arrow">→</span>
-          </button>
-        </nav>
-      </section>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>动作编码</th>
+                <th>动作名称</th>
+                <th>操作人</th>
+                <th>详情</th>
+                <th>IP 地址</th>
+                <th>时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(log, index) in pagedLogs" :key="log.logId">
+                <td>{{ (currentPage - 1) * pageSize + index + 1 }}</td>
+                <td>{{ log.actionCode }}</td>
+                <td>{{ log.actionName }}</td>
+                <td>{{ log.userDisplayName || `用户 ${log.userId ?? '未知'}` }}</td>
+                <td>{{ log.detailText }}</td>
+                <td>{{ log.ipAddress || '--' }}</td>
+                <td>{{ formatDate(log.createdAt) }}</td>
+              </tr>
+              <tr v-if="!pagedLogs.length">
+                <td colspan="7" class="admin-table-empty">{{ loading ? '正在加载审计日志...' : '当前条件下暂无数据' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <section v-else class="admin-editorial-panel" style="margin-top: 1.5rem;">
-        <div class="admin-editorial-empty">当前筛选条件下没有日志记录。</div>
+        <div class="admin-table-pagination" v-if="totalPages > 1">
+          <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+          <div class="admin-table-pagination-actions">
+            <button class="admin-table-button--secondary" type="button" :disabled="currentPage <= 1" @click="prevPage">上一页</button>
+            <button class="admin-table-button--secondary" type="button" :disabled="currentPage >= totalPages" @click="nextPage">下一页</button>
+          </div>
+        </div>
       </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-@import './admin-editorial.css';
-
-.pagination-nav {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 4rem;
-  padding-top: 2rem;
-  border-top: 1px solid rgba(42, 54, 46, 0.08);
-}
-
-.page-btn {
-  background: transparent;
-  border: none;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #2a362e;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-}
-
-.page-btn:hover:not(:disabled) {
-  color: #5c6b60;
-}
-
-.page-btn:disabled {
-  color: #cbd5cf;
-  cursor: not-allowed;
-}
-
-.page-indicator {
-  font-family: 'Manrope', sans-serif;
-  font-size: 1rem;
-  color: #8a9c90;
-  letter-spacing: 0.1em;
-}
-
-.page-indicator span {
-  color: #2a362e;
-  font-weight: 600;
-}
-
-.arrow {
-  font-family: 'Manrope', sans-serif;
-  transition: transform 0.3s ease;
-}
-
-.page-btn:hover:not(:disabled) .arrow:last-child {
-  transform: translateX(4px);
-}
-
-.page-btn:hover:not(:disabled) .arrow:first-child {
-  transform: translateX(-4px);
-}
+@import './admin-table.css';
 </style>

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="workspace-shell" :class="themeClass">
     <aside class="workspace-sidebar">
       <div class="sidebar-brand">
@@ -51,8 +51,12 @@
       </nav>
 
       <div class="sidebar-footer">
-        <button class="secondary-action" @click="router.push(accountPath)">账户安全</button>
-        <button class="primary-action" @click="handleLogout">退出登录</button>
+        <button class="secondary-action" type="button" @click="router.push(accountPath)">
+          账户安全
+        </button>
+        <button class="primary-action" type="button" @click="handleLogout">
+          退出登录
+        </button>
       </div>
     </aside>
 
@@ -194,13 +198,14 @@ const accountPath = computed(() => {
   }
 })
 
+
 const navItems = computed<NavItem[]>(() => {
   switch (currentUser.value?.roleCode) {
     case 'STUDENT':
       return [
         { path: '/student', label: '首页概览', caption: '个人入口与状态概览', icon: 'home' },
         { path: '/student/scales', label: '心理测评', caption: '量表列表、作答与结果', icon: 'heart' },
-        { path: '/student/reports', label: '报告归档', caption: '历史报告与详细解释', icon: 'folder' },
+        { path: '/student/reports', label: '报告归档', caption: '历史报告与详细解读', icon: 'folder' },
         { path: '/student/appointments', label: '咨询预约', caption: '查看预约与进入沟通', icon: 'calendar' }
       ]
     case 'COUNSELOR':
@@ -229,6 +234,11 @@ function isNavItemActive(path: string): boolean {
   return route.path === path || route.path.startsWith(`${path}/`)
 }
 
+async function handleLogout(): Promise<void> {
+  await authStore.signOut(true)
+  await router.push('/login')
+}
+
 const sidebarNote = computed(() => {
   switch (currentUser.value?.roleCode) {
     case 'ADMIN':
@@ -249,10 +259,6 @@ const sidebarNote = computed(() => {
   }
 })
 
-async function handleLogout(): Promise<void> {
-  await authStore.signOut(true)
-  await router.push('/login')
-}
 
 function syncStudentAvatar(): void {
   studentAvatarUrl.value = localStorage.getItem(studentAvatarStorageKey)
@@ -269,7 +275,7 @@ async function syncStudentAvatarFromProfile(): Promise<void> {
       studentAvatarUrl.value = profile.avatarUrl
     }
   } catch {
-    // 保持静默，避免因为头像拉取失败影响整体导航可用性。
+    // 保持静默，避免头像拉取失败影响整体导航可用性。
   }
 }
 
@@ -339,7 +345,7 @@ onBeforeUnmount(() => {
   width: 310px;
   height: 100%;
   padding: 1.6rem;
-  box-sizing: border-box; /* 核心修复：防止 padding 撑破高度 */
+  box-sizing: border-box; /* 鏍稿績淇锛氶槻姝?padding 鎾戠牬楂樺害 */
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -610,50 +616,43 @@ onBeforeUnmount(() => {
 .sidebar-footer {
   display: grid;
   gap: 0.75rem;
-  flex-shrink: 0;
-  padding-top: 0.2rem;
+  padding-top: 0.25rem;
 }
 
-.primary-action,
-.secondary-action {
-  min-height: 2.95rem;
-  border-radius: 16px;
-  border: none;
-  cursor: pointer;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  transition: all 0.25s ease;
-}
-
-.primary-action:hover,
-.secondary-action:hover {
-  transform: translateY(-1px);
-}
-
+.secondary-action,
 .primary-action {
-  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.2));
-  color: white;
-  box-shadow: 0 12px 24px rgba(97, 122, 105, 0.2);
-}
-
-.theme-counselor .primary-action {
-  box-shadow: 0 12px 24px rgba(71, 104, 127, 0.2);
-}
-
-.theme-admin .primary-action {
-  box-shadow: 0 12px 24px rgba(232, 169, 62, 0.18);
+  width: 100%;
+  min-height: 52px;
+  border-radius: 18px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
 .secondary-action {
   border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.44);
   color: var(--text-primary);
 }
 
-.theme-admin .secondary-action {
-  background: rgba(255, 255, 255, 0.02);
+.secondary-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(31, 34, 32, 0.06);
 }
+
+.primary-action {
+  border: none;
+  background: linear-gradient(135deg, rgba(148, 170, 155, 0.9), rgba(255, 255, 255, 0.86));
+  color: #2a362e;
+}
+
+.primary-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 28px rgba(31, 34, 32, 0.08);
+}
+
 
 .workspace-main {
   flex: 1;
@@ -717,3 +716,5 @@ onBeforeUnmount(() => {
   }
 }
 </style>
+
+

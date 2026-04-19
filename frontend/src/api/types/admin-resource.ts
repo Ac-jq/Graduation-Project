@@ -6,3 +6,10 @@ export type AdminResourceTag = ResourceTag
 export type CreateOrUpdateResourceRequest = UpsertResourceRequest
 export type CreateOrUpdateResourceCategoryRequest = UpsertResourceCategoryRequest
 export type CreateResourceTagRequest = UpsertResourceTagRequest
+
+export interface ResourceAssetUploadResponse {
+  fileName: string
+  assetUrl: string
+  contentType: string
+  size: number
+}

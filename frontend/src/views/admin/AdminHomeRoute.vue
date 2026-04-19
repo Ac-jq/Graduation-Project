@@ -3,16 +3,31 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchAdminResourcesApi } from '@/api/admin-resource'
 import { fetchAdminScalesApi } from '@/api/admin-scale'
-import { fetchAppointmentStatisticsApi, fetchAssessmentStatisticsApi, fetchOverviewStatisticsApi, fetchResourceStatisticsApi } from '@/api/admin-statistics'
+import {
+  fetchAppointmentStatisticsApi,
+  fetchAssessmentStatisticsApi,
+  fetchOverviewStatisticsApi,
+  fetchResourceStatisticsApi
+} from '@/api/admin-statistics'
 import { fetchAdminUsersApi } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
-import type { AdminResourceListItem, AdminScale, AdminUserSummary, AppointmentStatistics, AssessmentStatistics, OverviewStatistics, ResourceStatistics } from '@/api/types'
+import type {
+  AdminResourceListItem,
+  AdminScale,
+  AdminUserSummary,
+  AppointmentStatistics,
+  AssessmentStatistics,
+  OverviewStatistics,
+  ResourceStatistics
+} from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
 const router = useRouter()
 const authStore = useAuthStore()
+
 const loading = ref(false)
 const errorMessage = ref('')
+const showDropdown = ref(false)
 const overview = ref<OverviewStatistics | null>(null)
 const assessments = ref<AssessmentStatistics | null>(null)
 const resourcesStat = ref<ResourceStatistics | null>(null)
@@ -20,13 +35,45 @@ const appointmentsStat = ref<AppointmentStatistics | null>(null)
 const users = ref<AdminUserSummary[]>([])
 const resources = ref<AdminResourceListItem[]>([])
 const scales = ref<AdminScale[]>([])
-const showDropdown = ref(false)
 
-const latestUser = computed(() => users.value[0] ?? null)
-const latestResource = computed(() => resources.value[0] ?? null)
-const latestScale = computed(() => scales.value[0] ?? null)
 const currentUser = computed(() => authStore.currentUser)
 const roleAvatarUrl = computed(() => `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/admin-default.jpg`)
+const latestUsers = computed(() => users.value.slice(0, 8))
+const latestResources = computed(() => resources.value.slice(0, 8))
+const latestScales = computed(() => scales.value.slice(0, 8))
+
+function formatDate(value?: string | null): string {
+  if (!value) {
+    return '--'
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(value))
+}
+
+function resolveScaleStatus(status?: string): string {
+  if (status === 'ACTIVE') return '启用中'
+  if (status === 'INACTIVE') return '已停用'
+  return status || '未标记'
+}
+
+function resolveResourceStatus(status?: string): string {
+  if (status === 'PUBLISHED') return '已发布'
+  if (status === 'OFFLINE') return '已下线'
+  if (status === 'DRAFT') return '草稿'
+  return status || '未标记'
+}
+
+function resolveUserStatus(status?: string): string {
+  if (status === 'ACTIVE') return '正常'
+  if (status === 'DISABLED') return '禁用'
+  return status || '未标记'
+}
 
 async function loadDashboard(): Promise<void> {
   loading.value = true
@@ -56,25 +103,16 @@ async function loadDashboard(): Promise<void> {
   }
 }
 
-function resolveScaleStatus(status?: string): string {
-  return status === 'ACTIVE' ? '启用中' : status === 'INACTIVE' ? '已停用' : status || '未标记'
-}
-
 async function handleDropdownClick(action: 'role' | 'home' | 'security' | 'logout'): Promise<void> {
   showDropdown.value = false
 
-  if (action === 'role') {
-    await router.push({ name: 'admin-account' })
+  if (action === 'role' || action === 'security') {
+    await router.push('/admin/account')
     return
   }
 
   if (action === 'home') {
-    await router.push({ name: 'admin-home' })
-    return
-  }
-
-  if (action === 'security') {
-    await router.push({ name: 'admin-account' })
+    await router.push('/admin')
     return
   }
 
@@ -88,323 +126,251 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="admin-editorial-page">
-    <div class="admin-editorial-shell">
-      <header class="glass-nav">
-        <div class="brand-mark">
-          心语<span>空间</span>
+  <section class="admin-table-page">
+    <div class="admin-table-shell">
+      <header class="admin-table-header">
+        <div>
+          <h1>管理首页</h1>
+          <p>统一查看平台核心数据、最近变动和后台治理入口。</p>
         </div>
 
-        <div class="nav-actions">
-          <div class="profile-dropdown-wrapper" @mouseleave="showDropdown = false">
-            <button class="avatar-btn" type="button" @click="showDropdown = !showDropdown">
-              <img :src="roleAvatarUrl" alt="管理员头像">
-              <span class="avatar-name">{{ currentUser?.displayName || currentUser?.realName || '管理员' }}</span>
-              <svg class="chevron" :class="{ 'chevron-up': showDropdown }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+        <div class="admin-home-profile" @mouseleave="showDropdown = false">
+          <button class="admin-home-profile-btn" type="button" @click="showDropdown = !showDropdown">
+            <img :src="roleAvatarUrl" alt="管理员头像">
+            <div>
+              <strong>{{ currentUser?.displayName || currentUser?.realName || '管理员' }}</strong>
+              <span>管理员工作台</span>
+            </div>
+          </button>
 
-            <transition name="fade-slide">
-              <ul v-show="showDropdown" class="dropdown-menu">
-                <li @click="handleDropdownClick('role')">角色信息</li>
-                <li @click="handleDropdownClick('home')">首页</li>
-                <li @click="handleDropdownClick('security')">账户安全</li>
-                <li class="logout" @click="handleDropdownClick('logout')">退出登录</li>
-              </ul>
-            </transition>
-          </div>
+          <ul v-if="showDropdown" class="admin-home-profile-menu">
+            <li @click="handleDropdownClick('role')">角色信息</li>
+            <li @click="handleDropdownClick('home')">首页</li>
+            <li @click="handleDropdownClick('security')">账户安全</li>
+            <li class="is-danger" @click="handleDropdownClick('logout')">退出登录</li>
+          </ul>
         </div>
       </header>
 
-      <header class="admin-editorial-hero">
-        <div class="admin-editorial-copy">
-          <p class="admin-editorial-eyebrow">管理员工作台</p>
-          <h1 class="admin-editorial-title">把用户、资源、量表与流量数据收束到同一张治理画布。</h1>
-          <p class="admin-editorial-lead">
-            这里保留了原有真实统计接口与治理入口，只把管理员端的阅读节奏、留白和卡片层级统一到学生端的视觉体系。
-          </p>
+      <p v-if="errorMessage" class="admin-table-alert">{{ errorMessage }}</p>
+
+      <section class="admin-table-toolbar">
+        <div class="admin-table-actions">
+          <button class="admin-table-button" type="button" @click="loadDashboard">刷新数据</button>
+          <button class="admin-table-button--secondary" type="button" @click="router.push({ name: 'admin-users' })">用户管理</button>
+          <button class="admin-table-button--secondary" type="button" @click="router.push({ name: 'admin-scales' })">量表管理</button>
+          <button class="admin-table-button--secondary" type="button" @click="router.push({ name: 'admin-resources' })">资源管理</button>
+          <button class="admin-table-button--secondary" type="button" @click="router.push({ name: 'admin-statistics' })">统计分析</button>
+          <button class="admin-table-button--secondary" type="button" @click="router.push({ name: 'admin-audit-logs' })">审计日志</button>
         </div>
+      </section>
 
-        <div class="admin-editorial-hero-side">
-          <article class="admin-editorial-stat">
-            <p class="admin-editorial-label">治理快照</p>
-            <strong>{{ loading ? '-' : `${overview?.studentCount ?? 0} / ${overview?.counselorCount ?? 0}` }}</strong>
-            <p class="admin-editorial-lead">学生与咨询师规模一眼可见，便于快速判断平台活跃结构。</p>
-          </article>
-          <article class="admin-editorial-stat">
-            <p class="admin-editorial-label">资源与会话</p>
-            <strong>{{ loading ? '-' : `${overview?.resourceCount ?? 0} / ${overview?.aiSessionCount ?? 0}` }}</strong>
-            <p class="admin-editorial-lead">资源沉淀与 AI 会话量共同反映平台陪伴密度。</p>
-          </article>
-        </div>
-      </header>
+      <section class="admin-table-summary">
+        <article class="admin-table-summary-item">
+          <p>学生总数</p>
+          <strong>{{ overview?.studentCount ?? 0 }}</strong>
+        </article>
+        <article class="admin-table-summary-item">
+          <p>咨询师总数</p>
+          <strong>{{ overview?.counselorCount ?? 0 }}</strong>
+        </article>
+        <article class="admin-table-summary-item">
+          <p>测评报告</p>
+          <strong>{{ assessments?.totalReports ?? 0 }}</strong>
+        </article>
+        <article class="admin-table-summary-item">
+          <p>资源总量</p>
+          <strong>{{ overview?.resourceCount ?? 0 }}</strong>
+        </article>
+        <article class="admin-table-summary-item">
+          <p>预约总量</p>
+          <strong>{{ appointmentsStat?.totalCount ?? 0 }}</strong>
+        </article>
+        <article class="admin-table-summary-item">
+          <p>资源浏览</p>
+          <strong>{{ resourcesStat?.totalViews ?? 0 }}</strong>
+        </article>
+      </section>
 
-      <p v-if="errorMessage" class="admin-editorial-alert">{{ errorMessage }}</p>
-
-      <div class="admin-editorial-grid">
-        <section class="admin-editorial-panel admin-editorial-panel--mesh">
-          <div class="admin-editorial-section">
-            <p class="admin-editorial-kicker">治理入口</p>
-            <h2>从这里进入各个管理模块</h2>
+      <div class="admin-table-section-grid">
+        <section class="admin-table-panel">
+          <div class="admin-table-panel-header">
+            <div>
+              <h2 class="admin-table-panel-title">最近用户</h2>
+              <p class="admin-table-panel-note">显示最近加载到的用户记录。</p>
+            </div>
           </div>
-
-          <div class="admin-editorial-actions">
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-statistics' })">
-              <p class="admin-editorial-code">01</p>
-              <h3>统计分析</h3>
-              <p>查看总览、资源、测评与预约的实时切面。</p>
-            </button>
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-users' })">
-              <p class="admin-editorial-code">02</p>
-              <h3>用户管理</h3>
-              <p>创建咨询师、启停账号、重置密码与筛选用户。</p>
-            </button>
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-resources' })">
-              <p class="admin-editorial-code">03</p>
-              <h3>资源治理</h3>
-              <p>管理资源上下线、分类、标签与资源详情。</p>
-            </button>
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-scales' })">
-              <p class="admin-editorial-code">04</p>
-              <h3>量表治理</h3>
-              <p>维护量表状态、阈值、题量与结构说明。</p>
-            </button>
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-ai-tasks' })">
-              <p class="admin-editorial-code">05</p>
-              <h3>AI 运维</h3>
-              <p>解析自然语言指令，先预览计划，再人工确认执行。</p>
-            </button>
-            <button class="admin-editorial-card" type="button" @click="router.push({ name: 'admin-audit-logs' })">
-              <p class="admin-editorial-code">06</p>
-              <h3>审计日志</h3>
-              <p>回溯关键动作、异常处理与治理轨迹。</p>
-            </button>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>账号</th>
+                  <th>姓名</th>
+                  <th>角色</th>
+                  <th>状态</th>
+                  <th>创建时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="user in latestUsers" :key="user.userId">
+                  <td>{{ user.account }}</td>
+                  <td>{{ user.displayName }}</td>
+                  <td>{{ user.roleCode }}</td>
+                  <td>{{ resolveUserStatus(user.status) }}</td>
+                  <td>{{ formatDate(user.createdAt) }}</td>
+                </tr>
+                <tr v-if="!latestUsers.length">
+                  <td colspan="5" class="admin-table-empty">{{ loading ? '加载中...' : '暂无数据' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
 
-        <section class="admin-editorial-panel">
-          <div class="admin-editorial-section admin-editorial-section--inline">
+        <section class="admin-table-panel">
+          <div class="admin-table-panel-header">
             <div>
-              <p class="admin-editorial-kicker">平台切面</p>
-              <h2>运行概览</h2>
+              <h2 class="admin-table-panel-title">最近资源</h2>
+              <p class="admin-table-panel-note">快速查看资源状态和热度。</p>
             </div>
-            <span class="admin-editorial-badge">{{ loading ? '同步中' : '已更新' }}</span>
           </div>
-
-          <div class="admin-editorial-metrics">
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">学生数</p>
-              <strong>{{ overview?.studentCount ?? '-' }}</strong>
-            </article>
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">咨询师数</p>
-              <strong>{{ overview?.counselorCount ?? '-' }}</strong>
-            </article>
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">资源总量</p>
-              <strong>{{ overview?.resourceCount ?? '-' }}</strong>
-            </article>
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">报告总数</p>
-              <strong>{{ assessments?.totalReports ?? 0 }}</strong>
-            </article>
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">预约总量</p>
-              <strong>{{ appointmentsStat?.totalCount ?? 0 }}</strong>
-            </article>
-            <article class="admin-editorial-metric">
-              <p class="admin-editorial-label">浏览总量</p>
-              <strong>{{ resourcesStat?.totalViews ?? 0 }}</strong>
-            </article>
-          </div>
-
-          <div class="admin-editorial-stack" style="margin-top: 1rem;">
-            <article class="admin-editorial-card">
-              <div class="admin-editorial-card__topline">
-                <div>
-                  <p class="admin-editorial-code">最新用户</p>
-                  <h3>{{ latestUser?.displayName || '暂无' }}</h3>
-                </div>
-                <span class="admin-editorial-status">{{ latestUser?.roleCode || '无记录' }}</span>
-              </div>
-              <p>{{ latestUser ? `${latestUser.account} · ${latestUser.status}` : '尚无用户数据。' }}</p>
-            </article>
-
-            <article class="admin-editorial-card">
-              <div class="admin-editorial-card__topline">
-                <div>
-                  <p class="admin-editorial-code">最新资源</p>
-                  <h3>{{ latestResource?.title || '暂无' }}</h3>
-                </div>
-                <span class="admin-editorial-status">{{ latestResource?.status || '无记录' }}</span>
-              </div>
-              <p>{{ latestResource ? `${latestResource.categoryName} · 收藏 ${latestResource.favoriteCount} · 浏览 ${latestResource.viewCount}` : '尚无资源数据。' }}</p>
-            </article>
-
-            <article class="admin-editorial-card">
-              <div class="admin-editorial-card__topline">
-                <div>
-                  <p class="admin-editorial-code">最新量表</p>
-                  <h3>{{ latestScale?.name || '暂无' }}</h3>
-                </div>
-                <span class="admin-editorial-status">{{ resolveScaleStatus(latestScale?.status) }}</span>
-              </div>
-              <p>{{ latestScale ? `${latestScale.code} · 题目 ${latestScale.totalQuestions} · 每页 ${latestScale.pageSize}` : '尚无量表数据。' }}</p>
-            </article>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>标题</th>
+                  <th>分类</th>
+                  <th>类型</th>
+                  <th>状态</th>
+                  <th>浏览 / 收藏</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="resource in latestResources" :key="resource.resourceId">
+                  <td>{{ resource.title }}</td>
+                  <td>{{ resource.categoryName }}</td>
+                  <td>{{ resource.resourceType }}</td>
+                  <td>{{ resolveResourceStatus(resource.status) }}</td>
+                  <td>{{ resource.viewCount }} / {{ resource.favoriteCount }}</td>
+                </tr>
+                <tr v-if="!latestResources.length">
+                  <td colspan="5" class="admin-table-empty">{{ loading ? '加载中...' : '暂无数据' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </section>
       </div>
+
+      <section class="admin-table-panel">
+        <div class="admin-table-panel-header">
+          <div>
+            <h2 class="admin-table-panel-title">最近量表</h2>
+            <p class="admin-table-panel-note">查看最新量表的状态、题量和阈值配置。</p>
+          </div>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>量表编码</th>
+                <th>量表名称</th>
+                <th>状态</th>
+                <th>题目数</th>
+                <th>分页数</th>
+                <th>阈值</th>
+                <th>更新时间</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="scale in latestScales" :key="scale.scaleId">
+                <td>{{ scale.code }}</td>
+                <td>{{ scale.name }}</td>
+                <td>{{ resolveScaleStatus(scale.status) }}</td>
+                <td>{{ scale.totalQuestions }}</td>
+                <td>{{ scale.pageSize }}</td>
+                <td>{{ scale.lowThreshold }} / {{ scale.mediumThreshold }} / {{ scale.highThreshold }}</td>
+                <td>{{ formatDate(scale.updatedAt) }}</td>
+              </tr>
+              <tr v-if="!latestScales.length">
+                <td colspan="7" class="admin-table-empty">{{ loading ? '加载中...' : '暂无数据' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-@import './admin-editorial.css';
+@import './admin-table.css';
 
-.glass-nav {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 32px;
-  margin-bottom: 1.5rem;
-  background: rgba(253, 251, 247, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(44, 53, 45, 0.04);
-  border-radius: 18px;
-}
-
-.brand-mark {
-  font-family: 'Noto Serif SC', serif;
-  font-weight: 900;
-  font-size: 1.4rem;
-  letter-spacing: 0.15em;
-  color: #1e2821;
-}
-
-.brand-mark span {
-  color: #8fa08e;
-  font-style: italic;
-}
-
-.nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.profile-dropdown-wrapper {
+.admin-home-profile {
   position: relative;
 }
 
-.avatar-btn {
+.admin-home-profile-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: 1px solid transparent;
-  padding: 4px 10px 4px 4px;
-  border-radius: 20px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.avatar-btn:hover {
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
   background: #fff;
-  box-shadow: 0 6px 16px rgba(44, 53, 45, 0.06);
-  transform: translateY(-1px);
+  cursor: pointer;
 }
 
-.avatar-btn img {
-  width: 30px;
-  height: 30px;
+.admin-home-profile-btn img {
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.avatar-name {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #2a362e;
+.admin-home-profile-btn strong,
+.admin-home-profile-btn span {
+  display: block;
+  text-align: left;
 }
 
-.chevron {
-  width: 14px;
-  height: 14px;
-  opacity: 0.6;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+.admin-home-profile-btn strong {
+  font-size: 14px;
+  color: #111827;
 }
 
-.chevron-up {
-  transform: rotate(180deg);
+.admin-home-profile-btn span {
+  font-size: 12px;
+  color: #6b7280;
 }
 
-.dropdown-menu {
+.admin-home-profile-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 8px);
   right: 0;
-  width: 140px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(44, 53, 45, 0.08);
-  border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(135, 126, 115, 0.12);
-  list-style: none;
-  padding: 8px;
+  width: 160px;
   margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transform-origin: top right;
+  padding: 8px 0;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  z-index: 20;
 }
 
-.dropdown-menu::before {
-  content: '';
-  position: absolute;
-  top: -12px;
-  left: 0;
-  right: 0;
-  height: 12px;
-  background: transparent;
-}
-
-.dropdown-menu li {
-  padding: 10px 12px;
-  border-radius: 8px;
-  font-size: 0.85rem;
+.admin-home-profile-menu li {
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #374151;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.dropdown-menu li:hover {
-  background: rgba(143, 160, 142, 0.1);
-  color: #8fa08e;
-  transform: translateX(4px);
+.admin-home-profile-menu li:hover {
+  background: #f3f4f6;
 }
 
-.dropdown-menu li.logout {
-  color: #d16b6b;
-  border-top: 1px solid rgba(44, 53, 45, 0.04);
-  margin-top: 4px;
-  border-radius: 0 0 8px 8px;
-}
-
-.dropdown-menu li.logout:hover {
-  background: rgba(209, 107, 107, 0.08);
-}
-
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.fade-slide-enter-from,
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.95);
+.admin-home-profile-menu li.is-danger {
+  color: #dc2626;
 }
 </style>

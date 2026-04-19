@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchStudentAiSessionsApi } from '@/api/ai-chat'
@@ -7,10 +7,12 @@ import { fetchStudentReportsApi } from '@/api/assessment'
 import { fetchNotificationsApi } from '@/api/notification'
 import { fetchResourcesApi } from '@/api/resource'
 import { fetchStudentProfileApi } from '@/api/user'
+import { useAuthStore } from '@/stores/auth'
 import type { AiChatSession, Appointment, NotificationItem, ReportSummary, ResourceSummary, StudentProfile } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const loading = ref(false)
 const errorMessage = ref('')
 const profile = ref<StudentProfile | null>(null)
@@ -20,7 +22,7 @@ const featuredResources = ref<ResourceSummary[]>([])
 const activeSession = ref<AiChatSession | null>(null)
 const notifications = ref<NotificationItem[]>([])
 
-// UI State 控制下拉菜单显示/隐藏
+// UI State: 控制下拉菜单显示与隐藏
 const showDropdown = ref(false)
 
 const unreadCount = computed(() => notifications.value.filter((item) => !item.read).length)
@@ -28,7 +30,7 @@ const unreadCount = computed(() => notifications.value.filter((item) => !item.re
 function resolveLevelLabel(levelCode?: string | null): string {
   switch (levelCode) {
     case 'LOW': return '状态平稳'
-    case 'MEDIUM': return '需适度关注'
+    case 'MEDIUM': return '需要适度关注'
     case 'HIGH': return '建议重点关注'
     default: return '待生成'
   }
@@ -37,7 +39,7 @@ function resolveLevelLabel(levelCode?: string | null): string {
 function resolveAppointmentStatusLabel(status?: string | null): string {
   switch (status) {
     case 'PENDING': return '待处理'
-    case 'ACCEPTED': return '已接受'
+    case 'ACCEPTED': return '已接单'
     case 'IN_PROGRESS': return '沟通中'
     case 'COMPLETED': return '已完成'
     case 'REJECTED': return '未通过'
@@ -81,7 +83,7 @@ async function openAppointmentCenter(): Promise<void> {
   await router.push({ name: 'student-appointment-slots' })
 }
 
-async function open收藏数(): Promise<void> {
+async function openFavorites(): Promise<void> {
   await router.push({ name: 'student-favorites' })
 }
 
@@ -102,12 +104,24 @@ async function openNotifications(): Promise<void> {
 }
 
 // 下拉菜单点击事件处理
-function handleDropdownClick(action: string) {
+async function handleDropdownClick(action: string): Promise<void> {
   showDropdown.value = false
   if (action === 'role') {
-    router.push({ name: 'student-profile' })
+    await router.push('/student/profile')
+    return
   }
-  // 其他路由根据需求补充
+  if (action === 'home') {
+    await router.push('/student')
+    return
+  }
+  if (action === 'security') {
+    await router.push('/student/account')
+    return
+  }
+  if (action === 'logout') {
+    await authStore.signOut(true)
+    await router.push('/login')
+  }
 }
 
 onMounted(() => {
@@ -146,7 +160,7 @@ onMounted(() => {
 
             <transition name="fade-slide">
               <ul v-show="showDropdown" class="dropdown-menu">
-                <li @click="handleDropdownClick('role')">角色</li>
+                <li @click="handleDropdownClick('role')">角色信息</li>
                 <li @click="handleDropdownClick('home')">首页</li>
                 <li @click="handleDropdownClick('security')">账户安全</li>
                 <li class="logout" @click="handleDropdownClick('logout')">退出登录</li>
@@ -189,7 +203,7 @@ onMounted(() => {
                 </div>
                 <span class="arrow">&rarr;</span>
               </button>
-              <button class="link-item" type="button" @click="open收藏数">
+              <button class="link-item" type="button" @click="openFavorites">
                 <div class="link-content">
                   <span class="icon-box icon-box--clay">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
@@ -293,11 +307,11 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500&family=Noto+Serif+SC:wght@400;600;900&display=swap');
 
 /* =========================================
-   全局背景：更温暖、治愈的底色
+   鍏ㄥ眬鑳屾櫙锛氭洿娓╂殩銆佹不鎰堢殑搴曡壊
 ========================================= */
 .app-layout {
   min-height: 100vh;
-  background-color: #f6f7f4; /* 调暖一丝丝，增加呼吸感 */
+  background-color: #f6f7f4; /* 璋冩殩涓€涓濅笣锛屽鍔犲懠鍚告劅 */
   padding: 3vh 4vw;
   display: flex;
   justify-content: center;
@@ -321,7 +335,7 @@ onMounted(() => {
   max-width: 1400px;
   background: #fdfbf7;
   border-radius: 24px;
-  /* 增加阴影的暖色调，显得有温度 */
+  /* 澧炲姞闃村奖鐨勬殩鑹茶皟锛屾樉寰楁湁娓╁害 */
   box-shadow: 0 24px 60px rgba(135, 126, 115, 0.08), 0 4px 12px rgba(44, 53, 45, 0.03);
   overflow: hidden;
   position: relative;
@@ -331,7 +345,7 @@ onMounted(() => {
 }
 
 /* =========================================
-   顶部导航：Q弹的交互
+   椤堕儴瀵艰埅锛歈寮圭殑浜や簰
 ========================================= */
 .glass-nav {
   position: sticky;
@@ -352,7 +366,7 @@ onMounted(() => {
   font-weight: 900;
   font-size: 1.4rem;
   letter-spacing: 0.15em;
-  /* 鼠标悬浮时有微弹放大 */
+  /* 榧犳爣鎮诞鏃舵湁寰脊鏀惧ぇ */
   transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .brand-mark:hover {
@@ -377,13 +391,13 @@ onMounted(() => {
   justify-content: center;
   cursor: pointer;
   color: #2c352d;
-  /* 果冻弹簧曲线 */
+  /* 鏋滃喕寮圭哀鏇茬嚎 */
   transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .notification-btn:hover {
   background: #fff;
   transform: translateY(-3px) scale(1.1);
-  box-shadow: 0 8px 20px rgba(226, 180, 154, 0.25); /* 阳光暖色阴影 */
+  box-shadow: 0 8px 20px rgba(226, 180, 154, 0.25); /* 闃冲厜鏆栬壊闃村奖 */
   color: #d68762;
 }
 .notification-btn svg { width: 18px; height: 18px; }
@@ -393,11 +407,11 @@ onMounted(() => {
   border-radius: 50%;
   background: #e88656;
   box-shadow: 0 0 0 2px #fdfbf7;
-  /* 带有呼吸感的闪烁 */
+  /* 甯︽湁鍛煎惛鎰熺殑闂儊 */
   animation: pulse-ring-warm 1s infinite;
 }
 
-/* 下拉菜单 & 头像 */
+/* 涓嬫媺鑿滃崟 & 澶村儚 */
 .profile-dropdown-wrapper { position: relative; }
 
 .avatar-btn {
@@ -455,7 +469,7 @@ onMounted(() => {
   transform-origin: top right;
 }
 
-/* 透明桥梁，解决鼠标划过消失问题 */
+/* 閫忔槑妗ユ锛岃В鍐抽紶鏍囧垝杩囨秷澶遍棶棰?*/
 .dropdown-menu::before {
   content: '';
   position: absolute;
@@ -492,7 +506,7 @@ onMounted(() => {
 }
 
 /* =========================================
-   主内容 & 错落弹跳入场动画
+   涓诲唴瀹?& 閿欒惤寮硅烦鍏ュ満鍔ㄧ敾
 ========================================= */
 .dashboard-content {
   padding: 32px 48px 48px;
@@ -503,7 +517,7 @@ onMounted(() => {
 
 @keyframes springUp {
   0% { opacity: 0; transform: translateY(30px); }
-  60% { opacity: 1; transform: translateY(-3px); } /* 微弱的过冲回弹 */
+  60% { opacity: 1; transform: translateY(-3px); } /* 寰急鐨勮繃鍐插洖寮?*/
   100% { opacity: 1; transform: translateY(0); }
 }
 
@@ -525,7 +539,7 @@ onMounted(() => {
 }
 
 /* =========================================
-   英雄区与快捷图标
+   鑻遍泟鍖轰笌蹇嵎鍥炬爣
 ========================================= */
 .compact-hero-grid {
   display: grid;
@@ -547,7 +561,7 @@ onMounted(() => {
   font-family: 'Noto Serif SC', serif;
   font-size: clamp(2.2rem, 4.5vw, 3.2rem);
   line-height: 1.1;
-  /* 渐变中加入了一丝丝治愈的暖灰色 */
+  /* 娓愬彉涓姞鍏ヤ簡涓€涓濅笣娌绘剤鐨勬殩鐏拌壊 */
   background: linear-gradient(135deg, #2b332c 0%, #687a6a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -594,7 +608,7 @@ onMounted(() => {
 
 .link-item:hover {
   background: #fff;
-  padding-left: 12px; /* 产生向右推进的吸附感 */
+  padding-left: 12px; /* 浜х敓鍚戝彸鎺ㄨ繘鐨勫惛闄勬劅 */
   box-shadow: 0 4px 16px rgba(44, 53, 45, 0.04);
 }
 .link-item:hover .icon-box { transform: scale(1.1); }
@@ -609,7 +623,7 @@ onMounted(() => {
 }
 
 /* =========================================
-   Aura 情绪舞台：阳光与呼吸
+   Aura 鎯呯华鑸炲彴锛氶槼鍏変笌鍛煎惛
 ========================================= */
 .compact-aura-stage {
   position: relative;
@@ -642,7 +656,7 @@ onMounted(() => {
   background: linear-gradient(135deg, rgba(226, 180, 154, 0.5), transparent);
   animation-direction: reverse;
 }
-/* 核心：阳光光晕 */
+/* 鏍稿績锛氶槼鍏夊厜鏅?*/
 .aura-blob--sun {
   top: 10%; left: 30%; width: 80%; height: 100%;
   background: radial-gradient(circle, rgba(255, 194, 122, 0.35) 0%, transparent 70%);
@@ -709,8 +723,7 @@ onMounted(() => {
 .btn-primary:active { transform: scale(0.95); }
 
 /* =========================================
-   底部模块：悬浮呼吸与拟态高光
-========================================= */
+   搴曢儴妯″潡锛氭偓娴懠鍚镐笌鎷熸€侀珮鍏?========================================= */
 .dashboard-modules {
   display: grid;
   grid-template-columns: 1fr;
@@ -739,7 +752,7 @@ onMounted(() => {
 }
 .text-btn:hover { color: #bd7352; transform: translateX(-4px); }
 
-/* 状态卡片 */
+/* 鐘舵€佸崱鐗?*/
 .status-cards-wrapper { display: flex; flex-direction: column; gap: 16px; }
 .status-card {
   padding: 24px;
@@ -763,7 +776,7 @@ onMounted(() => {
 .tag--sage { background: rgba(143, 160, 142, 0.2); color: #536b52; }
 .tag-text { font-size: 0.85rem; color: #788577; }
 
-/* 资源卡片 */
+/* 璧勬簮鍗＄墖 */
 .compact-resource-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -814,7 +827,7 @@ onMounted(() => {
 .empty-state--error { color: #c9655c; border-color: rgba(201, 101, 92, 0.2); }
 
 /* =========================================
-   动画定义：呼吸与阳光
+   鍔ㄧ敾瀹氫箟锛氬懠鍚镐笌闃冲厜
 ========================================= */
 @keyframes aura-float {
   0% { transform: translate(0, 0) scale(1) rotate(0deg); }
@@ -843,3 +856,6 @@ onMounted(() => {
   .avatar-name, .chevron { display: none; }
 }
 </style>
+
+
+

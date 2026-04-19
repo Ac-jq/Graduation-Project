@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchCounselorAppointmentsApi } from '@/api/appointment'
@@ -74,17 +74,17 @@ async function handleDropdownClick(action: 'role' | 'home' | 'security' | 'logou
   showDropdown.value = false
 
   if (action === 'role') {
-    await router.push({ name: 'counselor-account' })
+    await router.push('/counselor/account')
     return
   }
 
   if (action === 'home') {
-    await router.push({ name: 'counselor-home' })
+    await router.push('/counselor')
     return
   }
 
   if (action === 'security') {
-    await router.push({ name: 'counselor-account' })
+    await router.push('/counselor/account')
     return
   }
 
@@ -178,7 +178,7 @@ onMounted(() => {
                 <span class="item-title">学生档案库</span>
                 <span class="item-desc">查阅报告、AI 会话与绑定信息</span>
               </div>
-              <span class="arrow">→</span>
+              <span class="arrow">鈫</span>
             </a>
 
             <a class="menu-item" @click="openAppointments">
@@ -186,7 +186,7 @@ onMounted(() => {
                 <span class="item-title">预约处理台</span>
                 <span class="item-desc">受理请求、拒绝或留言跟进</span>
               </div>
-              <span class="arrow">→</span>
+              <span class="arrow">鈫</span>
             </a>
 
             <a class="menu-item" @click="openNotifications">
@@ -194,7 +194,7 @@ onMounted(() => {
                 <span class="item-title">系统通知中心</span>
                 <span class="item-desc">查阅流转提醒与系统简报</span>
               </div>
-              <span class="arrow">→</span>
+              <span class="arrow">鈫</span>
             </a>
           </nav>
         </aside>
@@ -225,7 +225,7 @@ onMounted(() => {
                   :disabled="!latestStudent"
                   @click="openLatestStudentReports"
               >
-                查阅此学生报告 <span class="arrow">→</span>
+                查阅该学生报告 <span class="arrow">→</span>
               </button>
             </article>
 
@@ -265,7 +265,7 @@ onMounted(() => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 极简纸张底色 */
+/* 鏋佺畝绾稿紶搴曡壊 */
 .editorial-desk-page {
   min-height: 100vh;
   background: #fcfbf9;
@@ -460,7 +460,7 @@ onMounted(() => {
   transform: translateY(-10px) scale(0.95);
 }
 
-/* 案头导语区 */
+/* 妗堝ご瀵艰鍖?*/
 .desk-hero {
   margin-bottom: 5rem;
 }
@@ -500,7 +500,7 @@ onMounted(() => {
   max-width: 680px;
 }
 
-/* 散文式数据看板（无框） */
+/* 鏁ｆ枃寮忔暟鎹湅鏉匡紙鏃犳锛?*/
 .hero-metrics {
   display: flex;
   align-items: center;
@@ -531,7 +531,7 @@ onMounted(() => {
 }
 
 .metric-value.highlight {
-  color: #8c4a4a; /* 如果有待处理预约，用莫兰迪红强调 */
+  color: #8c4a4a; /* 濡傛灉鏈夊緟澶勭悊棰勭害锛岀敤鑾叞杩孩寮鸿皟 */
 }
 
 .metric-divider {
@@ -540,7 +540,7 @@ onMounted(() => {
   background: rgba(42, 54, 46, 0.15);
 }
 
-/* 核心网格排版 */
+/* 鏍稿績缃戞牸鎺掔増 */
 .desk-grid {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr);
@@ -548,7 +548,7 @@ onMounted(() => {
   align-items: start;
 }
 
-/* 通用区块头部 */
+/* 閫氱敤鍖哄潡澶撮儴 */
 .section-head {
   margin-bottom: 2rem;
 }
@@ -569,7 +569,7 @@ onMounted(() => {
   letter-spacing: 0.1em;
 }
 
-/* ================= 左侧：工作流目录 ================= */
+/* ================= 宸︿晶锛氬伐浣滄祦鐩綍 ================= */
 .menu-list {
   display: flex;
   flex-direction: column;
@@ -615,7 +615,7 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
-/* 目录悬停交互：文字变色、整体右移缩进 */
+/* 鐩綍鎮仠浜や簰锛氭枃瀛楀彉鑹层€佹暣浣撳彸绉荤缉杩?*/
 .menu-item:hover {
   transform: translateX(8px);
 }
@@ -629,7 +629,7 @@ onMounted(() => {
   transform: translateX(4px);
 }
 
-/* ================= 右侧：最新线索专栏 ================= */
+/* ================= 鍙充晶锛氭渶鏂扮嚎绱笓鏍?================= */
 .insights-columns {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -679,7 +679,7 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* 专栏操作按钮 */
+/* 涓撴爮鎿嶄綔鎸夐挳 */
 .action-btn {
   align-self: flex-start;
   margin-top: auto;
@@ -718,7 +718,7 @@ onMounted(() => {
   transform: translateX(4px);
 }
 
-/* 状态样式 */
+/* 鐘舵€佹牱寮?*/
 .error-banner {
   background: rgba(140, 74, 74, 0.08);
   color: #8c4a4a;
@@ -751,7 +751,7 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* 响应式 */
+/* 鍝嶅簲寮?*/
 @media (max-width: 1024px) {
   .desk-grid {
     grid-template-columns: 1fr;
@@ -780,3 +780,5 @@ onMounted(() => {
   }
 }
 </style>
+
+

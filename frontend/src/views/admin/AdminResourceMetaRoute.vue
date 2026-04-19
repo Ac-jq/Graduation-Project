@@ -90,6 +90,8 @@ async function createTag(): Promise<void> {
 
   try {
     await createAdminResourceTagApi(tagForm)
+    tagForm.name = ''
+    tagForm.description = ''
     await loadMeta()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
