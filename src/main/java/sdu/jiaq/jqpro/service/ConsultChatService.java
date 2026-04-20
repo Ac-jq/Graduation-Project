@@ -19,4 +19,6 @@ public interface ConsultChatService {
     ConsultChatMessageResponse sendMessage(Long appointmentId, Long userId, String content);
 
     void archiveIfExpired(Long appointmentId);
+
+    ConsultChatSessionResponse closeAppointmentChat(Long appointmentId);
 }

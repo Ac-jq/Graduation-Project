@@ -1,8 +1,23 @@
 import { get, post } from './http'
-import type { Appointment, AppointmentActionRequest, AppointmentSlot, CreateAppointmentRequest } from './types'
+import type {
+  Appointment,
+  AppointmentActionRequest,
+  AppointmentCounselorOption,
+  AppointmentSlot,
+  CreateAppointmentRequest
+} from './types'
 
-export function fetchStudentAppointmentSlotsApi(): Promise<AppointmentSlot[]> {
-  return get<AppointmentSlot[]>('/student/appointments/slots')
+export function fetchStudentAppointmentCounselorsApi(): Promise<AppointmentCounselorOption[]> {
+  return get<AppointmentCounselorOption[]>('/student/appointments/counselors')
+}
+
+export function fetchStudentAppointmentSlotsApi(counselorId: number, date: string): Promise<AppointmentSlot[]> {
+  return get<AppointmentSlot[]>('/student/appointments/slots', {
+    params: {
+      counselorId,
+      date
+    }
+  })
 }
 
 export function fetchStudentAppointmentsApi(): Promise<Appointment[]> {

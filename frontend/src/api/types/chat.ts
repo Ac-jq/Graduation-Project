@@ -21,7 +21,9 @@ export interface ConsultChatSendPayload {
 }
 
 export interface ConsultChatSocketPayload {
-  type: 'CONNECTED' | 'MESSAGE' | 'ERROR'
+  type: 'CONNECTED' | 'MESSAGE' | 'ERROR' | 'SYSTEM'
+  action?: 'USER_JOINED' | 'WAITING_PEER' | 'USER_LEFT'
   message?: ConsultChatMessage
   tip?: string
+  onlineCount?: number
 }

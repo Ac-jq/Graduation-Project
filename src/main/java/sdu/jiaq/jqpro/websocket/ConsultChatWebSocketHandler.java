@@ -35,8 +35,32 @@ public class ConsultChatWebSocketHandler extends TextWebSocketHandler {
         Long appointmentId = (Long) session.getAttributes().get("appointmentId");
         Long userId = (Long) session.getAttributes().get("userId");
         consultChatService.validateAndActivateChat(appointmentId, userId);
-        appointmentSessions.computeIfAbsent(appointmentId, key -> new ConcurrentHashMap<>()).put(session.getId(), session);
-        sendPayload(session, WebSocketChatPayload.builder().type("CONNECTED").tip("聊天室连接成功").build());
+
+        Map<String, WebSocketSession> sessionMap = appointmentSessions.computeIfAbsent(appointmentId, key -> new ConcurrentHashMap<>());
+        sessionMap.put(session.getId(), session);
+        int onlineCount = countOpenSessions(sessionMap);
+
+        sendPayload(session, WebSocketChatPayload.builder()
+                .type("CONNECTED")
+                .tip("聊天室连接成功")
+                .onlineCount(onlineCount)
+                .build());
+
+        if (onlineCount > 1) {
+            broadcast(appointmentId, WebSocketChatPayload.builder()
+                    .type("SYSTEM")
+                    .action("USER_JOINED")
+                    .tip("对方已上线，可以开始聊天")
+                    .onlineCount(onlineCount)
+                    .build());
+        } else {
+            sendPayload(session, WebSocketChatPayload.builder()
+                    .type("SYSTEM")
+                    .action("WAITING_PEER")
+                    .tip("你已进入聊天室，正在等待对方进入")
+                    .onlineCount(onlineCount)
+                    .build());
+        }
     }
 
     @Override
@@ -47,29 +71,57 @@ public class ConsultChatWebSocketHandler extends TextWebSocketHandler {
             JsonNode node = objectMapper.readTree(message.getPayload());
             String content = node.path("content").asText(null);
             if (content == null || content.isBlank()) {
-                sendPayload(session, WebSocketChatPayload.builder().type("ERROR").tip("消息内容不能为空").build());
+                sendPayload(session, WebSocketChatPayload.builder()
+                        .type("ERROR")
+                        .tip("消息内容不能为空")
+                        .build());
                 return;
             }
             ConsultChatMessageResponse response = consultChatService.sendMessage(appointmentId, userId, content);
-            broadcast(appointmentId, WebSocketChatPayload.builder().type("MESSAGE").message(response).build());
+            broadcast(appointmentId, WebSocketChatPayload.builder()
+                    .type("MESSAGE")
+                    .message(response)
+                    .onlineCount(countOpenSessions(appointmentSessions.get(appointmentId)))
+                    .build());
         } catch (Exception exception) {
-            sendPayload(session, WebSocketChatPayload.builder().type("ERROR").tip(exception.getMessage()).build());
+            sendPayload(session, WebSocketChatPayload.builder()
+                    .type("ERROR")
+                    .tip(exception.getMessage())
+                    .build());
         }
     }
 
     @Override
-    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+    public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         Long appointmentId = (Long) session.getAttributes().get("appointmentId");
         if (appointmentId == null) {
             return;
         }
         Map<String, WebSocketSession> sessionMap = appointmentSessions.get(appointmentId);
-        if (sessionMap != null) {
-            sessionMap.remove(session.getId());
-            if (sessionMap.isEmpty()) {
-                appointmentSessions.remove(appointmentId);
-            }
+        if (sessionMap == null) {
+            return;
         }
+
+        sessionMap.remove(session.getId());
+        int onlineCount = countOpenSessions(sessionMap);
+        if (onlineCount == 0) {
+            appointmentSessions.remove(appointmentId);
+            return;
+        }
+
+        broadcast(appointmentId, WebSocketChatPayload.builder()
+                .type("SYSTEM")
+                .action("USER_LEFT")
+                .tip("对方暂时离开了聊天室")
+                .onlineCount(onlineCount)
+                .build());
+    }
+
+    private int countOpenSessions(Map<String, WebSocketSession> sessionMap) {
+        if (sessionMap == null) {
+            return 0;
+        }
+        return (int) sessionMap.values().stream().filter(WebSocketSession::isOpen).count();
     }
 
     private void broadcast(Long appointmentId, WebSocketChatPayload payload) throws IOException {
@@ -86,6 +138,8 @@ public class ConsultChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void sendPayload(WebSocketSession session, WebSocketChatPayload payload) throws IOException {
-        session.sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
+        if (session.isOpen()) {
+            session.sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
+        }
     }
 }

@@ -7,5 +7,5 @@ import sdu.jiaq.jqpro.entity.MentalScale;
  */
 public interface AiInterpretationService {
 
-    String generateInterpretation(MentalScale scale, Integer totalScore, String levelCode);
+    String generateInterpretation(MentalScale scale, Integer totalScore, String levelCode, String detailedAnswerContext);
 }

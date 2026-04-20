@@ -32,7 +32,9 @@ export function saveScaleAnswersApi(sessionId: number, payload: AnswerSaveReques
 }
 
 export function submitScaleSessionApi(sessionId: number): Promise<SubmitScaleResponse> {
-  return post<SubmitScaleResponse>(`/scales/sessions/${sessionId}/submit`)
+  return post<SubmitScaleResponse>(`/scales/sessions/${sessionId}/submit`, undefined, {
+    timeout: 90000
+  })
 }
 
 export function fetchStudentReportsApi(): Promise<ReportSummary[]> {

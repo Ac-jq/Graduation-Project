@@ -13,6 +13,7 @@ const errorMessage = ref('')
 const chatSession = ref<ConsultChatSession | null>(null)
 const messages = ref<ConsultChatMessage[]>([])
 const socketState = ref<'idle' | 'connecting' | 'connected' | 'closed'>('idle')
+const peerOnline = ref(false)
 const composeForm = reactive({
   content: ''
 })
@@ -26,36 +27,61 @@ const canSend = computed(() => {
     return false
   }
 
-  return !chatSession.value.sealed && chatSession.value.status !== 'ARCHIVED' && socketState.value === 'connected'
+  return !chatSession.value.sealed
+    && chatSession.value.status !== 'ARCHIVED'
+    && chatSession.value.status !== 'CLOSED'
+    && socketState.value === 'connected'
+    && peerOnline.value
 })
 const socketStateLabel = computed(() => {
   switch (socketState.value) {
     case 'connecting':
       return '正在连接'
     case 'connected':
-      return '已接通'
+      return '已连接'
     case 'closed':
       return '已断开'
     default:
-      return '尚未连接'
+      return '未连接'
   }
 })
 const roomAvailabilityText = computed(() => {
   if (!chatSession.value) {
     return '正在读取会话状态'
   }
-  if (chatSession.value.sealed) {
-    return '会话已封存'
+  if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
+    return '聊天室已结束'
   }
   if (chatSession.value.status === 'ARCHIVED') {
-    return '会话已归档'
+    return '聊天室已归档'
   }
-  return canSend.value ? '可以继续交流' : '等待连接恢复'
+  if (socketState.value !== 'connected') {
+    return '正在建立连接'
+  }
+  return peerOnline.value ? '双方已上线，可以开始聊天' : '你已进入聊天室，正在等待对方上线'
+})
+const composerDescription = computed(() => {
+  if (!chatSession.value) {
+    return '正在加载聊天室信息。'
+  }
+  if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
+    return '聊天室已经结束，当前只能查看历史记录。'
+  }
+  if (chatSession.value.status === 'ARCHIVED') {
+    return '聊天室已经归档，当前不能继续发送消息。'
+  }
+  if (socketState.value !== 'connected') {
+    return '正在连接聊天室，请稍候。'
+  }
+  if (!peerOnline.value) {
+    return '你已经进入聊天室，系统会在对方上线后自动开放输入。'
+  }
+  return '对方已经上线，你可以继续和咨询师交流。'
 })
 
 function formatDate(value: string | null): string {
   if (!value) {
-    return '暂未记录'
+    return '暂无记录'
   }
 
   return new Intl.DateTimeFormat('zh-CN', {
@@ -100,9 +126,46 @@ async function scrollToLatestMessage(): Promise<void> {
 }
 
 function disconnectSocket(): void {
-  socketRef.value?.close()
+  if (socketRef.value) {
+    socketRef.value.onclose = null
+    socketRef.value.close()
+  }
   socketRef.value = null
   socketState.value = 'closed'
+  peerOnline.value = false
+}
+
+function applySocketPayload(payload: ConsultChatSocketPayload): void {
+  if (payload.type === 'CONNECTED') {
+    peerOnline.value = (payload.onlineCount ?? 0) > 1
+    if (payload.tip) {
+      errorMessage.value = ''
+    }
+    return
+  }
+
+  if (payload.type === 'MESSAGE' && payload.message) {
+    messages.value = [...messages.value, payload.message]
+    void scrollToLatestMessage()
+    return
+  }
+
+  if (payload.type === 'SYSTEM') {
+    if (payload.action === 'USER_JOINED') {
+      peerOnline.value = true
+    }
+    if (payload.action === 'WAITING_PEER' || payload.action === 'USER_LEFT') {
+      peerOnline.value = false
+    }
+    if (payload.tip) {
+      errorMessage.value = ''
+    }
+    return
+  }
+
+  if (payload.type === 'ERROR' && payload.tip) {
+    errorMessage.value = payload.tip
+  }
 }
 
 function connectSocket(): void {
@@ -113,7 +176,7 @@ function connectSocket(): void {
 
   const token = getToken()
   if (!token) {
-    errorMessage.value = '缺少登录令牌，请重新登录后再试。'
+    errorMessage.value = '缺少登录凭证，请重新登录后再试。'
     return
   }
 
@@ -123,18 +186,13 @@ function connectSocket(): void {
 
   socket.onopen = () => {
     socketState.value = 'connected'
+    errorMessage.value = ''
   }
 
-  socket.onmessage = async (event) => {
+  socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data) as ConsultChatSocketPayload
-      if (payload.type === 'MESSAGE' && payload.message) {
-        messages.value = [...messages.value, payload.message]
-        await scrollToLatestMessage()
-      }
-      if (payload.type === 'ERROR' && payload.tip) {
-        errorMessage.value = payload.tip
-      }
+      applySocketPayload(payload)
     } catch (error) {
       errorMessage.value = toErrorMessage(error)
     }
@@ -142,11 +200,13 @@ function connectSocket(): void {
 
   socket.onclose = () => {
     socketState.value = 'closed'
+    peerOnline.value = false
   }
 
   socket.onerror = () => {
     errorMessage.value = '实时连接出现异常，请稍后重试。'
     socketState.value = 'closed'
+    peerOnline.value = false
   }
 
   socketRef.value = socket
@@ -181,7 +241,7 @@ async function loadChatContext(): Promise<void> {
 
 function sendMessage(): void {
   const content = composeForm.content.trim()
-  if (!content || socketRef.value?.readyState !== WebSocket.OPEN) {
+  if (!content || socketRef.value?.readyState !== WebSocket.OPEN || !canSend.value) {
     return
   }
 
@@ -220,7 +280,7 @@ onBeforeUnmount(() => {
           <p class="healing-chat-eyebrow">学生私密交流空间</p>
           <h1 class="healing-chat-title">把想说的话，轻轻放在这里。</h1>
           <p class="healing-chat-summary">
-            这不是任务面板，也不是冷冰冰的工单窗口。它更像一间被安静留白包裹的谈话室，
+            这里不是任务面板，也不是冷冰冰的工单窗口。它更像一间被安静留白包裹的谈话室，
             你可以在这里继续预约后的交流，让问题慢一点展开，让情绪有地方落下。
           </p>
         </div>
@@ -276,8 +336,8 @@ onBeforeUnmount(() => {
                 <strong>{{ messageCount }}</strong>
               </article>
               <article class="metric-card">
-                <span>封存状态</span>
-                <strong>{{ chatSession.sealed ? '已封存' : '开放中' }}</strong>
+                <span>对方状态</span>
+                <strong>{{ peerOnline ? '已上线' : '等待加入' }}</strong>
               </article>
             </div>
           </section>
@@ -287,7 +347,7 @@ onBeforeUnmount(() => {
             <ul class="gentle-list">
               <li>尽量描述具体情境，而不是只说“我很难受”。</li>
               <li>如果暂时不知道怎么表达，可以先说身体感受、睡眠变化或最近反复出现的念头。</li>
-              <li>当会话断开时，先不要连续发送，等待连接状态恢复。</li>
+              <li>当对方暂时离线时，系统会自动切换为等待状态，不需要手动刷新页面。</li>
             </ul>
           </section>
         </aside>
@@ -322,7 +382,7 @@ onBeforeUnmount(() => {
               <div v-else class="empty-conversation">
                 <p class="panel-eyebrow">还没有历史消息</p>
                 <h3>第一句话，不需要很完整。</h3>
-                <p>可以从“我最近睡得不好”“我对明天有点害怕”这样的一句开始。</p>
+                <p>可以从“我最近睡得不好”或“我对明天有点害怕”这样的一句话开始。</p>
               </div>
             </div>
           </section>
@@ -332,7 +392,7 @@ onBeforeUnmount(() => {
               <p class="panel-eyebrow">发送新消息</p>
               <h2 class="composer-title">把此刻最真实的一句话写下来。</h2>
               <p class="composer-description">
-                {{ canSend ? '连接已经建立，你可以继续和咨询老师交流。' : '当前会话无法发送新消息，请先查看连接状态或会话状态。' }}
+                {{ composerDescription }}
               </p>
             </div>
 

@@ -12,10 +12,12 @@ import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.chat.ConsultChatMessageResponse;
 import sdu.jiaq.jqpro.dto.chat.ConsultChatSessionResponse;
 import sdu.jiaq.jqpro.entity.ConsultAppointment;
+import sdu.jiaq.jqpro.entity.ConsultAppointmentSlot;
 import sdu.jiaq.jqpro.entity.ConsultChatMessage;
 import sdu.jiaq.jqpro.entity.ConsultChatSession;
 import sdu.jiaq.jqpro.entity.SysUser;
 import sdu.jiaq.jqpro.mapper.ConsultAppointmentMapper;
+import sdu.jiaq.jqpro.mapper.ConsultAppointmentSlotMapper;
 import sdu.jiaq.jqpro.mapper.ConsultChatMessageMapper;
 import sdu.jiaq.jqpro.mapper.ConsultChatSessionMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
@@ -31,15 +33,18 @@ import java.util.List;
 public class ConsultChatServiceImpl implements ConsultChatService {
 
     private final ConsultAppointmentMapper consultAppointmentMapper;
+    private final ConsultAppointmentSlotMapper consultAppointmentSlotMapper;
     private final ConsultChatSessionMapper consultChatSessionMapper;
     private final ConsultChatMessageMapper consultChatMessageMapper;
     private final SysUserMapper sysUserMapper;
 
     public ConsultChatServiceImpl(ConsultAppointmentMapper consultAppointmentMapper,
+                                  ConsultAppointmentSlotMapper consultAppointmentSlotMapper,
                                   ConsultChatSessionMapper consultChatSessionMapper,
                                   ConsultChatMessageMapper consultChatMessageMapper,
                                   SysUserMapper sysUserMapper) {
         this.consultAppointmentMapper = consultAppointmentMapper;
+        this.consultAppointmentSlotMapper = consultAppointmentSlotMapper;
         this.consultChatSessionMapper = consultChatSessionMapper;
         this.consultChatMessageMapper = consultChatMessageMapper;
         this.sysUserMapper = sysUserMapper;
@@ -50,8 +55,7 @@ public class ConsultChatServiceImpl implements ConsultChatService {
         Long userId = SecurityUtil.getCurrentUserId();
         ConsultChatSession chatSession = getAndVerifyChatSession(appointmentId, userId);
         archiveIfExpired(appointmentId);
-        chatSession = consultChatSessionMapper.selectById(chatSession.getId());
-        return buildSessionResponse(chatSession);
+        return buildSessionResponse(consultChatSessionMapper.selectById(chatSession.getId()));
     }
 
     @Override
@@ -74,12 +78,17 @@ public class ConsultChatServiceImpl implements ConsultChatService {
         archiveIfExpired(appointmentId);
         chatSession = consultChatSessionMapper.selectById(chatSession.getId());
         LocalDateTime now = LocalDateTime.now();
-        if (chatSession.getSealedFlag() == 1 || ChatConstants.CHAT_ARCHIVED.equals(chatSession.getStatus())) {
-            throw new BusinessException("当前聊天室已封存");
+
+        if (chatSession.getSealedFlag() != null && chatSession.getSealedFlag() == 1) {
+            throw new BusinessException("当前聊天室已结束");
         }
-        if (now.isBefore(chatSession.getOpenTime()) || now.isAfter(chatSession.getCloseTime())) {
-            throw new BusinessException("当前不在预约有效时间内");
+        if (ChatConstants.CHAT_ARCHIVED.equals(chatSession.getStatus()) || ChatConstants.CHAT_CLOSED.equals(chatSession.getStatus())) {
+            throw new BusinessException("当前聊天室已结束");
         }
+        if (chatSession.getCloseTime() != null && now.isAfter(chatSession.getCloseTime())) {
+            throw new BusinessException("当前预约已真实过期，聊天室已关闭");
+        }
+
         if (!ChatConstants.CHAT_ACTIVE.equals(chatSession.getStatus())) {
             chatSession.setStatus(ChatConstants.CHAT_ACTIVE);
             consultChatSessionMapper.updateById(chatSession);
@@ -106,23 +115,37 @@ public class ConsultChatServiceImpl implements ConsultChatService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void archiveIfExpired(Long appointmentId) {
-        ConsultChatSession chatSession = consultChatSessionMapper.selectOne(new LambdaQueryWrapper<ConsultChatSession>()
-                .eq(ConsultChatSession::getAppointmentId, appointmentId)
-                .last("limit 1"));
+        ConsultChatSession chatSession = getLatestChatSession(appointmentId);
         if (chatSession == null) {
             return;
         }
-        if (chatSession.getSealedFlag() == 0 && LocalDateTime.now().isAfter(chatSession.getCloseTime())) {
-            chatSession.setStatus(ChatConstants.CHAT_ARCHIVED);
-            chatSession.setSealedFlag(1);
-            consultChatSessionMapper.updateById(chatSession);
-
-            ConsultAppointment appointment = consultAppointmentMapper.selectById(chatSession.getAppointmentId());
-            if (appointment != null && AppointmentConstants.APPOINTMENT_ACCEPTED.equals(appointment.getStatus())) {
-                appointment.setStatus(AppointmentConstants.APPOINTMENT_COMPLETED);
-                consultAppointmentMapper.updateById(appointment);
-            }
+        if (chatSession.getSealedFlag() != null && chatSession.getSealedFlag() == 1) {
+            return;
         }
+        if (chatSession.getCloseTime() != null && LocalDateTime.now().isAfter(chatSession.getCloseTime())) {
+            ConsultAppointment appointment = consultAppointmentMapper.selectById(chatSession.getAppointmentId());
+            sealChatSession(chatSession, appointment, ChatConstants.CHAT_ARCHIVED);
+        }
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ConsultChatSessionResponse closeAppointmentChat(Long appointmentId) {
+        Long userId = SecurityUtil.getCurrentUserId();
+        ConsultAppointment appointment = consultAppointmentMapper.selectById(appointmentId);
+        if (appointment == null) {
+            throw new BusinessException("预约不存在");
+        }
+        if (!userId.equals(appointment.getCounselorUserId())) {
+            throw new BusinessException("仅咨询师可结束当前聊天室");
+        }
+
+        ConsultChatSession chatSession = getAndVerifyChatSession(appointmentId, userId);
+        if (chatSession.getSealedFlag() != null && chatSession.getSealedFlag() == 1) {
+            return buildSessionResponse(chatSession);
+        }
+        sealChatSession(chatSession, appointment, ChatConstants.CHAT_CLOSED);
+        return buildSessionResponse(consultChatSessionMapper.selectById(chatSession.getId()));
     }
 
     private ConsultChatSession getAndVerifyChatSession(Long appointmentId, Long userId) {
@@ -133,13 +156,18 @@ public class ConsultChatServiceImpl implements ConsultChatService {
         if (!userId.equals(appointment.getStudentUserId()) && !userId.equals(appointment.getCounselorUserId())) {
             throw new BusinessException("无权访问该聊天室");
         }
-        ConsultChatSession chatSession = consultChatSessionMapper.selectOne(new LambdaQueryWrapper<ConsultChatSession>()
-                .eq(ConsultChatSession::getAppointmentId, appointmentId)
-                .last("limit 1"));
+        ConsultChatSession chatSession = getLatestChatSession(appointmentId);
         if (chatSession == null) {
-            throw new BusinessException("聊天室尚未开放");
+            throw new BusinessException("聊天室尚未创建");
         }
         return chatSession;
+    }
+
+    private ConsultChatSession getLatestChatSession(Long appointmentId) {
+        return consultChatSessionMapper.selectOne(new LambdaQueryWrapper<ConsultChatSession>()
+                .eq(ConsultChatSession::getAppointmentId, appointmentId)
+                .orderByDesc(ConsultChatSession::getId)
+                .last("limit 1"));
     }
 
     private ConsultChatSessionResponse buildSessionResponse(ConsultChatSession chatSession) {
@@ -174,5 +202,30 @@ public class ConsultChatServiceImpl implements ConsultChatService {
 
     private String resolveSenderType(String roleCode) {
         return RoleConstants.COUNSELOR.equals(roleCode) ? ChatConstants.SENDER_COUNSELOR : ChatConstants.SENDER_STUDENT;
+    }
+
+    private void sealChatSession(ConsultChatSession chatSession, ConsultAppointment appointment, String chatStatus) {
+        chatSession.setStatus(chatStatus);
+        chatSession.setSealedFlag(1);
+        if (!LocalDateTime.now().isBefore(chatSession.getOpenTime())) {
+            chatSession.setCloseTime(LocalDateTime.now());
+        }
+        consultChatSessionMapper.updateById(chatSession);
+
+        if (appointment != null
+                && !AppointmentConstants.APPOINTMENT_COMPLETED.equals(appointment.getStatus())
+                && !AppointmentConstants.APPOINTMENT_REJECTED.equals(appointment.getStatus())
+                && !AppointmentConstants.APPOINTMENT_CANCELED.equals(appointment.getStatus())) {
+            appointment.setStatus(AppointmentConstants.APPOINTMENT_COMPLETED);
+            consultAppointmentMapper.updateById(appointment);
+        }
+
+        if (appointment != null && appointment.getSlotId() != null) {
+            ConsultAppointmentSlot slot = consultAppointmentSlotMapper.selectById(appointment.getSlotId());
+            if (slot != null && !AppointmentConstants.SLOT_CLOSED.equals(slot.getStatus())) {
+                slot.setStatus(AppointmentConstants.SLOT_CLOSED);
+                consultAppointmentSlotMapper.updateById(slot);
+            }
+        }
     }
 }

@@ -2,18 +2,22 @@ package sdu.jiaq.jqpro.controller.student;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import sdu.jiaq.jqpro.common.constant.RoleConstants;
 import sdu.jiaq.jqpro.common.result.Result;
+import sdu.jiaq.jqpro.dto.appointment.AppointmentCounselorOptionResponse;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentResponse;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentSlotResponse;
 import sdu.jiaq.jqpro.dto.appointment.CreateAppointmentRequest;
 import sdu.jiaq.jqpro.service.AppointmentService;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -30,12 +34,18 @@ public class StudentAppointmentController {
         this.appointmentService = appointmentService;
     }
 
-    @GetMapping("/slots")
-    public Result<List<AppointmentSlotResponse>> listSlots() {
-        return Result.success(appointmentService.listOpenSlots());
+    @GetMapping("/counselors")
+    public Result<List<AppointmentCounselorOptionResponse>> listCounselors() {
+        return Result.success(appointmentService.listAvailableCounselors());
     }
 
-    // Student-side appointment list page uses this endpoint to render status and chat entry.
+    @GetMapping("/slots")
+    public Result<List<AppointmentSlotResponse>> listSlots(@RequestParam("counselorId") Long counselorId,
+                                                           @RequestParam("date")
+                                                           @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return Result.success(appointmentService.listDailySlots(counselorId, date));
+    }
+
     @GetMapping
     public Result<List<AppointmentResponse>> listAppointments() {
         return Result.success(appointmentService.listStudentAppointments());

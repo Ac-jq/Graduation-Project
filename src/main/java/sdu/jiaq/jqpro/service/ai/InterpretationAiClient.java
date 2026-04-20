@@ -1,15 +1,19 @@
 package sdu.jiaq.jqpro.service.ai;
 
+import java.util.List;
+
 /**
- * 测评报告 AI 解读客户端。
+ * 测评报告 AI 客户端。
  */
 public interface InterpretationAiClient {
 
     /**
-     * 调用外部 AI 服务生成测评解读。
-     *
-     * @param request 解读请求
-     * @return AI 返回的最终解读正文
+     * 生成测评解读。
      */
     String generateInterpretation(InterpretationAiRequest request);
+
+    /**
+     * 从资源列表中挑选最适合的资源 ID。
+     */
+    List<Long> selectRecommendedResourceIds(ResourceRecommendationAiRequest request);
 }

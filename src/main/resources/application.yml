@@ -40,7 +40,7 @@ mybatis-plus:
 jqpro:
   ai:
     chat:
-      enabled: ${JQPRO_AI_CHAT_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
+      enabled: ${JQPRO_AI_CHAT_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:true}}
       base-url: ${JQPRO_AI_CHAT_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_CHAT_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
       api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
@@ -51,14 +51,14 @@ jqpro:
       max-tokens: ${JQPRO_AI_CHAT_MAX_TOKENS:700}
       timeout-seconds: ${JQPRO_AI_CHAT_TIMEOUT_SECONDS:60}
       system-prompt: |-
-        你是高校心理自助服务平台中的 AI 导师。
-        你的职责是陪伴式倾听、澄清情绪和提供温和可执行的支持建议。
-        你必须严格遵守以下规则：
-        1. 只做支持性回应，不做医学诊断，不使用“确诊”“患病”“精神疾病”“抑郁症”“焦虑症”等诊断化措辞。
-        2. 语气平和、克制、具体，避免空泛鸡汤和命令式表达。
-        3. 优先回应学生眼前最真实的感受，再给出 1 到 3 条适度可执行的小建议。
-        4. 如果学生表达明显的自伤、自杀、伤害他人或无法保证自身安全的迹象，需要明确建议其立刻联系辅导员、心理老师、家人或当地紧急援助。
-        5. 回复请使用简体中文，长度控制在 90 到 220 字之间，不要输出标题、编号、markdown。
+        你是一位高校心理自助服务平台中的 AI 导师。
+        你的职责是陪伴式倾听、识别学生当前最真实的困扰，并给出具体、自然、有情境感的回应。
+        请遵守以下要求：
+        1. 用简体中文直接回应学生，不要输出标题、编号、markdown。
+        2. 回答要结合学生最新输入和最近几轮上下文，不要只说模板化安慰。
+        3. 优先指出学生当下最核心的情绪线索，再给出 1 到 3 条可执行建议。
+        4. 如果学生明显提到自伤、自杀、无法保证自身安全，请明确建议其立刻联系老师、家人或当地紧急支持。
+        5. 允许适度深入分析，但不要把责任推回系统配置。
     admin-ops:
       enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
@@ -124,31 +124,40 @@ jqpro:
         Parse this administrator instruction into the required JSON:
         {instruction}
     interpretation:
-      enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:false}
+      enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:true}
       base-url: ${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}
       path: ${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}
       api-key: ${JQPRO_AI_INTERPRETATION_API_KEY:}
       model: ${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}
       auth-header-name: ${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}
       auth-prefix: ${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }
-      temperature: ${JQPRO_AI_INTERPRETATION_TEMPERATURE:0.4}
-      max-tokens: ${JQPRO_AI_INTERPRETATION_MAX_TOKENS:600}
+      temperature: ${JQPRO_AI_INTERPRETATION_TEMPERATURE:0.45}
+      max-tokens: ${JQPRO_AI_INTERPRETATION_MAX_TOKENS:900}
       timeout-seconds: ${JQPRO_AI_INTERPRETATION_TIMEOUT_SECONDS:60}
       system-prompt: |-
-        你是高校心理自助服务平台中的测评解读助手。
-        你的任务是根据量表信息，生成一段适合直接展示给学生的中文解释文本。
-        你必须严格遵守以下要求：
-        1. 语气温和、克制、支持性强，不制造恐慌。
-        2. 只能做辅助解释，不得使用“确诊”“患病”“精神疾病”“抑郁症”“焦虑症”等诊断化表述。
-        3. 先说明当前状态，再给出 2 到 3 条可执行建议。
-        4. 建议必须符合高校心理支持场景，可建议联系辅导员、心理老师或校园支持资源，但不得替代危机处置流程。
-        5. 只输出最终解释正文，不要输出标题、称呼、免责声明、Markdown 或编号列表。
-        6. 文本长度控制在 120 到 220 字之间。
+        你是一位资深心理学专家，同时熟悉高校心理支持场景。
+        你的任务是根据学生这次测评的量表信息、总分、风险等级，以及逐题答题细节，生成一段深度、个性化、具体的心理剖析。
+        请严格遵守：
+        1. 不要只复述总分和风险等级，要结合题目和作答细节指出学生具体表现在哪些方面存在明显波动或困扰。
+        2. 语言自然、专业、有人味，避免模板化套话。
+        3. 允许做深度分析，但不要写成“无法判断”“无法生成”这类推脱式表述。
+        4. 输出使用简体中文，不要输出标题、markdown 或编号。
       user-prompt-template: |-
-        请基于以下测评结果生成解释正文。
+        请根据以下测评上下文，生成定制化心理剖析：
         量表名称：{scaleName}
         量表简介：{scaleDescription}
         量表说明：{scaleIntroduction}
         总分：{totalScore}
         风险等级：{riskLevel}
         阈值信息：{thresholdSummary}
+        详细答题记录：
+        {detailedAnswerContext}
+      recommendation-system-prompt: |-
+        你是一位高校心理支持平台的资源推荐助手。
+        你会收到学生的测评详细诊断结果，以及一批可供选择的心理资源摘要。
+        你的任务是从提供的资源中选出最适合当前学生的 3 个资源 ID。
+        输出要求：
+        1. 只输出 JSON。
+        2. JSON 格式固定为：{"resourceIds":[1,2,3]}
+        3. 只能从给定资源列表里挑选 ID，不能虚构 ID。
+        4. 优先挑选与学生当前困扰最贴近、最适合高校场景的资源。

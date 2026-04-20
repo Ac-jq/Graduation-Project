@@ -5,9 +5,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.AppointmentConstants;
 import sdu.jiaq.jqpro.common.constant.ChatConstants;
+import sdu.jiaq.jqpro.common.constant.RoleConstants;
+import sdu.jiaq.jqpro.common.constant.UserStatusConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentActionRequest;
+import sdu.jiaq.jqpro.dto.appointment.AppointmentCounselorOptionResponse;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentResponse;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentSlotResponse;
 import sdu.jiaq.jqpro.dto.appointment.CreateAppointmentRequest;
@@ -23,7 +26,10 @@ import sdu.jiaq.jqpro.service.AppointmentService;
 import sdu.jiaq.jqpro.service.AuditLogService;
 import sdu.jiaq.jqpro.service.NotificationService;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -34,6 +40,14 @@ import java.util.stream.Collectors;
  */
 @Service
 public class AppointmentServiceImpl implements AppointmentService {
+
+    private static final List<FixedSlotDefinition> FIXED_DAILY_SLOTS = List.of(
+            new FixedSlotDefinition(LocalTime.of(8, 30), LocalTime.of(9, 30), "08:30~09:30"),
+            new FixedSlotDefinition(LocalTime.of(10, 30), LocalTime.of(11, 30), "10:30~11:30"),
+            new FixedSlotDefinition(LocalTime.of(14, 0), LocalTime.of(15, 0), "14:00~15:00"),
+            new FixedSlotDefinition(LocalTime.of(16, 0), LocalTime.of(17, 0), "16:00~17:00"),
+            new FixedSlotDefinition(LocalTime.of(19, 0), LocalTime.of(20, 0), "19:00~20:00")
+    );
 
     private static final String[] ANONYMOUS_PREFIX = {"向日葵", "银杏", "云杉", "海棠", "木槿", "晚风"};
 
@@ -59,31 +73,67 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
-    public List<AppointmentSlotResponse> listOpenSlots() {
-        List<ConsultAppointmentSlot> slots = consultAppointmentSlotMapper.selectList(new LambdaQueryWrapper<ConsultAppointmentSlot>()
-                .eq(ConsultAppointmentSlot::getStatus, AppointmentConstants.SLOT_OPEN)
-                .ge(ConsultAppointmentSlot::getEndTime, LocalDateTime.now())
-                .orderByAsc(ConsultAppointmentSlot::getStartTime));
-        if (slots.isEmpty()) {
+    public List<AppointmentCounselorOptionResponse> listAvailableCounselors() {
+        List<SysUser> counselors = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getRoleCode, RoleConstants.COUNSELOR)
+                .eq(SysUser::getStatus, UserStatusConstants.ACTIVE)
+                .orderByAsc(SysUser::getDisplayName, SysUser::getId));
+        if (counselors.isEmpty()) {
             return List.of();
         }
-        Map<Long, SysUser> counselorMap = sysUserMapper.selectBatchIds(slots.stream()
-                        .map(ConsultAppointmentSlot::getCounselorUserId).distinct().toList())
-                .stream().collect(Collectors.toMap(SysUser::getId, Function.identity()));
-        return slots.stream().map(slot -> AppointmentSlotResponse.builder()
-                .slotId(slot.getId())
-                .counselorUserId(slot.getCounselorUserId())
-                .counselorName(counselorMap.get(slot.getCounselorUserId()).getDisplayName())
-                .startTime(slot.getStartTime())
-                .endTime(slot.getEndTime())
-                .status(slot.getStatus())
-                .build()).toList();
+        return counselors.stream()
+                .map(counselor -> AppointmentCounselorOptionResponse.builder()
+                        .counselorUserId(counselor.getId())
+                        .counselorName(counselor.getDisplayName())
+                        .counselorNo(counselor.getCounselorNo())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<AppointmentSlotResponse> listDailySlots(Long counselorUserId, LocalDate date) {
+        if (counselorUserId == null) {
+            throw new BusinessException("请选择咨询师");
+        }
+        if (date == null) {
+            throw new BusinessException("请选择预约日期");
+        }
+        if (date.isBefore(LocalDate.now())) {
+            throw new BusinessException("预约日期不能早于今天");
+        }
+
+        SysUser counselor = getRequiredCounselor(counselorUserId);
+        List<ConsultAppointmentSlot> slots = ensureFixedDailySlots(counselorUserId, date);
+        Map<String, ConsultAppointmentSlot> slotMap = slots.stream()
+                .collect(Collectors.toMap(this::buildSlotKey, Function.identity(), (left, right) -> left));
+        LocalDateTime now = LocalDateTime.now();
+
+        return FIXED_DAILY_SLOTS.stream()
+                .map(definition -> {
+                    LocalDateTime startTime = LocalDateTime.of(date, definition.startTime());
+                    LocalDateTime endTime = LocalDateTime.of(date, definition.endTime());
+                    ConsultAppointmentSlot slot = slotMap.get(buildSlotKey(counselorUserId, startTime, endTime));
+                    boolean isExpired = !endTime.isAfter(now);
+                    boolean isBooked = slot == null || !AppointmentConstants.SLOT_OPEN.equals(slot.getStatus());
+                    return AppointmentSlotResponse.builder()
+                            .slotId(slot == null ? null : slot.getId())
+                            .counselorUserId(counselorUserId)
+                            .counselorName(counselor.getDisplayName())
+                            .startTime(startTime)
+                            .endTime(endTime)
+                            .status(isExpired ? AppointmentConstants.SLOT_CLOSED : slot.getStatus())
+                            .booked(isBooked)
+                            .selectable(!isExpired && !isBooked)
+                            .timeLabel(definition.label())
+                            .build();
+                })
+                .toList();
     }
 
     @Override
     public List<AppointmentResponse> listStudentAppointments() {
         Long studentUserId = SecurityUtil.getCurrentUserId();
-        // Keep student list isolated to current account so the frontend can safely render "My Appointments".
         List<ConsultAppointment> appointments = consultAppointmentMapper.selectList(new LambdaQueryWrapper<ConsultAppointment>()
                 .eq(ConsultAppointment::getStudentUserId, studentUserId)
                 .orderByDesc(ConsultAppointment::getCreatedAt));
@@ -113,10 +163,12 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         slot.setStatus(AppointmentConstants.SLOT_RESERVED);
         consultAppointmentSlotMapper.updateById(slot);
+
         notificationService.pushNotification(slot.getCounselorUserId(), "新的咨询预约", "你收到一条新的匿名预约，请及时处理。");
         auditLogService.record(studentUserId, "APPOINTMENT_CREATE", "发起匿名预约",
                 "创建预约#" + appointment.getId() + " 并锁定时段#" + slot.getId(), "system");
-        return buildAppointmentResponse(appointment, slot, getUserMap(List.of(slot.getCounselorUserId())));
+
+        return buildAppointmentResponse(appointment, slot, getUserMap(List.of(slot.getCounselorUserId())), null);
     }
 
     @Override
@@ -146,7 +198,11 @@ public class AppointmentServiceImpl implements AppointmentService {
         createOrUpdateChatSession(appointment);
         notificationService.pushNotification(appointment.getStudentUserId(), "预约已接单", appointment.getResultMessage());
         auditLogService.record(counselorUserId, "APPOINTMENT_ACCEPT", "咨询师接单", "接单预约#" + appointmentId, "system");
-        return buildAppointmentResponse(appointment, getRequiredSlot(appointment.getSlotId()), getUserMap(List.of(appointment.getCounselorUserId())));
+        ConsultChatSession chatSession = consultChatSessionMapper.selectOne(new LambdaQueryWrapper<ConsultChatSession>()
+                .eq(ConsultChatSession::getAppointmentId, appointment.getId())
+                .orderByDesc(ConsultChatSession::getId)
+                .last("limit 1"));
+        return buildAppointmentResponse(appointment, getRequiredSlot(appointment.getSlotId()), getUserMap(List.of(appointment.getCounselorUserId())), chatSession);
     }
 
     @Override
@@ -160,6 +216,7 @@ public class AppointmentServiceImpl implements AppointmentService {
         if (!AppointmentConstants.APPOINTMENT_PENDING.equals(appointment.getStatus())) {
             throw new BusinessException("当前预约状态不允许拒绝");
         }
+
         appointment.setStatus(AppointmentConstants.APPOINTMENT_REJECTED);
         appointment.setResultMessage(defaultResultMessage(request.getResultMessage(), "当前预约未被接单，请重新选择其他时段。"));
         consultAppointmentMapper.updateById(appointment);
@@ -170,27 +227,56 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         notificationService.pushNotification(appointment.getStudentUserId(), "预约未通过", appointment.getResultMessage());
         auditLogService.record(counselorUserId, "APPOINTMENT_REJECT", "咨询师拒绝预约", "拒绝预约#" + appointmentId, "system");
-        return buildAppointmentResponse(appointment, slot, getUserMap(List.of(appointment.getCounselorUserId())));
+        return buildAppointmentResponse(appointment, slot, getUserMap(List.of(appointment.getCounselorUserId())), null);
     }
 
     private List<AppointmentResponse> buildAppointmentResponses(List<ConsultAppointment> appointments) {
         if (appointments.isEmpty()) {
             return List.of();
         }
+        Map<Long, ConsultAppointment> appointmentMap = appointments.stream()
+                .collect(Collectors.toMap(ConsultAppointment::getId, Function.identity()));
         Map<Long, ConsultAppointmentSlot> slotMap = consultAppointmentSlotMapper.selectBatchIds(appointments.stream()
                         .map(ConsultAppointment::getSlotId).distinct().toList())
-                .stream().collect(Collectors.toMap(ConsultAppointmentSlot::getId, Function.identity()));
+                .stream()
+                .collect(Collectors.toMap(ConsultAppointmentSlot::getId, Function.identity()));
         Map<Long, SysUser> counselorMap = getUserMap(appointments.stream()
                 .map(ConsultAppointment::getCounselorUserId).distinct().toList());
+        Map<Long, ConsultChatSession> chatSessionMap = consultChatSessionMapper.selectList(new LambdaQueryWrapper<ConsultChatSession>()
+                        .in(ConsultChatSession::getAppointmentId, appointmentMap.keySet())
+                        .orderByDesc(ConsultChatSession::getId))
+                .stream()
+                .collect(Collectors.toMap(ConsultChatSession::getAppointmentId, Function.identity(), (left, right) -> left));
+
+        chatSessionMap.values().forEach(chatSession -> applyChatExpiryIfNeeded(chatSession, appointmentMap.get(chatSession.getAppointmentId())));
         return appointments.stream()
-                .map(appointment -> buildAppointmentResponse(appointment, slotMap.get(appointment.getSlotId()), counselorMap))
+                .map(appointment -> buildAppointmentResponse(
+                        appointment,
+                        slotMap.get(appointment.getSlotId()),
+                        counselorMap,
+                        chatSessionMap.get(appointment.getId())))
                 .toList();
     }
 
     private AppointmentResponse buildAppointmentResponse(ConsultAppointment appointment,
                                                          ConsultAppointmentSlot slot,
-                                                         Map<Long, SysUser> counselorMap) {
+                                                         Map<Long, SysUser> counselorMap,
+                                                         ConsultChatSession chatSession) {
         SysUser counselor = counselorMap.get(appointment.getCounselorUserId());
+        LocalDateTime now = LocalDateTime.now();
+        boolean chatSealed = chatSession != null && chatSession.getSealedFlag() != null && chatSession.getSealedFlag() == 1;
+        boolean chatEnded = AppointmentConstants.APPOINTMENT_COMPLETED.equals(appointment.getStatus())
+                || AppointmentConstants.APPOINTMENT_REJECTED.equals(appointment.getStatus())
+                || AppointmentConstants.APPOINTMENT_CANCELED.equals(appointment.getStatus())
+                || (slot != null && !slot.getEndTime().isAfter(now))
+                || chatSealed
+                || (chatSession != null && (ChatConstants.CHAT_ARCHIVED.equals(chatSession.getStatus()) || ChatConstants.CHAT_CLOSED.equals(chatSession.getStatus())));
+        boolean chatAvailable = chatSession != null
+                && !chatSealed
+                && slot != null
+                && slot.getEndTime().isAfter(now)
+                && (AppointmentConstants.APPOINTMENT_ACCEPTED.equals(appointment.getStatus())
+                || ChatConstants.CHAT_ACTIVE.equals(chatSession.getStatus()));
         return AppointmentResponse.builder()
                 .appointmentId(appointment.getId())
                 .slotId(appointment.getSlotId())
@@ -204,6 +290,10 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .startTime(slot.getStartTime())
                 .endTime(slot.getEndTime())
                 .createdAt(appointment.getCreatedAt())
+                .chatAvailable(chatAvailable)
+                .chatEnded(chatEnded)
+                .chatStatus(chatSession == null ? null : chatSession.getStatus())
+                .chatSealed(chatSealed)
                 .build();
     }
 
@@ -256,8 +346,88 @@ public class AppointmentServiceImpl implements AppointmentService {
         }
     }
 
+    private void applyChatExpiryIfNeeded(ConsultChatSession chatSession, ConsultAppointment appointment) {
+        if (chatSession == null || appointment == null) {
+            return;
+        }
+        if (chatSession.getSealedFlag() != null && chatSession.getSealedFlag() == 1) {
+            return;
+        }
+        if (chatSession.getCloseTime() != null && LocalDateTime.now().isAfter(chatSession.getCloseTime())) {
+            chatSession.setStatus(ChatConstants.CHAT_ARCHIVED);
+            chatSession.setSealedFlag(1);
+            consultChatSessionMapper.updateById(chatSession);
+
+            appointment.setStatus(AppointmentConstants.APPOINTMENT_COMPLETED);
+            consultAppointmentMapper.updateById(appointment);
+
+            if (appointment.getSlotId() != null) {
+                ConsultAppointmentSlot slot = consultAppointmentSlotMapper.selectById(appointment.getSlotId());
+                if (slot != null && !AppointmentConstants.SLOT_CLOSED.equals(slot.getStatus())) {
+                    slot.setStatus(AppointmentConstants.SLOT_CLOSED);
+                    consultAppointmentSlotMapper.updateById(slot);
+                }
+            }
+        }
+    }
+
     private Map<Long, SysUser> getUserMap(List<Long> userIds) {
         return sysUserMapper.selectBatchIds(userIds).stream()
                 .collect(Collectors.toMap(SysUser::getId, Function.identity()));
+    }
+
+    private SysUser getRequiredCounselor(Long counselorUserId) {
+        SysUser counselor = sysUserMapper.selectById(counselorUserId);
+        if (counselor == null || !RoleConstants.COUNSELOR.equals(counselor.getRoleCode())) {
+            throw new BusinessException("咨询师不存在");
+        }
+        if (!UserStatusConstants.ACTIVE.equals(counselor.getStatus())) {
+            throw new BusinessException("当前咨询师不可预约");
+        }
+        return counselor;
+    }
+
+    private List<ConsultAppointmentSlot> ensureFixedDailySlots(Long counselorUserId, LocalDate date) {
+        LocalDateTime dayStart = date.atStartOfDay();
+        LocalDateTime dayEnd = date.plusDays(1).atStartOfDay();
+        List<ConsultAppointmentSlot> existingSlots = consultAppointmentSlotMapper.selectList(
+                new LambdaQueryWrapper<ConsultAppointmentSlot>()
+                        .eq(ConsultAppointmentSlot::getCounselorUserId, counselorUserId)
+                        .ge(ConsultAppointmentSlot::getStartTime, dayStart)
+                        .lt(ConsultAppointmentSlot::getStartTime, dayEnd)
+                        .orderByAsc(ConsultAppointmentSlot::getStartTime, ConsultAppointmentSlot::getId)
+        );
+        Map<String, ConsultAppointmentSlot> slotMap = existingSlots.stream()
+                .collect(Collectors.toMap(this::buildSlotKey, Function.identity(), (left, right) -> left));
+
+        for (FixedSlotDefinition definition : FIXED_DAILY_SLOTS) {
+            LocalDateTime startTime = LocalDateTime.of(date, definition.startTime());
+            LocalDateTime endTime = LocalDateTime.of(date, definition.endTime());
+            String key = buildSlotKey(counselorUserId, startTime, endTime);
+            if (!slotMap.containsKey(key)) {
+                ConsultAppointmentSlot slot = new ConsultAppointmentSlot();
+                slot.setCounselorUserId(counselorUserId);
+                slot.setStartTime(startTime);
+                slot.setEndTime(endTime);
+                slot.setStatus(AppointmentConstants.SLOT_OPEN);
+                consultAppointmentSlotMapper.insert(slot);
+                slotMap.put(key, slot);
+            }
+        }
+
+        return slotMap.values().stream()
+                .sorted(Comparator.comparing(ConsultAppointmentSlot::getStartTime))
+                .toList();
+    }
+
+    private String buildSlotKey(ConsultAppointmentSlot slot) {
+        return buildSlotKey(slot.getCounselorUserId(), slot.getStartTime(), slot.getEndTime());
+    }
+
+    private String buildSlotKey(Long counselorUserId, LocalDateTime startTime, LocalDateTime endTime) {
+        return counselorUserId + "|" + startTime + "|" + endTime;
+    }
+
+    private record FixedSlotDefinition(LocalTime startTime, LocalTime endTime, String label) {
     }
 }

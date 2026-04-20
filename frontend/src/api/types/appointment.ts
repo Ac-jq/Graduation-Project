@@ -1,10 +1,19 @@
+export interface AppointmentCounselorOption {
+  counselorUserId: number
+  counselorName: string
+  counselorNo: string | null
+}
+
 export interface AppointmentSlot {
-  slotId: number
+  slotId: number | null
   counselorUserId: number
   counselorName: string | null
   startTime: string
   endTime: string
   status: string
+  isBooked: boolean
+  isSelectable: boolean
+  timeLabel: string
 }
 
 export interface Appointment {
@@ -20,6 +29,10 @@ export interface Appointment {
   startTime: string
   endTime: string
   createdAt: string
+  chatAvailable: boolean
+  chatEnded: boolean
+  chatStatus: string | null
+  chatSealed: boolean
 }
 
 export interface CreateAppointmentRequest {

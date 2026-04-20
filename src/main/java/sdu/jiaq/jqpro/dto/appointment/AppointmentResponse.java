@@ -35,4 +35,24 @@ public class AppointmentResponse {
     private LocalDateTime endTime;
 
     private LocalDateTime createdAt;
+
+    /**
+     * 当前是否允许直接进入聊天室。
+     */
+    private Boolean chatAvailable;
+
+    /**
+     * 聊天室是否已经结束。
+     */
+    private Boolean chatEnded;
+
+    /**
+     * 聊天室状态。
+     */
+    private String chatStatus;
+
+    /**
+     * 聊天室是否已封存。
+     */
+    private Boolean chatSealed;
 }

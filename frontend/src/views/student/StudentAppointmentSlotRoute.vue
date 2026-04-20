@@ -1,57 +1,97 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { createStudentAppointmentApi, fetchStudentAppointmentSlotsApi } from '@/api/appointment'
-import type { Appointment, AppointmentSlot } from '@/api/types'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import {
+  createStudentAppointmentApi,
+  fetchStudentAppointmentCounselorsApi,
+  fetchStudentAppointmentSlotsApi
+} from '@/api/appointment'
+import type { Appointment, AppointmentCounselorOption, AppointmentSlot } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
-const loading = ref(false)
+const loadingCounselors = ref(false)
+const loadingSlots = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
+const counselorOptions = ref<AppointmentCounselorOption[]>([])
 const slots = ref<AppointmentSlot[]>([])
 const createdAppointment = ref<Appointment | null>(null)
-const currentPage = ref(1)
-const pageSize = 6
-const createForm = reactive({
+
+const form = reactive({
+  counselorUserId: null as number | null,
+  date: buildDefaultDate(),
   slotId: null as number | null,
   issueSummary: ''
 })
-const totalPages = computed(() => Math.max(1, Math.ceil(slots.value.length / pageSize)))
-const pagedSlots = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return slots.value.slice(start, start + pageSize)
-})
 
-async function loadSlots(): Promise<void> {
-  loading.value = true
+const selectedCounselor = computed(() =>
+  counselorOptions.value.find((item) => item.counselorUserId === form.counselorUserId) ?? null
+)
+const selectableSlots = computed(() => slots.value.filter((slot) => slot.isSelectable))
+const canSubmit = computed(() => !!form.slotId && !loadingSlots.value && !submitting.value)
+
+function buildDefaultDate(): string {
+  const today = new Date()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const date = String(today.getDate()).padStart(2, '0')
+  return `${today.getFullYear()}-${month}-${date}`
+}
+
+function formatDateLabel(value: string): string {
+  const date = new Date(`${value}T00:00:00`)
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  return `${month} 月 ${day} 日 · ${weekDays[date.getDay()]}`
+}
+
+async function loadCounselors(): Promise<void> {
+  loadingCounselors.value = true
   errorMessage.value = ''
 
   try {
-    slots.value = await fetchStudentAppointmentSlotsApi()
-    currentPage.value = 1
+    counselorOptions.value = await fetchStudentAppointmentCounselorsApi()
+    if (!form.counselorUserId && counselorOptions.value.length > 0) {
+      form.counselorUserId = counselorOptions.value[0].counselorUserId
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
-    loading.value = false
+    loadingCounselors.value = false
   }
 }
 
-function prevPage(): void {
-  if (currentPage.value > 1) {
-    currentPage.value--
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+async function loadSlots(): Promise<void> {
+  if (!form.counselorUserId || !form.date) {
+    slots.value = []
+    form.slotId = null
+    return
+  }
+
+  loadingSlots.value = true
+  errorMessage.value = ''
+
+  try {
+    slots.value = await fetchStudentAppointmentSlotsApi(form.counselorUserId, form.date)
+    form.slotId = null
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+    slots.value = []
+    form.slotId = null
+  } finally {
+    loadingSlots.value = false
   }
 }
 
-function nextPage(): void {
-  if (currentPage.value < totalPages.value) {
-    currentPage.value++
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+function chooseSlot(slot: AppointmentSlot): void {
+  if (!slot.isSelectable || !slot.slotId) {
+    return
   }
+  form.slotId = slot.slotId
 }
 
 async function createAppointment(): Promise<void> {
-  if (!createForm.slotId) {
-    errorMessage.value = '请先选择一个适合您的时间'
+  if (!form.slotId) {
+    errorMessage.value = '请先选择一个空闲时段'
     return
   }
 
@@ -60,8 +100,8 @@ async function createAppointment(): Promise<void> {
 
   try {
     createdAppointment.value = await createStudentAppointmentApi({
-      slotId: createForm.slotId,
-      issueSummary: createForm.issueSummary
+      slotId: form.slotId,
+      issueSummary: form.issueSummary
     })
     await loadSlots()
   } catch (error) {
@@ -71,523 +111,554 @@ async function createAppointment(): Promise<void> {
   }
 }
 
-// 优雅化时间显示
-function formatTime(start: string | Date, end: string | Date): string {
-  const d1 = new Date(start)
-  const d2 = new Date(end)
-  const month = d1.getMonth() + 1
-  const date = d1.getDate()
-  const h1 = String(d1.getHours()).padStart(2, '0')
-  const m1 = String(d1.getMinutes()).padStart(2, '0')
-  const h2 = String(d2.getHours()).padStart(2, '0')
-  const m2 = String(d2.getMinutes()).padStart(2, '0')
-  return `${month}月${date}日 ${h1}:${m1} - ${h2}:${m2}`
+function formatRange(start: string | Date, end: string | Date): string {
+  const begin = new Date(start)
+  const finish = new Date(end)
+  const startHour = String(begin.getHours()).padStart(2, '0')
+  const startMinute = String(begin.getMinutes()).padStart(2, '0')
+  const endHour = String(finish.getHours()).padStart(2, '0')
+  const endMinute = String(finish.getMinutes()).padStart(2, '0')
+  return `${startHour}:${startMinute} - ${endHour}:${endMinute}`
 }
 
-onMounted(() => {
-  void loadSlots()
+onMounted(async () => {
+  await loadCounselors()
+  await loadSlots()
 })
+
+watch(
+  () => [form.counselorUserId, form.date],
+  async () => {
+    await loadSlots()
+  }
+)
 </script>
 
 <template>
-  <main class="premium-appointment-page">
-    <div class="premium-card">
-
-      <div v-if="createdAppointment" class="success-container">
-        <div class="success-icon"></div>
-        <h2 class="main-title">预约已确认</h2>
-        <p class="sub-title">我们会在约定的时间等您。</p>
-
-        <div class="receipt-box">
-          <p><strong>预约编号</strong> <span>#{{ createdAppointment.appointmentId }}</span></p>
-          <p><strong>匿名称呼</strong> <span>{{ createdAppointment.anonymousName }}</span></p>
-          <p><strong>预约时间</strong>
-            <span>{{ formatTime(createdAppointment.startTime, createdAppointment.endTime) }}</span>
+  <main class="appointment-page">
+    <section class="appointment-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <span class="hero-tag">咨询预约</span>
+          <h1 class="hero-title">先选咨询师，再挑一个合适的时段</h1>
+          <p class="hero-lead">
+            系统会根据你选中的咨询师和日期，实时显示当天固定 5 个时段的预约状态。
           </p>
         </div>
+      </header>
+
+      <div v-if="errorMessage" class="message-banner message-banner--error">{{ errorMessage }}</div>
+
+      <div v-if="createdAppointment" class="success-panel">
+        <div class="success-badge">预约成功</div>
+        <h2 class="success-title">你的预约已经提交</h2>
+        <p class="success-text">
+          {{ createdAppointment.counselorName || '咨询师' }} 将在约定时段查看并处理这条预约。
+        </p>
+
+        <dl class="success-facts">
+          <div>
+            <dt>预约编号</dt>
+            <dd>#{{ createdAppointment.appointmentId }}</dd>
+          </div>
+          <div>
+            <dt>匿名称呼</dt>
+            <dd>{{ createdAppointment.anonymousName }}</dd>
+          </div>
+          <div>
+            <dt>预约时间</dt>
+            <dd>{{ formatRange(createdAppointment.startTime, createdAppointment.endTime) }}</dd>
+          </div>
+        </dl>
       </div>
 
-      <div v-else class="form-container">
-        <header class="card-header">
-          <span class="premium-tag">咨询预约</span>
-          <h1 class="main-title">预约一次交谈</h1>
-          <p class="sub-title">在这些安静的时段里，挑选一个属于你的时间。</p>
-        </header>
-
-        <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
-
-        <section class="form-section">
-          <div class="section-title-row">
-            <h2 class="section-title">选择时段</h2>
-            <span v-if="loading" class="status-text">正在读取...</span>
-            <span v-else class="status-text">共 {{ slots.length }} 个可用时段</span>
+      <div v-else class="layout-grid">
+        <section class="panel panel--soft">
+          <div class="panel-header">
+            <span class="panel-tag">第一步</span>
+            <h2 class="panel-title">选择咨询师</h2>
           </div>
 
-          <div v-if="!loading && slots.length === 0" class="empty-state">
-            当前没有可预约时段，请稍后再试。
-          </div>
-
-          <div v-else class="slots-grid">
-            <label
-                v-for="slot in pagedSlots"
-                :key="slot.slotId"
-                class="slot-block"
-                :class="{ 'slot-block--active': createForm.slotId === slot.slotId }"
+          <div v-if="loadingCounselors" class="inline-state">正在加载咨询师列表...</div>
+          <div v-else-if="!counselorOptions.length" class="inline-state">当前没有可预约的咨询师。</div>
+          <div v-else class="counselor-list">
+            <button
+              v-for="counselor in counselorOptions"
+              :key="counselor.counselorUserId"
+              type="button"
+              class="counselor-card"
+              :class="{ 'counselor-card--active': form.counselorUserId === counselor.counselorUserId }"
+              @click="form.counselorUserId = counselor.counselorUserId"
             >
-              <input
-                  type="radio"
-                  name="appointment-slot"
-                  class="hidden-radio"
-                  :checked="createForm.slotId === slot.slotId"
-                  @change="createForm.slotId = slot.slotId"
-              />
-              <div class="slot-content">
-                <span class="slot-counselor">咨询师 {{ slot.counselorName || `#${slot.counselorUserId}` }}</span>
-                <span class="slot-time">{{ formatTime(slot.startTime, slot.endTime) }}</span>
+              <div class="counselor-main">
+                <span class="counselor-name">{{ counselor.counselorName }}</span>
+                <span class="counselor-sub">工号 {{ counselor.counselorNo || '未设置' }}</span>
               </div>
-            </label>
+              <span class="counselor-state">
+                {{ form.counselorUserId === counselor.counselorUserId ? '已选中' : '可预约' }}
+              </span>
+            </button>
           </div>
 
-          <nav class="pagination-nav" v-if="totalPages > 1">
-            <button
-                class="page-btn"
-                :disabled="currentPage <= 1"
-                @click="prevPage"
-            >
-              <span class="arrow">←</span> 上一页
-            </button>
+          <div class="panel-header panel-header--tight">
+            <span class="panel-tag">第二步</span>
+            <h2 class="panel-title">选择日期</h2>
+          </div>
 
-            <div class="page-indicator">
-              <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
-            </div>
+          <label class="date-field">
+            <span class="date-label">预约日期</span>
+            <input v-model="form.date" class="date-input" type="date" :min="buildDefaultDate()" />
+          </label>
 
-            <button
-                class="page-btn"
-                :disabled="currentPage >= totalPages"
-                @click="nextPage"
-            >
-              下一页 <span class="arrow">→</span>
-            </button>
-          </nav>
+          <div class="selection-note">
+            <span class="selection-note__label">当前选择</span>
+            <strong>{{ selectedCounselor?.counselorName || '未选择咨询师' }}</strong>
+            <em>{{ formatDateLabel(form.date) }}</em>
+          </div>
         </section>
 
-        <section class="form-section">
-          <h2 class="section-title">想聊些什么？</h2>
+        <section class="panel panel--focus">
+          <div class="panel-header">
+            <span class="panel-tag">第三步</span>
+            <h2 class="panel-title">选择时段</h2>
+          </div>
+
+          <div v-if="loadingSlots" class="inline-state">正在刷新时段状态...</div>
+          <div v-else class="slot-list">
+            <button
+              v-for="slot in slots"
+              :key="`${slot.counselorUserId}-${slot.timeLabel}`"
+              type="button"
+              class="slot-row"
+              :class="{
+                'slot-row--active': form.slotId === slot.slotId,
+                'slot-row--disabled': !slot.isSelectable
+              }"
+              :disabled="!slot.isSelectable"
+              @click="chooseSlot(slot)"
+            >
+              <div class="slot-main">
+                <strong class="slot-time">{{ slot.timeLabel || formatRange(slot.startTime, slot.endTime) }}</strong>
+                <span class="slot-desc">{{ slot.counselorName }} · {{ formatDateLabel(form.date) }}</span>
+              </div>
+              <span class="slot-status" :class="slot.isBooked ? 'slot-status--booked' : 'slot-status--free'">
+                {{ slot.isBooked ? '已预约' : '空闲' }}
+              </span>
+            </button>
+          </div>
+
+          <div v-if="!loadingSlots && !selectableSlots.length" class="empty-tip">
+            这一天暂时没有可选时段，换一个日期或换一位咨询师即可继续查看。
+          </div>
+
+          <div class="panel-header panel-header--tight">
+            <span class="panel-tag">第四步</span>
+            <h2 class="panel-title">填写沟通主题</h2>
+          </div>
+
           <textarea
-              v-model="createForm.issueSummary"
-              class="premium-textarea"
-              rows="5"
-              maxlength="1000"
-              placeholder="写下希望在咨询中优先讨论的主题，或此刻卡住的情境（选填）。"
-          ></textarea>
-        </section>
+            v-model="form.issueSummary"
+            class="issue-textarea"
+            rows="5"
+            maxlength="1000"
+            placeholder="写下你希望在咨询中优先讨论的问题，例如近期压力、睡眠困扰、人际关系或学习节奏。"
+          />
 
-        <footer class="card-footer">
-          <button
-              class="submit-action-btn"
-              :disabled="submitting || loading"
-              @click="createAppointment"
-          >
+          <button class="submit-button" type="button" :disabled="!canSubmit" @click="createAppointment">
             {{ submitting ? '正在提交预约...' : '确认发起预约' }}
           </button>
-        </footer>
+        </section>
       </div>
-
-    </div>
+    </section>
   </main>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 全局背景与居中布局 */
-.premium-appointment-page {
+.appointment-page {
   min-height: 100vh;
-  display: flex;
+  padding: 3rem 1.5rem 5rem;
+  background:
+    radial-gradient(circle at top left, rgba(201, 214, 205, 0.28), transparent 28rem),
+    radial-gradient(circle at bottom right, rgba(229, 212, 197, 0.24), transparent 30rem),
+    #fcfbfa;
+  color: #1e2821;
+}
+
+.appointment-shell {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
+.hero {
+  margin-bottom: 2rem;
+}
+
+.hero-copy {
+  max-width: 720px;
+}
+
+.hero-tag,
+.panel-tag {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  background: #f4f6f4;
-  padding: 5vw 2rem;
-  box-sizing: border-box;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #6a7c70;
+  font: 600 0.8rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.08em;
 }
 
-/* 高级感毛玻璃卡片 */
-.premium-card {
-  width: 100%;
-  max-width: 680px;
-  background: linear-gradient(
-      145deg,
-      rgba(219, 230, 222, 0.65) 0%,
-      rgba(238, 228, 218, 0.55) 100%
-  );
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 40px;
-  padding: 4rem;
-  box-sizing: border-box;
-  box-shadow:
-      0 40px 80px rgba(54, 66, 58, 0.08),
-      inset 0 2px 0 rgba(255, 255, 255, 0.6);
-  display: flex;
-  flex-direction: column;
-}
-
-/* 头部排版 */
-.card-header {
-  text-align: center;
-  margin-bottom: 3.5rem;
-}
-
-.premium-tag {
-  display: inline-block;
+.hero-title,
+.panel-title,
+.success-title {
+  margin: 0;
   font-family: 'Noto Serif SC', serif;
-  font-size: 0.85rem;
-  letter-spacing: 0.1em;
-  color: #4a5c51;
-  background: rgba(255, 255, 255, 0.5);
-  padding: 0.5rem 1.2rem;
-  border-radius: 100px;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
-}
-
-.main-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: clamp(2.2rem, 4vw, 3rem);
   font-weight: 600;
   color: #1e2821;
-  margin: 0 0 1rem 0;
-  letter-spacing: 0.05em;
 }
 
-.sub-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.1rem;
-  color: #5c6b60;
-  margin: 0;
+.hero-title {
+  margin-top: 1rem;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.18;
 }
 
-/* 内部区块布局 */
-.form-container {
-  display: flex;
-  flex-direction: column;
-  gap: 3rem;
+.hero-lead,
+.success-text,
+.inline-state,
+.empty-tip {
+  margin: 1rem 0 0;
+  color: #5f7065;
+  font: 500 1rem/1.8 'Manrope', sans-serif;
 }
 
-.form-section {
-  display: flex;
-  flex-direction: column;
-  gap: 1.2rem;
-}
-
-.section-title-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.section-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #2a362e;
-  margin: 0;
-}
-
-.status-text {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 0.9rem;
-  color: #7b8c80;
-}
-
-/* 时段选择网格 */
-.slots-grid {
+.layout-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1rem;
-  max-height: 280px;
-  overflow-y: auto;
-  padding-right: 0.5rem;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.25fr);
+  gap: 1.75rem;
 }
 
-/* 自定义滚动条 */
-.slots-grid::-webkit-scrollbar {
-  width: 6px;
-}
-.slots-grid::-webkit-scrollbar-track {
-  background: transparent;
-}
-.slots-grid::-webkit-scrollbar-thumb {
-  background: rgba(130, 150, 138, 0.3);
-  border-radius: 10px;
+.panel {
+  padding: 2rem;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(248, 246, 242, 0.88));
+  backdrop-filter: blur(24px);
+  box-shadow: 0 40px 80px rgba(54, 66, 58, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
-.hidden-radio {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+.panel--focus {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
 }
 
-.slot-block {
-  display: block;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(130, 150, 138, 0.15);
-  border-radius: 20px;
-  padding: 1.2rem 1.5rem;
-  cursor: pointer;
+.panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.panel-header--tight {
+  margin-top: 0.4rem;
+}
+
+.counselor-list,
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 1.2rem;
+}
+
+.counselor-card,
+.slot-row,
+.submit-button {
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.slot-block:hover {
-  background: rgba(255, 255, 255, 0.8);
-  border-color: rgba(130, 150, 138, 0.4);
-  transform: translateY(-2px);
-}
-
-.slot-block--active {
-  background: #2a362e;
-  border-color: #2a362e;
-  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
-  transform: translateY(-2px);
-}
-
-.slot-content {
+.counselor-card {
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.slot-counselor {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #4a5c51;
-  transition: color 0.3s ease;
-}
-
-.slot-time {
-  font-family: 'Manrope', sans-serif;
-  font-size: 0.9rem;
-  color: #6a7c70;
-  transition: color 0.3s ease;
-}
-
-.slot-block--active .slot-counselor,
-.slot-block--active .slot-time {
-  color: #ffffff;
-}
-
-/* 文本域 */
-.premium-textarea {
-  width: 100%;
-  box-sizing: border-box;
-  resize: none;
-  background: rgba(255, 255, 255, 0.4);
-  border: 1px solid rgba(130, 150, 138, 0.2);
-  border-radius: 20px;
-  padding: 1.5rem;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: #2a362e;
-  outline: none;
-  transition: all 0.3s ease;
-}
-
-.premium-textarea::placeholder {
-  color: #8a9c90;
-}
-
-.premium-textarea:focus {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(130, 150, 138, 0.5);
-  box-shadow: 0 8px 24px rgba(42, 54, 46, 0.05);
-}
-
-/* 底部操作按钮 */
-.card-footer {
-  display: flex;
-  justify-content: center;
-  margin-top: 1rem;
-}
-
-.submit-action-btn {
-  width: 100%;
-  height: 4.2rem;
-  border-radius: 100px;
-  border: none;
-  background: #2a362e;
-  color: #ffffff;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.2);
-}
-
-.submit-action-btn:hover:not(:disabled) {
-  transform: translateY(-4px) scale(1.01);
-  box-shadow: 0 20px 40px rgba(42, 54, 46, 0.3);
-  background: #1c2620;
-}
-
-.submit-action-btn:disabled {
-  background: #7a8c80;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* 状态提示 */
-.error-banner {
-  background: rgba(140, 74, 74, 0.1);
-  border: 1px solid rgba(140, 74, 74, 0.3);
-  color: #8c4a4a;
-  padding: 1rem 1.5rem;
-  border-radius: 16px;
-  font-family: 'Noto Serif SC', serif;
-  text-align: center;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 0;
-  color: #7b8c80;
-  font-family: 'Noto Serif SC', serif;
-}
-
-/* 成功状态 */
-.success-container {
-  text-align: center;
-  padding: 2rem 0;
-  display: flex;
-  flex-direction: column;
   align-items: center;
-}
-
-.success-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: #2a362e;
-  margin-bottom: 2rem;
-  position: relative;
-}
-
-.success-icon::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 14px;
-  height: 24px;
-  border: solid #ffffff;
-  border-width: 0 3px 3px 0;
-  transform: translate(-50%, -60%) rotate(45deg);
-}
-
-.receipt-box {
-  margin-top: 3rem;
+  justify-content: space-between;
+  gap: 1rem;
   width: 100%;
-  background: rgba(255, 255, 255, 0.5);
-  border-radius: 24px;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.2rem;
+  padding: 1rem 1.15rem;
+  border: none;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
   text-align: left;
 }
 
-.receipt-box p {
-  margin: 0;
+.counselor-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 40px rgba(54, 66, 58, 0.08);
+}
+
+.counselor-card--active {
+  background: linear-gradient(145deg, rgba(42, 54, 46, 0.95), rgba(53, 68, 58, 0.92));
+  box-shadow: 0 28px 44px rgba(42, 54, 46, 0.18);
+}
+
+.counselor-main {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.counselor-name {
+  font: 600 1.05rem/1.4 'Noto Serif SC', serif;
+  color: #223027;
+}
+
+.counselor-sub,
+.slot-desc {
+  color: #74857a;
+  font: 500 0.9rem/1.6 'Manrope', sans-serif;
+}
+
+.counselor-card--active .counselor-name,
+.counselor-card--active .counselor-sub,
+.counselor-card--active .counselor-state {
+  color: #fff;
+}
+
+.counselor-state {
+  color: #5f7065;
+  font: 600 0.85rem/1 'Manrope', sans-serif;
+}
+
+.date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+}
+
+.date-label {
+  font: 600 0.92rem/1 'Manrope', sans-serif;
+  color: #5f7065;
+}
+
+.date-input,
+.issue-textarea {
+  width: 100%;
+  border: none;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #223027;
+  box-sizing: border-box;
+}
+
+.date-input {
+  min-height: 3.4rem;
+  padding: 0 1rem;
+  font: 500 0.98rem/1 'Manrope', sans-serif;
+}
+
+.selection-note {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 20px;
+  background: rgba(243, 244, 240, 0.76);
+}
+
+.selection-note__label {
+  font: 600 0.82rem/1 'Manrope', sans-serif;
+  color: #8a9c90;
+  letter-spacing: 0.08em;
+}
+
+.selection-note strong {
+  font: 600 1rem/1.5 'Noto Serif SC', serif;
+}
+
+.selection-note em {
+  font: 500 0.92rem/1.5 'Manrope', sans-serif;
+  color: #6b7d72;
+  font-style: normal;
+}
+
+.slot-row {
+  display: flex;
   align-items: center;
-  font-family: 'Noto Serif SC', serif;
-  border-bottom: 1px solid rgba(130, 150, 138, 0.15);
-  padding-bottom: 0.8rem;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 1.1rem 1.2rem;
+  border: none;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
 }
 
-.receipt-box p:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+.slot-row:hover:not(:disabled) {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 40px rgba(54, 66, 58, 0.08);
 }
 
-.receipt-box strong {
-  color: #7b8c80;
-  font-weight: 500;
+.slot-row--active {
+  background: linear-gradient(145deg, rgba(42, 54, 46, 0.95), rgba(53, 68, 58, 0.92));
+  box-shadow: 0 28px 44px rgba(42, 54, 46, 0.18);
 }
 
-.receipt-box span {
-  color: #2a362e;
-  font-weight: 600;
-  font-family: 'Manrope', 'Noto Serif SC', sans-serif;
+.slot-row--disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+  background: rgba(244, 242, 240, 0.86);
 }
 
-/* 响应式调整 */
-@media (max-width: 768px) {
-  .premium-card {
-    padding: 2.5rem 1.5rem;
-    border-radius: 32px;
-  }
-  .slots-grid {
+.slot-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+}
+
+.slot-time {
+  font: 600 1.12rem/1.4 'Noto Serif SC', serif;
+  color: #223027;
+}
+
+.slot-row--active .slot-time,
+.slot-row--active .slot-desc {
+  color: #fff;
+}
+
+.slot-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.6rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font: 600 0.84rem/1 'Manrope', sans-serif;
+}
+
+.slot-status--free {
+  background: rgba(127, 170, 135, 0.16);
+  color: #3f7b4d;
+}
+
+.slot-status--booked {
+  background: rgba(211, 120, 120, 0.14);
+  color: #ad5858;
+}
+
+.issue-textarea {
+  min-height: 10rem;
+  padding: 1rem 1.1rem;
+  resize: vertical;
+  font: 500 0.98rem/1.8 'Manrope', sans-serif;
+}
+
+.submit-button {
+  min-height: 3.8rem;
+  border: none;
+  border-radius: 999px;
+  background: #2a362e;
+  color: #fff;
+  font: 600 1rem/1 'Noto Serif SC', serif;
+  cursor: pointer;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-4px);
+  box-shadow: 0 24px 40px rgba(42, 54, 46, 0.2);
+}
+
+.submit-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.message-banner {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.15rem;
+  border-radius: 18px;
+  font: 500 0.95rem/1.7 'Manrope', sans-serif;
+}
+
+.message-banner--error {
+  background: rgba(202, 111, 111, 0.12);
+  color: #9f5757;
+}
+
+.success-panel {
+  padding: 2rem;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(246, 244, 240, 0.88));
+  backdrop-filter: blur(24px);
+  box-shadow: 0 40px 80px rgba(54, 66, 58, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.success-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(127, 170, 135, 0.16);
+  color: #3f7b4d;
+  font: 700 0.8rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.success-facts {
+  display: grid;
+  gap: 1rem;
+  margin: 1.5rem 0 0;
+}
+
+.success-facts div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.success-facts dt {
+  color: #77887d;
+  font: 500 0.92rem/1 'Manrope', sans-serif;
+}
+
+.success-facts dd {
+  margin: 0;
+  color: #223027;
+  font: 600 0.95rem/1.5 'Noto Serif SC', serif;
+}
+
+@media (max-width: 900px) {
+  .layout-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* 优雅的分页器 */
-.pagination-nav {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2rem;
-  margin-top: 4rem;
-  padding-top: 2rem;
-  border-top: 1px solid rgba(42, 54, 46, 0.08);
-}
+@media (max-width: 640px) {
+  .appointment-page {
+    padding-inline: 1rem;
+  }
 
-.page-btn {
-  background: transparent;
-  border: none;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #2a362e;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-}
+  .panel,
+  .success-panel {
+    padding: 1.4rem;
+    border-radius: 24px;
+  }
 
-.page-btn:hover:not(:disabled) {
-  color: #5c6b60;
-}
-
-.page-btn:disabled {
-  color: #cbd5cf;
-  cursor: not-allowed;
-}
-
-.page-indicator {
-  font-family: 'Manrope', sans-serif;
-  font-size: 1rem;
-  color: #8a9c90;
-  letter-spacing: 0.1em;
-}
-
-.page-indicator span {
-  color: #2a362e;
-  font-weight: 600;
-}
-
-.page-btn:hover:not(:disabled) .arrow:last-child {
-  transform: translateX(4px);
-}
-
-.page-btn:hover:not(:disabled) .arrow:first-child {
-  transform: translateX(-4px);
+  .slot-row,
+  .counselor-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

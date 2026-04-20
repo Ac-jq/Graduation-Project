@@ -10,6 +10,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -296,7 +297,12 @@ public class AssessmentServiceImpl implements AssessmentService {
         int totalScore = answers.stream().mapToInt(MentalScaleAnswer::getScore).sum();
         MentalScaleRule matchedRule = resolveMatchedRule(scale, totalScore);
         String summaryText = buildSummary(scale.getName(), totalScore, matchedRule);
-        String interpretation = aiInterpretationService.generateInterpretation(scale, totalScore, matchedRule.getLevelCode());
+        String interpretation = aiInterpretationService.generateInterpretation(
+                scale,
+                totalScore,
+                matchedRule.getLevelCode(),
+                buildDetailedAnswerContext(scale, answers)
+        );
 
         session.setStatus(ScaleSessionStatusConstants.SUBMITTED);
         session.setAnsweredCount(scale.getTotalQuestions());
@@ -381,6 +387,41 @@ public class AssessmentServiceImpl implements AssessmentService {
             selectedOptionMap.put(answer.getQuestionId(), answer.getOptionId());
         }
         return selectedOptionMap;
+    }
+
+    private String buildDetailedAnswerContext(MentalScale scale, List<MentalScaleAnswer> answers) {
+        if (answers == null || answers.isEmpty()) {
+            return "本次没有可用的答题记录。";
+        }
+        Set<Long> questionIds = answers.stream().map(MentalScaleAnswer::getQuestionId).collect(Collectors.toSet());
+        Set<Long> optionIds = answers.stream().map(MentalScaleAnswer::getOptionId).collect(Collectors.toSet());
+
+        Map<Long, MentalScaleQuestion> questionMap = mentalScaleQuestionMapper.selectList(
+                new LambdaQueryWrapper<MentalScaleQuestion>()
+                        .eq(MentalScaleQuestion::getScaleId, scale.getId())
+                        .in(MentalScaleQuestion::getId, questionIds)
+        ).stream().collect(Collectors.toMap(MentalScaleQuestion::getId, Function.identity()));
+        Map<Long, MentalScaleOption> optionMap = mentalScaleOptionMapper.selectList(
+                new LambdaQueryWrapper<MentalScaleOption>()
+                        .in(MentalScaleOption::getId, optionIds)
+        ).stream().collect(Collectors.toMap(MentalScaleOption::getId, Function.identity()));
+
+        return answers.stream()
+                .sorted(Comparator.comparing(answer -> {
+                    MentalScaleQuestion question = questionMap.get(answer.getQuestionId());
+                    return question == null ? Integer.MAX_VALUE : question.getQuestionNo();
+                }))
+                .map(answer -> {
+                    MentalScaleQuestion question = questionMap.get(answer.getQuestionId());
+                    MentalScaleOption option = optionMap.get(answer.getOptionId());
+                    Integer questionNo = question == null ? null : question.getQuestionNo();
+                    String questionContent = question == null ? "未知题目" : question.getContent();
+                    String optionContent = option == null ? "未知选项" : option.getContent();
+                    Integer optionScore = option == null ? answer.getScore() : option.getScore();
+                    return "题目%s：%s；学生选择：%s；该题得分：%s。"
+                            .formatted(questionNo == null ? "?" : questionNo, questionContent, optionContent, optionScore == null ? "未知" : optionScore);
+                })
+                .collect(Collectors.joining("\n"));
     }
 
     private Map<Long, List<MentalScaleOption>> buildOptionMap(Set<Long> questionIds) {

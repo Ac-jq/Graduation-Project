@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { buildConsultChatWebSocketUrl, fetchConsultChatMessagesApi, fetchConsultChatSessionApi } from '@/api/chat'
 import type { ConsultChatMessage, ConsultChatSession, ConsultChatSocketPayload } from '@/api/types'
@@ -8,24 +8,57 @@ import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
+
 const loading = ref(false)
 const errorMessage = ref('')
 const chatSession = ref<ConsultChatSession | null>(null)
 const messages = ref<ConsultChatMessage[]>([])
 const socketState = ref<'idle' | 'connecting' | 'connected' | 'closed'>('idle')
+const peerOnline = ref(false)
 const composeForm = reactive({
   content: ''
 })
 const socketRef = ref<WebSocket | null>(null)
-const appointmentId = computed(() => toNumberParam(route.params.appointmentId))
+const messageViewportRef = ref<HTMLElement | null>(null)
 
+const appointmentId = computed(() => toNumberParam(route.params.appointmentId))
+const canSend = computed(() => {
+  if (!chatSession.value) {
+    return false
+  }
+
+  return !chatSession.value.sealed
+    && chatSession.value.status !== 'ARCHIVED'
+    && chatSession.value.status !== 'CLOSED'
+    && socketState.value === 'connected'
+    && peerOnline.value
+})
 const socketStateText = computed(() => {
   switch (socketState.value) {
-    case 'connected': return '实时通道已连接'
-    case 'connecting': return '正在建立安全连接...'
-    case 'closed': return '连接已断开'
-    default: return '通道待命'
+    case 'connected':
+      return '实时通道已连接'
+    case 'connecting':
+      return '正在建立连接'
+    case 'closed':
+      return '连接已断开'
+    default:
+      return '通道待命'
   }
+})
+const peerStatusText = computed(() => {
+  if (!chatSession.value) {
+    return '正在载入'
+  }
+  if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
+    return '聊天室已结束'
+  }
+  if (chatSession.value.status === 'ARCHIVED') {
+    return '聊天室已归档'
+  }
+  if (socketState.value !== 'connected') {
+    return '等待连接恢复'
+  }
+  return peerOnline.value ? '学生已在线' : '学生暂未进入'
 })
 
 function formatTime(value: string | Date): string {
@@ -33,21 +66,62 @@ function formatTime(value: string | Date): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+async function scrollToBottom(): Promise<void> {
+  await nextTick()
+  const viewport = messageViewportRef.value
+  if (!viewport) {
+    return
+  }
+  viewport.scrollTop = viewport.scrollHeight
+}
+
 function disconnectSocket(): void {
-  socketRef.value?.close()
+  if (socketRef.value) {
+    socketRef.value.onclose = null
+    socketRef.value.close()
+  }
   socketRef.value = null
   socketState.value = 'closed'
+  peerOnline.value = false
+}
+
+function applySocketPayload(payload: ConsultChatSocketPayload): void {
+  if (payload.type === 'CONNECTED') {
+    peerOnline.value = (payload.onlineCount ?? 0) > 1
+    errorMessage.value = ''
+    return
+  }
+
+  if (payload.type === 'MESSAGE' && payload.message) {
+    messages.value = [...messages.value, payload.message]
+    void scrollToBottom()
+    return
+  }
+
+  if (payload.type === 'SYSTEM') {
+    if (payload.action === 'USER_JOINED') {
+      peerOnline.value = true
+    }
+    if (payload.action === 'WAITING_PEER' || payload.action === 'USER_LEFT') {
+      peerOnline.value = false
+    }
+    return
+  }
+
+  if (payload.type === 'ERROR' && payload.tip) {
+    errorMessage.value = payload.tip
+  }
 }
 
 function connectSocket(): void {
   if (!appointmentId.value) {
-    errorMessage.value = '无效的预约编号'
+    errorMessage.value = '无效的预约编号。'
     return
   }
 
   const token = getToken()
   if (!token) {
-    errorMessage.value = '缺少身份凭证'
+    errorMessage.value = '缺少身份凭证。'
     return
   }
 
@@ -57,27 +131,27 @@ function connectSocket(): void {
 
   socket.onopen = () => {
     socketState.value = 'connected'
+    errorMessage.value = ''
   }
+
   socket.onmessage = (event) => {
     try {
       const payload = JSON.parse(event.data) as ConsultChatSocketPayload
-      if (payload.type === 'MESSAGE' && payload.message) {
-        messages.value = [...messages.value, payload.message]
-        scrollToBottom()
-      }
-      if (payload.type === 'ERROR' && payload.tip) {
-        errorMessage.value = payload.tip
-      }
+      applySocketPayload(payload)
     } catch (error) {
       errorMessage.value = toErrorMessage(error)
     }
   }
+
   socket.onclose = () => {
     socketState.value = 'closed'
+    peerOnline.value = false
   }
+
   socket.onerror = () => {
-    errorMessage.value = 'WebSocket 异常'
+    errorMessage.value = 'WebSocket 连接异常。'
     socketState.value = 'closed'
+    peerOnline.value = false
   }
 
   socketRef.value = socket
@@ -85,7 +159,7 @@ function connectSocket(): void {
 
 async function loadChatContext(): Promise<void> {
   if (!appointmentId.value) {
-    errorMessage.value = '无效的预约编号'
+    errorMessage.value = '无效的预约编号。'
     chatSession.value = null
     messages.value = []
     return
@@ -102,7 +176,7 @@ async function loadChatContext(): Promise<void> {
     chatSession.value = session
     messages.value = history
     connectSocket()
-    scrollToBottom()
+    await scrollToBottom()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -111,27 +185,32 @@ async function loadChatContext(): Promise<void> {
 }
 
 function sendMessage(): void {
-  if (!composeForm.content || socketRef.value?.readyState !== WebSocket.OPEN) {
+  const content = composeForm.content.trim()
+  if (!content || socketRef.value?.readyState !== WebSocket.OPEN || !canSend.value) {
     return
   }
 
-  socketRef.value.send(JSON.stringify({ content: composeForm.content }))
+  socketRef.value.send(JSON.stringify({ content }))
   composeForm.content = ''
-}
-
-function scrollToBottom() {
-  setTimeout(() => {
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
-  }, 100)
 }
 
 function goBack(): void {
   router.push({ name: 'counselor-appointments' })
 }
 
-watch(() => route.params.appointmentId, () => {
-  void loadChatContext()
-})
+watch(
+  () => route.params.appointmentId,
+  () => {
+    void loadChatContext()
+  }
+)
+
+watch(
+  () => messages.value.length,
+  async () => {
+    await scrollToBottom()
+  }
+)
 
 onMounted(() => {
   void loadChatContext()
@@ -145,10 +224,9 @@ onBeforeUnmount(() => {
 <template>
   <main class="editorial-chat-page">
     <div class="page-container">
-
       <nav class="dossier-nav">
         <button class="nav-ghost-btn" @click="goBack">
-          <span class="arrow">←</span> 返回接诊台账
+          <span class="arrow">←</span> 返回预约处理
         </button>
       </nav>
 
@@ -157,7 +235,8 @@ onBeforeUnmount(() => {
           <span class="header-tag">Consultation Transcript</span>
           <h1 class="huge-title">沟通实录</h1>
           <p class="header-lead">
-            当前正在与 <strong>预约 #{{ appointmentId || '-' }}</strong> 的发起人进行私密会谈。所有的历史记录均已解密并按照时间轴展开。
+            当前正在查看 <strong>预约 #{{ appointmentId || '-' }}</strong> 的私密会话记录。
+            当学生进入聊天室后，系统会自动切换为可聊天状态，无需手动刷新页面。
           </p>
         </div>
 
@@ -170,7 +249,6 @@ onBeforeUnmount(() => {
       <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
 
       <section class="transcript-grid">
-
         <div class="transcript-stream-wrapper">
           <div class="section-head">
             <h2 class="section-title">记录详情</h2>
@@ -179,19 +257,19 @@ onBeforeUnmount(() => {
 
           <div v-if="loading" class="loading-state">
             <div class="spinner"></div>
-            <p>正在解密并同步上下文...</p>
+            <p>正在读取历史消息并建立实时通道...</p>
           </div>
 
           <div v-else-if="!messages.length" class="empty-state">
-            <p class="empty-desc">当前会谈室暂无任何发言记录，您可以作为咨询师首先发起问候。</p>
+            <p class="empty-desc">当前还没有消息记录。你可以先发送一条问候，等待学生上线后继续交流。</p>
           </div>
 
-          <div v-else class="transcript-stream">
+          <div v-else ref="messageViewportRef" class="transcript-stream">
             <article
-                v-for="message in messages"
-                :key="message.messageId"
-                class="message-row"
-                :class="{ 'is-counselor': message.senderType === 'COUNSELOR' }"
+              v-for="message in messages"
+              :key="message.messageId"
+              class="message-row"
+              :class="{ 'is-counselor': message.senderType === 'COUNSELOR' }"
             >
               <div class="message-actor">
                 {{ message.senderType === 'COUNSELOR' ? 'YOU' : 'CLIENT' }}
@@ -206,48 +284,49 @@ onBeforeUnmount(() => {
 
         <aside class="compose-desk">
           <div class="desk-sticky-container">
-
             <div class="session-meta-panel">
               <h3 class="meta-heading">会话控制台</h3>
               <dl class="meta-list">
                 <div>
-                  <dt>实录编号</dt>
+                  <dt>记录编号</dt>
                   <dd>#{{ chatSession?.chatSessionId || '待分配' }}</dd>
                 </div>
                 <div>
                   <dt>当前状态</dt>
+                  <dd>{{ peerStatusText }}</dd>
+                </div>
+                <div>
+                  <dt>会话标记</dt>
                   <dd>{{ chatSession?.status || '未初始化' }}</dd>
                 </div>
                 <div>
-                  <dt>是否归档封存</dt>
-                  <dd>{{ chatSession?.sealed ? '已封存 (不可回复)' : '保持开启' }}</dd>
+                  <dt>是否封存</dt>
+                  <dd>{{ chatSession?.sealed ? '已结束' : '进行中' }}</dd>
                 </div>
               </dl>
             </div>
 
             <div class="compose-area">
-              <label class="compose-label">起草回复</label>
+              <label class="compose-label">发送回复</label>
               <textarea
-                  v-model="composeForm.content"
-                  class="sleek-textarea"
-                  rows="6"
-                  maxlength="2000"
-                  :disabled="chatSession?.sealed || socketState !== 'connected'"
-                  placeholder="在此写下对学生的回复、关怀或下一步建议。按下回车并不会发送，请点击下方按钮。"
+                v-model="composeForm.content"
+                class="sleek-textarea"
+                rows="6"
+                maxlength="2000"
+                :disabled="!canSend"
+                placeholder="在此写下对学生的回应、关怀或下一步建议。"
               />
               <button
-                  class="action-btn action-btn--primary"
-                  type="button"
-                  :disabled="!composeForm.content || socketState !== 'connected' || chatSession?.sealed"
-                  @click="sendMessage"
+                class="action-btn action-btn--primary"
+                type="button"
+                :disabled="!composeForm.content.trim() || !canSend"
+                @click="sendMessage"
               >
                 发送回复 <span class="arrow">→</span>
               </button>
             </div>
-
           </div>
         </aside>
-
       </section>
     </div>
   </main>
@@ -256,7 +335,6 @@ onBeforeUnmount(() => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 全局极简白纸底色 */
 .editorial-chat-page {
   min-height: 100vh;
   background: #fcfbf9;
@@ -271,7 +349,6 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
-/* 顶部导航 */
 .dossier-nav {
   margin-bottom: 2.5rem;
 }
@@ -295,7 +372,6 @@ onBeforeUnmount(() => {
   color: #1e2821;
 }
 
-/* 头部排版 */
 .transcript-header {
   display: flex;
   justify-content: space-between;
@@ -341,7 +417,6 @@ onBeforeUnmount(() => {
   color: #2a362e;
 }
 
-/* 连接状态呼吸灯 */
 .connection-status {
   display: flex;
   align-items: center;
@@ -393,7 +468,6 @@ onBeforeUnmount(() => {
   color: #5c6b60;
 }
 
-/* 核心双栏排版 */
 .transcript-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
@@ -401,7 +475,6 @@ onBeforeUnmount(() => {
   align-items: start;
 }
 
-/* ================= 左栏：剧本式消息流 ================= */
 .section-head {
   margin-bottom: 2rem;
 }
@@ -426,6 +499,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 2.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
 }
 
 .message-row {
@@ -435,7 +511,6 @@ onBeforeUnmount(() => {
   align-items: start;
 }
 
-/* 角色标签（左侧栏） */
 .message-actor {
   font-family: 'Manrope', sans-serif;
   font-size: 0.85rem;
@@ -447,7 +522,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/* 自己（咨询师）发言的样式调整 */
 .message-row.is-counselor .message-actor {
   color: #4a5c51;
 }
@@ -457,7 +531,6 @@ onBeforeUnmount(() => {
   padding-left: 1.5rem;
 }
 
-/* 消息内容区 */
 .message-body {
   display: flex;
   flex-direction: column;
@@ -476,10 +549,9 @@ onBeforeUnmount(() => {
   line-height: 1.85;
   color: #1e2821;
   margin: 0;
-  white-space: pre-wrap; /* 保留换行 */
+  white-space: pre-wrap;
 }
 
-/* ================= 右栏：起草台 ================= */
 .compose-desk {
   position: relative;
 }
@@ -492,7 +564,6 @@ onBeforeUnmount(() => {
   gap: 3rem;
 }
 
-/* 元数据面板 */
 .session-meta-panel {
   padding: 1.5rem;
   background: rgba(255, 255, 255, 0.5);
@@ -532,7 +603,6 @@ onBeforeUnmount(() => {
   margin: 0.3rem 0 0 0;
 }
 
-/* 输入区 */
 .compose-area {
   display: flex;
   flex-direction: column;
@@ -611,7 +681,6 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* 状态样式 */
 .error-banner {
   background: rgba(140, 74, 74, 0.08);
   color: #8c4a4a;
@@ -644,7 +713,6 @@ onBeforeUnmount(() => {
   to { transform: rotate(360deg); }
 }
 
-/* 交互动画 */
 .arrow {
   font-family: 'Manrope', sans-serif;
   transition: transform 0.3s ease;
@@ -658,7 +726,6 @@ onBeforeUnmount(() => {
   transform: translateX(4px);
 }
 
-/* 响应式 */
 @media (max-width: 900px) {
   .transcript-header {
     flex-direction: column;
@@ -684,7 +751,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 600px) {
   .message-row {
-    grid-template-columns: 1fr; /* 移动端角色标签移至上方 */
+    grid-template-columns: 1fr;
     gap: 0.5rem;
   }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchStudentAppointmentsApi } from '@/api/appointment'
 import type { Appointment } from '@/api/types'
@@ -11,25 +11,40 @@ const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
 const appointments = ref<Appointment[]>([])
-
-// 分页状态
 const currentPage = ref(1)
 const pageSize = 6
-const totalPages = computed(() => Math.max(1, Math.ceil(appointments.value.length / pageSize)))
-const pagedAppointments = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return appointments.value.slice(start, start + pageSize)
+let refreshTimer: number | null = null
+
+const orderedAppointments = computed(() => {
+  const groupWeight = (item: Appointment) => {
+    if (item.chatAvailable) {
+      return 0
+    }
+    if (item.status === 'PENDING') {
+      return 1
+    }
+    return 2
+  }
+
+  return [...appointments.value].sort((left, right) => {
+    const weightDiff = groupWeight(left) - groupWeight(right)
+    if (weightDiff !== 0) {
+      return weightDiff
+    }
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
+  })
 })
 
-const activeCount = computed(() =>
-    appointments.value.filter((item) => item.status === 'ACCEPTED' || item.status === 'IN_PROGRESS').length
-)
+const totalPages = computed(() => Math.max(1, Math.ceil(orderedAppointments.value.length / pageSize)))
+const pagedAppointments = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return orderedAppointments.value.slice(start, start + pageSize)
+})
 
-const completedCount = computed(() =>
-    appointments.value.filter((item) => item.status === 'COMPLETED').length
-)
+const activeCount = computed(() => appointments.value.filter((item) => item.chatAvailable).length)
+const pendingCount = computed(() => appointments.value.filter((item) => item.status === 'PENDING').length)
+const completedCount = computed(() => appointments.value.filter((item) => item.chatEnded).length)
 
-// 为画报风排版拆分日期和时间
 function getDayMonth(value: string): string {
   const d = new Date(value)
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
@@ -47,43 +62,83 @@ function formatFullDate(value: string): string {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
 }
 
-function resolveStatusLabel(status: string): string {
-  switch (status) {
-    case 'PENDING': return '等待确认'
-    case 'ACCEPTED': return '约定期'
-    case 'IN_PROGRESS': return '正在沟通'
-    case 'COMPLETED': return '已结束'
-    case 'REJECTED': return '未能安排'
-    case 'CANCELLED': return '已取消'
-    default: return status
+function resolveStatusLabel(appointment: Appointment): string {
+  if (appointment.chatAvailable) {
+    return '可进入'
+  }
+  if (appointment.status === 'PENDING') {
+    return '等待确认'
+  }
+  if (appointment.chatEnded) {
+    return '已结束'
+  }
+
+  switch (appointment.status) {
+    case 'ACCEPTED':
+      return '已接受'
+    case 'IN_PROGRESS':
+      return '沟通中'
+    case 'REJECTED':
+      return '未通过'
+    case 'CANCELED':
+      return '已取消'
+    case 'COMPLETED':
+      return '已结束'
+    default:
+      return appointment.status
   }
 }
 
-function resolveStatusTone(status: string): AppointmentTone {
-  switch (status) {
-    case 'ACCEPTED': return 'accepted'
-    case 'IN_PROGRESS': return 'active'
-    case 'COMPLETED': return 'done'
-    case 'PENDING': return 'pending'
-    default: return 'muted'
+function resolveStatusTone(appointment: Appointment): AppointmentTone {
+  if (appointment.chatAvailable) {
+    return 'active'
   }
+  if (appointment.status === 'PENDING') {
+    return 'pending'
+  }
+  if (appointment.chatEnded) {
+    return 'done'
+  }
+  if (appointment.status === 'ACCEPTED') {
+    return 'accepted'
+  }
+  return 'muted'
 }
 
-function canOpenChat(status: string): boolean {
-  return status === 'ACCEPTED' || status === 'IN_PROGRESS' || status === 'COMPLETED'
+function resolveGroupLabel(appointment: Appointment): string {
+  if (appointment.chatAvailable) {
+    return '可进入'
+  }
+  if (appointment.status === 'PENDING') {
+    return '等待确认'
+  }
+  return '已结束'
 }
 
-async function loadAppointments(): Promise<void> {
-  loading.value = true
+function shouldShowGroupLabel(appointment: Appointment, index: number): boolean {
+  if (index === 0) {
+    return true
+  }
+  return resolveGroupLabel(appointment) !== resolveGroupLabel(pagedAppointments.value[index - 1])
+}
+
+async function loadAppointments(silent = false): Promise<void> {
+  if (!silent) {
+    loading.value = true
+  }
   errorMessage.value = ''
 
   try {
     appointments.value = await fetchStudentAppointmentsApi()
-    currentPage.value = 1
+    if (!silent) {
+      currentPage.value = 1
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
 }
 
@@ -105,36 +160,54 @@ async function openChat(appointmentId: number): Promise<void> {
   await router.push({ name: 'student-chat', params: { appointmentId } })
 }
 
+function startRefreshTimer(): void {
+  stopRefreshTimer()
+  refreshTimer = window.setInterval(() => {
+    void loadAppointments(true)
+  }, 5000)
+}
+
+function stopRefreshTimer(): void {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
 onMounted(() => {
   void loadAppointments()
+  startRefreshTimer()
+})
+
+onBeforeUnmount(() => {
+  stopRefreshTimer()
 })
 </script>
 
 <template>
   <main class="editorial-appointment-page">
     <div class="page-container">
-
       <header class="journal-header">
         <div class="header-main">
           <span class="header-tag">Consultation Journal</span>
-          <h1 class="header-title">会谈札记</h1>
+          <h1 class="header-title">预约记录</h1>
           <p class="header-desc">
-            这里按时间轴记录了你所有的预约行程与沟通轨迹。<br>
-            当预约被受理后，你可以直接从这里的条目中推开那扇“私密聊天室”的门。
+            这里会按状态整理你的预约记录。可直接进入的聊天室会优先显示，等待老师确认的记录排在其后，
+            已结束的会话会自动收在最后，避免误点进入无效聊天室。
           </p>
         </div>
 
         <div class="header-stats">
           <div class="stat-item">
-            <span class="stat-label">历史总计</span>
+            <span class="stat-label">全部预约</span>
             <span class="stat-value">{{ loading ? '-' : appointments.length }}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">即将进行 / 沟通中</span>
+            <span class="stat-label">可进入</span>
             <span class="stat-value">{{ loading ? '-' : activeCount }}</span>
           </div>
           <div class="stat-item">
-            <span class="stat-label">已沉淀</span>
+            <span class="stat-label">已结束</span>
             <span class="stat-value">{{ loading ? '-' : completedCount }}</span>
           </div>
         </div>
@@ -144,74 +217,76 @@ onMounted(() => {
 
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <p>正在翻阅记录...</p>
+        <p>正在整理预约记录...</p>
       </div>
 
       <div v-else-if="!appointments.length" class="empty-state">
-        <h2 class="empty-title">尚未留下足迹</h2>
-        <p class="empty-desc">这里还是一张白纸，当你准备好倾诉时，可以去挑选一个安静的时段。</p>
+        <h2 class="empty-title">还没有预约记录</h2>
+        <p class="empty-desc">你可以先选择咨询师和时间段，系统会在这里持续更新预约状态。</p>
         <button class="ghost-btn" @click="router.push({ name: 'student-appointment-slots' })">
-          挑选可预约时段 <span class="arrow">→</span>
+          去预约时段 <span class="arrow">→</span>
         </button>
       </div>
 
       <section v-else class="journal-list">
-
         <div class="list-head">
-          <span class="list-kicker">所有条目</span>
-          <span class="list-note">允许慢一点。如果还没准备好，你可以只是在这里看看，等准备好了再进入对话。</span>
+          <span class="list-kicker">预约分组</span>
+          <span class="list-note">顺序固定为：可进入 → 等待确认 → 已结束。</span>
         </div>
 
-        <article
-            v-for="appointment in pagedAppointments"
-            :key="appointment.appointmentId"
-            class="journal-entry"
-            :class="`entry--${resolveStatusTone(appointment.status)}`"
-        >
-          <div class="entry-date-col">
-            <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
-            <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
-            <span class="status-pill">{{ resolveStatusLabel(appointment.status) }}</span>
+        <template v-for="(appointment, index) in pagedAppointments" :key="appointment.appointmentId">
+          <div v-if="shouldShowGroupLabel(appointment, index)" class="group-label">
+            {{ resolveGroupLabel(appointment) }}
           </div>
 
-          <div class="entry-content-col">
-            <div class="entry-topline">
-              <h3 class="counselor-name">
-                与 咨询师 {{ appointment.counselorName || '待安排' }} 的会谈
-              </h3>
-              <span class="entry-id">#{{ appointment.appointmentId }}</span>
+          <article class="journal-entry" :class="`entry--${resolveStatusTone(appointment)}`">
+            <div class="entry-date-col">
+              <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
+              <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
+              <span class="status-pill">{{ resolveStatusLabel(appointment) }}</span>
             </div>
 
-            <blockquote class="issue-quote">
-              “{{ appointment.issueSummary || '未填写具体摘要...' }}”
-            </blockquote>
-
-            <div v-if="appointment.resultMessage" class="result-message">
-              <strong>系统/回复：</strong> {{ appointment.resultMessage }}
-            </div>
-
-            <div class="entry-footer">
-              <div class="meta-tags">
-                <span>身份：{{ appointment.anonymousName }}</span>
-                <span class="dot">·</span>
-                <span>创建于 {{ formatFullDate(appointment.createdAt) }}</span>
+            <div class="entry-content-col">
+              <div class="entry-topline">
+                <h3 class="counselor-name">与 {{ appointment.counselorName || '待分配咨询师' }} 的会谈</h3>
+                <span class="entry-id">#{{ appointment.appointmentId }}</span>
               </div>
 
-              <button
-                  v-if="canOpenChat(appointment.status)"
+              <blockquote class="issue-quote">
+                “{{ appointment.issueSummary || '本次预约未填写摘要。' }}”
+              </blockquote>
+
+              <div v-if="appointment.resultMessage" class="result-message">
+                <strong>老师回复：</strong> {{ appointment.resultMessage }}
+              </div>
+
+              <div class="entry-footer">
+                <div class="meta-tags">
+                  <span>身份：{{ appointment.anonymousName }}</span>
+                  <span class="dot">·</span>
+                  <span>创建于 {{ formatFullDate(appointment.createdAt) }}</span>
+                  <span class="dot">·</span>
+                  <span>聊天室：{{ appointment.chatStatus || '未开启' }}</span>
+                </div>
+
+                <button
+                  v-if="appointment.chatAvailable"
                   class="action-chat-btn"
                   @click="openChat(appointment.appointmentId)"
-              >
-                进入私密聊天室 <span class="arrow">→</span>
-              </button>
-              <span v-else class="disabled-action">聊天室未开放</span>
+                >
+                  进入聊天室 <span class="arrow">→</span>
+                </button>
+                <span v-else class="disabled-action">
+                  {{ appointment.status === 'PENDING' ? '等待老师确认后开放' : '当前聊天室不可进入' }}
+                </span>
+              </div>
             </div>
-          </div>
-        </article>
+          </article>
+        </template>
 
         <nav class="pagination-nav" v-if="totalPages > 1">
           <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
-            <span class="arrow">←</span> 往前翻
+            <span class="arrow">←</span> 上一页
           </button>
 
           <div class="page-indicator">
@@ -219,10 +294,9 @@ onMounted(() => {
           </div>
 
           <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
-            往后翻 <span class="arrow">→</span>
+            下一页 <span class="arrow">→</span>
           </button>
         </nav>
-
       </section>
     </div>
   </main>
@@ -231,7 +305,6 @@ onMounted(() => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 全局极简白纸底色 */
 .editorial-appointment-page {
   min-height: 100vh;
   background: #fcfbf9;
@@ -246,7 +319,6 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-/* 头部排版 */
 .journal-header {
   display: flex;
   justify-content: space-between;
@@ -313,7 +385,6 @@ onMounted(() => {
   line-height: 1;
 }
 
-/* 列表头部 */
 .list-head {
   display: flex;
   justify-content: space-between;
@@ -333,14 +404,23 @@ onMounted(() => {
   font-size: 0.9rem;
   color: #8a9c90;
   font-style: italic;
-  max-width: 400px;
+  max-width: 420px;
   text-align: right;
 }
 
-/* 札记条目（无框排版，依靠极大的留白区分） */
 .journal-list {
   display: flex;
   flex-direction: column;
+}
+
+.group-label {
+  padding: 1rem;
+  margin-top: 1.5rem;
+  color: #5c6b60;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
 }
 
 .journal-entry {
@@ -356,12 +436,10 @@ onMounted(() => {
   background: rgba(255, 255, 255, 0.6);
 }
 
-/* 左侧巨幕日期 */
 .entry-date-col {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  position: relative;
 }
 
 .huge-date {
@@ -396,11 +474,13 @@ onMounted(() => {
   transition: all 0.3s ease;
 }
 
-/* 不同状态下，左侧锚点的颜色暗示 */
-.entry--accepted .huge-date, .entry--active .huge-date {
+.entry--accepted .huge-date,
+.entry--active .huge-date {
   color: #3b4d40;
 }
-.entry--accepted .status-pill, .entry--active .status-pill {
+
+.entry--accepted .status-pill,
+.entry--active .status-pill {
   background: #2a362e;
   color: #ffffff;
 }
@@ -418,7 +498,6 @@ onMounted(() => {
   color: #b5c2b9;
 }
 
-/* 右侧内容区 */
 .entry-content-col {
   display: flex;
   flex-direction: column;
@@ -445,7 +524,6 @@ onMounted(() => {
   color: #b5c2b9;
 }
 
-/* 摘录样式的正文 */
 .issue-quote {
   margin: 0 0 2rem 0;
   padding-left: 1.5rem;
@@ -475,6 +553,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-top: auto;
+  gap: 1rem;
 }
 
 .meta-tags {
@@ -488,7 +567,6 @@ onMounted(() => {
   color: #cbd5cf;
 }
 
-/* 按钮交互 */
 .action-chat-btn {
   background: transparent;
   border: none;
@@ -514,7 +592,6 @@ onMounted(() => {
   color: #b5c2b9;
 }
 
-/* 状态样式 */
 .error-banner {
   background: rgba(140, 74, 74, 0.08);
   color: #8c4a4a;
@@ -544,7 +621,9 @@ onMounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-title {
@@ -579,7 +658,6 @@ onMounted(() => {
   border-color: #2a362e;
 }
 
-/* 分页器 */
 .pagination-nav {
   display: flex;
   justify-content: center;
@@ -635,11 +713,11 @@ onMounted(() => {
 .page-btn:hover:not(:disabled) .arrow:last-child {
   transform: translateX(4px);
 }
+
 .page-btn:hover:not(:disabled) .arrow:first-child {
   transform: translateX(-4px);
 }
 
-/* 响应式 */
 @media (max-width: 1024px) {
   .journal-entry {
     grid-template-columns: 160px minmax(0, 1fr);
@@ -675,7 +753,7 @@ onMounted(() => {
   }
 
   .journal-entry {
-    grid-template-columns: 1fr; /* 移动端改为单列，巨型日期居顶 */
+    grid-template-columns: 1fr;
     gap: 1.5rem;
     padding: 2.5rem 0;
   }
@@ -698,7 +776,6 @@ onMounted(() => {
   .entry-footer {
     flex-direction: column;
     align-items: flex-start;
-    gap: 1.5rem;
   }
 }
 </style>

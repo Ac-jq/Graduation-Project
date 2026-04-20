@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { acceptAppointmentApi, fetchCounselorAppointmentsApi, rejectAppointmentApi } from '@/api/appointment'
+import { closeConsultChatSessionApi } from '@/api/chat'
 import type { Appointment, AppointmentActionRequest } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
@@ -14,39 +15,54 @@ const errorMessage = ref('')
 const appointments = ref<Appointment[]>([])
 const actionForm = reactive<Record<number, AppointmentActionRequest>>({})
 const searchKeyword = ref('')
-
-// 分页状态
 const currentPage = ref(1)
 const pageSize = 6
+let refreshTimer: number | null = null
 
-const filteredAppointments = computed(() => {
+const orderedAppointments = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
-  if (!keyword) {
-    return appointments.value
+  const filtered = keyword
+    ? appointments.value.filter((appointment) => {
+        const fields = [
+          String(appointment.appointmentId),
+          appointment.anonymousName,
+          appointment.counselorName,
+          appointment.issueSummary,
+          appointment.status,
+          appointment.resultMessage,
+          appointment.chatStatus
+        ]
+        return fields.some((field) => (field ?? '').toLowerCase().includes(keyword))
+      })
+    : appointments.value
+
+  const groupWeight = (item: Appointment) => {
+    if (item.chatAvailable) {
+      return 0
+    }
+    if (item.status === 'PENDING') {
+      return 1
+    }
+    return 2
   }
 
-  return appointments.value.filter((appointment) => {
-    const fields = [
-      String(appointment.appointmentId),
-      appointment.anonymousName,
-      appointment.counselorName,
-      appointment.issueSummary,
-      appointment.status,
-      appointment.resultMessage
-    ]
-    return fields.some((field) => (field ?? '').toLowerCase().includes(keyword))
+  return [...filtered].sort((left, right) => {
+    const weightDiff = groupWeight(left) - groupWeight(right)
+    if (weightDiff !== 0) {
+      return weightDiff
+    }
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
   })
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredAppointments.value.length / pageSize)))
+const totalPages = computed(() => Math.max(1, Math.ceil(orderedAppointments.value.length / pageSize)))
 const pagedAppointments = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return filteredAppointments.value.slice(start, start + pageSize)
+  return orderedAppointments.value.slice(start, start + pageSize)
 })
+const pendingCount = computed(() => appointments.value.filter((item) => item.status === 'PENDING').length)
+const activeCount = computed(() => appointments.value.filter((item) => item.chatAvailable).length)
 
-const pendingCount = computed(() => appointments.value.filter(a => a.status === 'PENDING').length)
-
-// 日期时间格式化
 function getDayMonth(value: string): string {
   const d = new Date(value)
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
@@ -59,30 +75,70 @@ function getTimeSpan(start: string, end: string): string {
   return `${formatTime(s)} - ${formatTime(e)}`
 }
 
-function resolveStatusLabel(status: string): string {
-  switch (status) {
-    case 'PENDING': return '待处理'
-    case 'ACCEPTED': return '已受理'
-    case 'IN_PROGRESS': return '沟通中'
-    case 'COMPLETED': return '已结束'
-    case 'REJECTED': return '已婉拒'
-    case 'CANCELLED': return '已取消'
-    default: return status
+function resolveStatusLabel(appointment: Appointment): string {
+  if (appointment.chatAvailable) {
+    return '可进入'
+  }
+  if (appointment.status === 'PENDING') {
+    return '待处理'
+  }
+  if (appointment.chatEnded) {
+    return '已结束'
+  }
+
+  switch (appointment.status) {
+    case 'ACCEPTED':
+      return '已接受'
+    case 'IN_PROGRESS':
+      return '沟通中'
+    case 'REJECTED':
+      return '已拒绝'
+    case 'CANCELED':
+      return '已取消'
+    case 'COMPLETED':
+      return '已结束'
+    default:
+      return appointment.status
   }
 }
 
-function resolveStatusTone(status: string): AppointmentTone {
-  switch (status) {
-    case 'ACCEPTED': return 'accepted'
-    case 'IN_PROGRESS': return 'active'
-    case 'COMPLETED': return 'done'
-    case 'PENDING': return 'pending'
-    default: return 'muted'
+function resolveStatusTone(appointment: Appointment): AppointmentTone {
+  if (appointment.chatAvailable) {
+    return 'active'
   }
+  if (appointment.status === 'PENDING') {
+    return 'pending'
+  }
+  if (appointment.chatEnded) {
+    return 'done'
+  }
+  if (appointment.status === 'ACCEPTED') {
+    return 'accepted'
+  }
+  return 'muted'
 }
 
-async function loadAppointments(): Promise<void> {
-  loading.value = true
+function resolveGroupLabel(appointment: Appointment): string {
+  if (appointment.chatAvailable) {
+    return '可进入'
+  }
+  if (appointment.status === 'PENDING') {
+    return '等待处理'
+  }
+  return '已结束'
+}
+
+function shouldShowGroupLabel(appointment: Appointment, index: number): boolean {
+  if (index === 0) {
+    return true
+  }
+  return resolveGroupLabel(appointment) !== resolveGroupLabel(pagedAppointments.value[index - 1])
+}
+
+async function loadAppointments(silent = false): Promise<void> {
+  if (!silent) {
+    loading.value = true
+  }
   errorMessage.value = ''
 
   try {
@@ -90,12 +146,68 @@ async function loadAppointments(): Promise<void> {
     for (const appointment of appointments.value) {
       actionForm[appointment.appointmentId] ??= { resultMessage: appointment.resultMessage ?? '' }
     }
-    currentPage.value = 1
+    if (!silent) {
+      currentPage.value = 1
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
-    loading.value = false
+    if (!silent) {
+      loading.value = false
+    }
   }
+}
+
+function resolveActionPayload(appointmentId: number): AppointmentActionRequest {
+  return actionForm[appointmentId] ?? { resultMessage: '' }
+}
+
+function ensureActionModel(appointmentId: number): AppointmentActionRequest {
+  actionForm[appointmentId] ??= { resultMessage: '' }
+  return actionForm[appointmentId]
+}
+
+async function acceptAppointment(appointmentId: number): Promise<void> {
+  processing.value = true
+  errorMessage.value = ''
+  try {
+    await acceptAppointmentApi(appointmentId, resolveActionPayload(appointmentId))
+    await loadAppointments()
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    processing.value = false
+  }
+}
+
+async function rejectAppointment(appointmentId: number): Promise<void> {
+  processing.value = true
+  errorMessage.value = ''
+  try {
+    await rejectAppointmentApi(appointmentId, resolveActionPayload(appointmentId))
+    await loadAppointments()
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    processing.value = false
+  }
+}
+
+async function closeChat(appointmentId: number): Promise<void> {
+  processing.value = true
+  errorMessage.value = ''
+  try {
+    await closeConsultChatSessionApi(appointmentId)
+    await loadAppointments()
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    processing.value = false
+  }
+}
+
+async function openChat(appointmentId: number): Promise<void> {
+  await router.push({ name: 'counselor-chat', params: { appointmentId } })
 }
 
 function prevPage(): void {
@@ -112,49 +224,27 @@ function nextPage(): void {
   }
 }
 
-function resolveActionPayload(appointmentId: number): AppointmentActionRequest {
-  return actionForm[appointmentId] ?? { resultMessage: '' }
+function startRefreshTimer(): void {
+  stopRefreshTimer()
+  refreshTimer = window.setInterval(() => {
+    void loadAppointments(true)
+  }, 10000)
 }
 
-function ensureActionModel(appointmentId: number): AppointmentActionRequest {
-  actionForm[appointmentId] ??= { resultMessage: '' }
-  return actionForm[appointmentId]
-}
-
-async function acceptAppointment(appointmentId: number): Promise<void> {
-  processing.value = true
-  errorMessage.value = ''
-
-  try {
-    await acceptAppointmentApi(appointmentId, resolveActionPayload(appointmentId))
-    await loadAppointments()
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    processing.value = false
+function stopRefreshTimer(): void {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
+    refreshTimer = null
   }
-}
-
-async function rejectAppointment(appointmentId: number): Promise<void> {
-  processing.value = true
-  errorMessage.value = ''
-
-  try {
-    await rejectAppointmentApi(appointmentId, resolveActionPayload(appointmentId))
-    await loadAppointments()
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    processing.value = false
-  }
-}
-
-async function openChat(appointmentId: number): Promise<void> {
-  await router.push({ name: 'counselor-chat', params: { appointmentId } })
 }
 
 onMounted(() => {
   void loadAppointments()
+  startRefreshTimer()
+})
+
+onBeforeUnmount(() => {
+  stopRefreshTimer()
 })
 
 watch(searchKeyword, () => {
@@ -165,24 +255,28 @@ watch(searchKeyword, () => {
 <template>
   <main class="editorial-ledger-page">
     <div class="page-container">
-
       <header class="ledger-header">
         <div class="header-main">
           <span class="header-tag">Appointment Ledger</span>
-          <h1 class="huge-title">接诊台账</h1>
+          <h1 class="huge-title">预约处理</h1>
           <p class="header-lead">
-            这里汇总了向您发起的匿名预约请求。您可以审阅学生的初访摘要，写下专业的处理建议，或直接推开沟通室的门。
+            这里按优先顺序整理所有与你有关的预约。可进入聊天室的预约置顶，待处理预约在中间，
+            已结束的记录自动沉到底部，方便你快速判断下一步动作。
           </p>
         </div>
 
         <div class="header-stats">
           <div class="stat-item">
-            <span class="stat-label">总请求数</span>
+            <span class="stat-label">全部预约</span>
             <span class="stat-value">{{ loading ? '-' : appointments.length }}</span>
           </div>
           <div class="stat-item">
             <span class="stat-label">待处理</span>
             <span class="stat-value highlight">{{ loading ? '-' : pendingCount }}</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-label">可进入</span>
+            <span class="stat-value">{{ loading ? '-' : activeCount }}</span>
           </div>
         </div>
       </header>
@@ -191,109 +285,109 @@ watch(searchKeyword, () => {
 
       <div v-if="loading" class="loading-state">
         <div class="spinner"></div>
-        <p>正在翻阅接诊簿...</p>
+        <p>正在加载预约处理列表...</p>
       </div>
 
       <div v-else-if="!appointments.length" class="empty-state">
-        <h2 class="empty-title">当前无请求</h2>
-        <p class="empty-desc">接诊台账目前为空。当有学生向您发起预约时，记录会出现在这里。</p>
+        <h2 class="empty-title">当前没有预约请求</h2>
+        <p class="empty-desc">新的学生预约会自动出现在这里。</p>
       </div>
 
       <section v-else class="ledger-section">
-
         <div class="list-toolbar">
           <input
-              v-model.trim="searchKeyword"
-              class="toolbar-search"
-              type="search"
-              placeholder="搜索预约编号、来访者、摘要或状态"
+            v-model.trim="searchKeyword"
+            class="toolbar-search"
+            type="search"
+            placeholder="搜索预约编号、学生别名、摘要或状态"
           >
-          <span class="toolbar-status">
-            当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页
-          </span>
+          <span class="toolbar-status">第 {{ currentPage }} / {{ totalPages }} 页</span>
         </div>
 
         <div class="ledger-stream">
-          <article
-              v-for="appointment in pagedAppointments"
-              :key="appointment.appointmentId"
-              class="ledger-entry"
-              :class="`entry--${resolveStatusTone(appointment.status)}`"
-          >
-            <div class="entry-time-col">
-              <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
-              <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
-              <span class="status-pill">{{ resolveStatusLabel(appointment.status) }}</span>
+          <template v-for="(appointment, index) in pagedAppointments" :key="appointment.appointmentId">
+            <div v-if="shouldShowGroupLabel(appointment, index)" class="group-label">
+              {{ resolveGroupLabel(appointment) }}
             </div>
 
-            <div class="entry-content-col">
-              <div class="entry-topline">
-                <h3 class="student-name">{{ appointment.anonymousName || '匿名来访者' }}</h3>
-                <span class="entry-id">Req #{{ appointment.appointmentId }}</span>
+            <article class="ledger-entry" :class="`entry--${resolveStatusTone(appointment)}`">
+              <div class="entry-time-col">
+                <span class="huge-date">{{ getDayMonth(appointment.startTime) }}</span>
+                <span class="time-span">{{ getTimeSpan(appointment.startTime, appointment.endTime) }}</span>
+                <span class="status-pill">{{ resolveStatusLabel(appointment) }}</span>
               </div>
 
-              <blockquote class="issue-quote">
-                “{{ appointment.issueSummary || '该生未留下具体的摘要描述...' }}”
-              </blockquote>
+              <div class="entry-content-col">
+                <div class="entry-topline">
+                  <h3 class="student-name">{{ appointment.anonymousName || '匿名来访者' }}</h3>
+                  <span class="entry-id">Req #{{ appointment.appointmentId }}</span>
+                </div>
 
-              <div class="counselor-reply-area">
-                <label class="reply-label">写给学生的回复与跟进建议：</label>
-                <textarea
+                <blockquote class="issue-quote">
+                  “{{ appointment.issueSummary || '该学生未填写本次预约摘要。' }}”
+                </blockquote>
+
+                <div class="counselor-reply-area">
+                  <label class="reply-label">给学生的回复</label>
+                  <textarea
                     v-model="ensureActionModel(appointment.appointmentId).resultMessage"
                     class="sleek-textarea"
                     rows="2"
-                    placeholder="例如：已收到您的预约，请在约定时间准时进入聊天室..."
-                />
-              </div>
+                    placeholder="例如：预约已确认，请按时进入聊天室。"
+                  />
+                </div>
 
-              <div class="entry-actions">
-                <div class="action-group">
-                  <button
+                <div class="entry-actions">
+                  <div class="action-group">
+                    <button
                       v-if="appointment.status === 'PENDING'"
                       class="action-btn action-btn--primary"
                       type="button"
                       :disabled="processing"
                       @click="acceptAppointment(appointment.appointmentId)"
-                  >
-                    接单受理 <span class="arrow">→</span>
-                  </button>
-                  <button
+                    >
+                      接受预约 <span class="arrow">→</span>
+                    </button>
+                    <button
                       v-if="appointment.status === 'PENDING'"
                       class="action-btn action-btn--danger"
                       type="button"
                       :disabled="processing"
                       @click="rejectAppointment(appointment.appointmentId)"
-                  >
-                    婉拒预约
-                  </button>
-
-                  <button
-                      v-if="appointment.status !== 'PENDING' && !['CANCELLED', 'REJECTED'].includes(appointment.status)"
+                    >
+                      拒绝预约
+                    </button>
+                    <button
+                      v-if="appointment.chatAvailable"
                       class="action-btn"
                       type="button"
                       :disabled="processing"
-                      @click="acceptAppointment(appointment.appointmentId)"
-                  >
-                    更新回复留言
-                  </button>
-                </div>
+                      @click="closeChat(appointment.appointmentId)"
+                    >
+                      结束聊天室
+                    </button>
+                  </div>
 
-                <button
-                    v-if="['ACCEPTED', 'IN_PROGRESS', 'COMPLETED'].includes(appointment.status)"
+                  <button
+                    v-if="appointment.chatAvailable"
                     class="action-link"
                     type="button"
                     @click="openChat(appointment.appointmentId)"
-                >
-                  进入私密聊天室 <span class="arrow">→</span>
-                </button>
+                  >
+                    进入聊天室 <span class="arrow">→</span>
+                  </button>
+                  <span v-else class="action-muted">
+                    {{ appointment.status === 'PENDING' ? '待确认后开放聊天室' : '当前聊天室不可进入' }}
+                  </span>
+                </div>
               </div>
-            </div>
-          </article>
+            </article>
+          </template>
         </div>
 
         <nav class="pagination-nav" v-if="totalPages > 1">
           <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
-            <span class="arrow">←</span> 往前翻
+            <span class="arrow">←</span> 上一页
           </button>
 
           <div class="page-indicator">
@@ -301,10 +395,9 @@ watch(searchKeyword, () => {
           </div>
 
           <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
-            往后翻 <span class="arrow">→</span>
+            下一页 <span class="arrow">→</span>
           </button>
         </nav>
-
       </section>
     </div>
   </main>
@@ -313,7 +406,6 @@ watch(searchKeyword, () => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 全局极简白纸底色 */
 .editorial-ledger-page {
   min-height: 100vh;
   background: #fcfbf9;
@@ -328,7 +420,6 @@ watch(searchKeyword, () => {
   margin: 0 auto;
 }
 
-/* 头部排版 */
 .ledger-header {
   display: flex;
   justify-content: space-between;
@@ -399,7 +490,6 @@ watch(searchKeyword, () => {
   color: #8c4a4a;
 }
 
-/* 控制栏 */
 .list-toolbar {
   display: flex;
   justify-content: space-between;
@@ -434,10 +524,19 @@ watch(searchKeyword, () => {
   transform: translateY(-1px);
 }
 
-/* 接诊流行排版 */
 .ledger-stream {
   display: flex;
   flex-direction: column;
+}
+
+.group-label {
+  padding: 1rem;
+  margin-top: 1.5rem;
+  color: #5c6b60;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  border-top: 1px solid rgba(42, 54, 46, 0.08);
 }
 
 .ledger-entry {
@@ -453,7 +552,6 @@ watch(searchKeyword, () => {
   background: rgba(255, 255, 255, 0.6);
 }
 
-/* 左侧：巨型日期锚点 */
 .entry-time-col {
   display: flex;
   flex-direction: column;
@@ -492,16 +590,18 @@ watch(searchKeyword, () => {
   transition: all 0.3s ease;
 }
 
-/* 状态色暗示 */
 .entry--pending .status-pill {
   background: rgba(213, 176, 115, 0.18);
   color: #9e7330;
 }
 
-.entry--accepted .huge-date, .entry--active .huge-date {
+.entry--accepted .huge-date,
+.entry--active .huge-date {
   color: #3b4d40;
 }
-.entry--accepted .status-pill, .entry--active .status-pill {
+
+.entry--accepted .status-pill,
+.entry--active .status-pill {
   background: #2a362e;
   color: #ffffff;
 }
@@ -514,7 +614,6 @@ watch(searchKeyword, () => {
   color: #b5c2b9;
 }
 
-/* 右侧内容区 */
 .entry-content-col {
   display: flex;
   flex-direction: column;
@@ -541,7 +640,6 @@ watch(searchKeyword, () => {
   color: #b5c2b9;
 }
 
-/* 引言样式的摘要 */
 .issue-quote {
   margin: 0 0 2.5rem 0;
   padding-left: 1.5rem;
@@ -551,7 +649,6 @@ watch(searchKeyword, () => {
   color: #4a5c51;
 }
 
-/* 咨询师批注区 */
 .counselor-reply-area {
   display: flex;
   flex-direction: column;
@@ -594,7 +691,6 @@ watch(searchKeyword, () => {
   border-bottom-style: solid;
 }
 
-/* 底部操作区 */
 .entry-actions {
   display: flex;
   justify-content: space-between;
@@ -607,6 +703,7 @@ watch(searchKeyword, () => {
 .action-group {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .action-btn {
@@ -678,7 +775,12 @@ watch(searchKeyword, () => {
   color: #5c6b60;
 }
 
-/* 状态提示 */
+.action-muted {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  color: #b5c2b9;
+}
+
 .error-banner {
   background: rgba(140, 74, 74, 0.08);
   color: #8c4a4a;
@@ -708,7 +810,9 @@ watch(searchKeyword, () => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .empty-title {
@@ -718,7 +822,10 @@ watch(searchKeyword, () => {
   margin: 0 0 1rem 0;
 }
 
-/* 分页器 */
+.empty-desc {
+  margin: 0;
+}
+
 .pagination-nav {
   display: flex;
   justify-content: center;
@@ -764,7 +871,6 @@ watch(searchKeyword, () => {
   font-weight: 600;
 }
 
-/* 交互动画 */
 .arrow {
   font-family: 'Manrope', sans-serif;
   transition: transform 0.3s ease;
@@ -780,7 +886,6 @@ watch(searchKeyword, () => {
   transform: translateX(-4px);
 }
 
-/* 响应式 */
 @media (max-width: 1024px) {
   .ledger-entry {
     grid-template-columns: 140px minmax(0, 1fr);

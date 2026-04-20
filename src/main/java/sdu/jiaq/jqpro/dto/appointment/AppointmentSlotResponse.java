@@ -1,12 +1,13 @@
 package sdu.jiaq.jqpro.dto.appointment;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 /**
- * 预约时段响应。
+ * 学生预约页的固定时段响应。
  */
 @Data
 @Builder
@@ -23,4 +24,12 @@ public class AppointmentSlotResponse {
     private LocalDateTime endTime;
 
     private String status;
+
+    @JsonProperty("isBooked")
+    private boolean booked;
+
+    @JsonProperty("isSelectable")
+    private boolean selectable;
+
+    private String timeLabel;
 }
