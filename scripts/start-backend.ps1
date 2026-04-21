@@ -7,6 +7,14 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$localAiEnv = Join-Path $projectRoot '.local\deepseek.env.ps1'
+if (Test-Path $localAiEnv) {
+    . $localAiEnv
+}
+$env:JQPRO_AI_CHAT_ENABLED = 'true'
+if (-not $env:JQPRO_AI_CHAT_API_KEY -and $env:JQPRO_AI_INTERPRETATION_API_KEY) {
+    $env:JQPRO_AI_CHAT_API_KEY = $env:JQPRO_AI_INTERPRETATION_API_KEY
+}
 & (Join-Path $PSScriptRoot 'prepare-runtime.ps1') -JavaExe $JavaExe | Out-Null
 
 $existing = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -25,9 +33,13 @@ if ($existing) {
 
 $cp = "$(Join-Path $projectRoot 'target\classes');$(Join-Path $projectRoot '.codex-tmp\layers2\dependencies\BOOT-INF\lib\*');$(Join-Path $projectRoot '.codex-tmp\layers2\snapshot-dependencies\BOOT-INF\lib\*')"
 $job = Start-Job -ScriptBlock {
-    param($javaPath, $cwd, $classPath)
-    Start-Process -FilePath $javaPath -ArgumentList '-cp', $classPath, 'sdu.jiaq.jqpro.JqProApplication' -WorkingDirectory $cwd -WindowStyle Hidden
-} -ArgumentList $JavaExe, $projectRoot, $cp
+    param($javaPath, $cwd, $classPath, $interpretationEnabled, $interpretationApiKey, $chatEnabled, $chatApiKey)
+    $env:JQPRO_AI_INTERPRETATION_ENABLED = $interpretationEnabled
+    $env:JQPRO_AI_INTERPRETATION_API_KEY = $interpretationApiKey
+    $env:JQPRO_AI_CHAT_ENABLED = $chatEnabled
+    $env:JQPRO_AI_CHAT_API_KEY = $chatApiKey
+    Start-Process -FilePath $javaPath -ArgumentList '-Dfile.encoding=UTF-8', '-cp', $classPath, 'sdu.jiaq.jqpro.JqProApplication' -WorkingDirectory $cwd -WindowStyle Hidden
+} -ArgumentList $JavaExe, $projectRoot, $cp, $env:JQPRO_AI_INTERPRETATION_ENABLED, $env:JQPRO_AI_INTERPRETATION_API_KEY, $env:JQPRO_AI_CHAT_ENABLED, $env:JQPRO_AI_CHAT_API_KEY
 Start-Sleep -Seconds 2
 Receive-Job -Id $job.Id -Keep | Out-Null
 $listener = $null

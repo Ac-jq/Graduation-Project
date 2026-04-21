@@ -122,11 +122,11 @@ public class DataInitializationRunner implements CommandLineRunner {
 
     private void initUsers() {
         SysUser studentUser = upsertUser(
-                "20230001",
+                "20220353",
                 "张同学",
                 "向日葵同学",
                 "STUDENT",
-                "20230001",
+                "20220353",
                 null
         );
         SysUser counselorUser = upsertUser(

@@ -50,14 +50,6 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer">
-        <button class="secondary-action" type="button" @click="router.push(accountPath)">
-          账户安全
-        </button>
-        <button class="primary-action" type="button" @click="handleLogout">
-          退出登录
-        </button>
-      </div>
     </aside>
 
     <main class="workspace-main">
@@ -185,20 +177,6 @@ const roleLabel = computed(() => {
   }
 })
 
-const accountPath = computed(() => {
-  switch (currentUser.value?.roleCode) {
-    case 'STUDENT':
-      return '/student/account'
-    case 'COUNSELOR':
-      return '/counselor/account'
-    case 'ADMIN':
-      return '/admin/account'
-    default:
-      return '/login'
-  }
-})
-
-
 const navItems = computed<NavItem[]>(() => {
   switch (currentUser.value?.roleCode) {
     case 'STUDENT':
@@ -230,13 +208,14 @@ const navItems = computed<NavItem[]>(() => {
   }
 })
 
-function isNavItemActive(path: string): boolean {
-  return route.path === path || route.path.startsWith(`${path}/`)
-}
+const activeNavItemPath = computed(() => {
+  return navItems.value
+      .filter((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))
+      .sort((left, right) => right.path.length - left.path.length)[0]?.path
+})
 
-async function handleLogout(): Promise<void> {
-  await authStore.signOut(true)
-  await router.push('/login')
+function isNavItemActive(path: string): boolean {
+  return activeNavItemPath.value === path
 }
 
 const sidebarNote = computed(() => {
@@ -487,12 +466,11 @@ onBeforeUnmount(() => {
 
 .sidebar-nav {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
   gap: 0.5rem;
-  min-height: 0;
 }
 
 .nav-item {
@@ -612,47 +590,6 @@ onBeforeUnmount(() => {
   font-size: 0.78rem;
   line-height: 1.58;
 }
-
-.sidebar-footer {
-  display: grid;
-  gap: 0.75rem;
-  padding-top: 0.25rem;
-}
-
-.secondary-action,
-.primary-action {
-  width: 100%;
-  min-height: 52px;
-  border-radius: 18px;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.secondary-action {
-  border: 1px solid var(--border-color);
-  background: rgba(255, 255, 255, 0.44);
-  color: var(--text-primary);
-}
-
-.secondary-action:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(31, 34, 32, 0.06);
-}
-
-.primary-action {
-  border: none;
-  background: linear-gradient(135deg, rgba(148, 170, 155, 0.9), rgba(255, 255, 255, 0.86));
-  color: #2a362e;
-}
-
-.primary-action:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 28px rgba(31, 34, 32, 0.08);
-}
-
 
 .workspace-main {
   flex: 1;

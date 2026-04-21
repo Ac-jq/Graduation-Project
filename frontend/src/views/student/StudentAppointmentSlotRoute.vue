@@ -277,37 +277,44 @@ watch(
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
 .appointment-page {
-  min-height: 100vh;
-  padding: 3rem 1.5rem 5rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
   background:
     radial-gradient(circle at top left, rgba(201, 214, 205, 0.28), transparent 28rem),
     radial-gradient(circle at bottom right, rgba(229, 212, 197, 0.24), transparent 30rem),
     #fcfbfa;
   color: #1e2821;
+  box-sizing: border-box;
 }
 
 .appointment-shell {
-  width: min(1120px, 100%);
+  width: min(1180px, 100%);
+  height: 100%;
   margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 0;
 }
 
 .hero {
-  margin-bottom: 2rem;
+  margin-bottom: 0;
 }
 
 .hero-copy {
-  max-width: 720px;
+  max-width: 760px;
 }
 
 .hero-tag,
 .panel-tag {
   display: inline-flex;
   align-items: center;
-  padding: 0.4rem 0.9rem;
+  padding: 0.32rem 0.75rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
   color: #6a7c70;
-  font: 600 0.8rem/1 'Manrope', sans-serif;
+  font: 600 0.74rem/1 'Manrope', sans-serif;
   letter-spacing: 0.08em;
 }
 
@@ -321,29 +328,31 @@ watch(
 }
 
 .hero-title {
-  margin-top: 1rem;
-  font-size: clamp(2rem, 4vw, 3.2rem);
-  line-height: 1.18;
+  margin-top: 0.65rem;
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  line-height: 1.12;
 }
 
 .hero-lead,
 .success-text,
 .inline-state,
 .empty-tip {
-  margin: 1rem 0 0;
+  margin: 0.55rem 0 0;
   color: #5f7065;
-  font: 500 1rem/1.8 'Manrope', sans-serif;
+  font: 500 0.92rem/1.58 'Manrope', sans-serif;
 }
 
 .layout-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.95fr) minmax(0, 1.25fr);
-  gap: 1.75rem;
+  gap: 1.15rem;
+  min-height: 0;
 }
 
 .panel {
-  padding: 2rem;
-  border-radius: 28px;
+  min-height: 0;
+  padding: 1.25rem;
+  border-radius: 24px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.76), rgba(248, 246, 242, 0.88));
   backdrop-filter: blur(24px);
   box-shadow: 0 40px 80px rgba(54, 66, 58, 0.06);
@@ -353,25 +362,50 @@ watch(
 .panel--focus {
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
+  gap: 0.85rem;
 }
 
 .panel-header {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.5rem;
 }
 
 .panel-header--tight {
-  margin-top: 0.4rem;
+  margin-top: 0.7rem;
 }
 
 .counselor-list,
 .slot-list {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
-  margin-top: 1.2rem;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.counselor-list {
+  max-height: 16rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(92, 107, 96, 0.22) transparent;
+}
+
+.counselor-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.counselor-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.counselor-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(92, 107, 96, 0.18);
+}
+
+.counselor-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(92, 107, 96, 0.32);
 }
 
 .counselor-card,
@@ -386,7 +420,7 @@ watch(
   justify-content: space-between;
   gap: 1rem;
   width: 100%;
-  padding: 1rem 1.15rem;
+  padding: 0.72rem 0.9rem;
   border: none;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.7);
@@ -411,14 +445,14 @@ watch(
 }
 
 .counselor-name {
-  font: 600 1.05rem/1.4 'Noto Serif SC', serif;
+  font: 600 0.98rem/1.35 'Noto Serif SC', serif;
   color: #223027;
 }
 
 .counselor-sub,
 .slot-desc {
   color: #74857a;
-  font: 500 0.9rem/1.6 'Manrope', sans-serif;
+  font: 500 0.82rem/1.4 'Manrope', sans-serif;
 }
 
 .counselor-card--active .counselor-name,
@@ -429,18 +463,18 @@ watch(
 
 .counselor-state {
   color: #5f7065;
-  font: 600 0.85rem/1 'Manrope', sans-serif;
+  font: 600 0.78rem/1 'Manrope', sans-serif;
 }
 
 .date-field {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
-  margin-top: 1.25rem;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
 }
 
 .date-label {
-  font: 600 0.92rem/1 'Manrope', sans-serif;
+  font: 600 0.84rem/1 'Manrope', sans-serif;
   color: #5f7065;
 }
 
@@ -455,17 +489,17 @@ watch(
 }
 
 .date-input {
-  min-height: 3.4rem;
-  padding: 0 1rem;
-  font: 500 0.98rem/1 'Manrope', sans-serif;
+  min-height: 2.75rem;
+  padding: 0 0.85rem;
+  font: 500 0.9rem/1 'Manrope', sans-serif;
 }
 
 .selection-note {
   display: grid;
-  gap: 0.35rem;
-  margin-top: 1.25rem;
-  padding: 1rem 1.1rem;
-  border-radius: 20px;
+  gap: 0.2rem;
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 18px;
   background: rgba(243, 244, 240, 0.76);
 }
 
@@ -476,11 +510,11 @@ watch(
 }
 
 .selection-note strong {
-  font: 600 1rem/1.5 'Noto Serif SC', serif;
+  font: 600 0.94rem/1.35 'Noto Serif SC', serif;
 }
 
 .selection-note em {
-  font: 500 0.92rem/1.5 'Manrope', sans-serif;
+  font: 500 0.84rem/1.35 'Manrope', sans-serif;
   color: #6b7d72;
   font-style: normal;
 }
@@ -491,9 +525,9 @@ watch(
   justify-content: space-between;
   gap: 1rem;
   width: 100%;
-  padding: 1.1rem 1.2rem;
+  padding: 0.72rem 0.9rem;
   border: none;
-  border-radius: 24px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.76);
   cursor: pointer;
 }
@@ -522,7 +556,7 @@ watch(
 }
 
 .slot-time {
-  font: 600 1.12rem/1.4 'Noto Serif SC', serif;
+  font: 600 1rem/1.25 'Noto Serif SC', serif;
   color: #223027;
 }
 
@@ -535,10 +569,10 @@ watch(
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 4.6rem;
-  padding: 0.45rem 0.8rem;
+  min-width: 4rem;
+  padding: 0.36rem 0.65rem;
   border-radius: 999px;
-  font: 600 0.84rem/1 'Manrope', sans-serif;
+  font: 600 0.78rem/1 'Manrope', sans-serif;
 }
 
 .slot-status--free {
@@ -552,19 +586,19 @@ watch(
 }
 
 .issue-textarea {
-  min-height: 10rem;
-  padding: 1rem 1.1rem;
+  min-height: 6.8rem;
+  padding: 0.85rem 0.95rem;
   resize: vertical;
-  font: 500 0.98rem/1.8 'Manrope', sans-serif;
+  font: 500 0.9rem/1.58 'Manrope', sans-serif;
 }
 
 .submit-button {
-  min-height: 3.8rem;
+  min-height: 3.05rem;
   border: none;
   border-radius: 999px;
   background: #2a362e;
   color: #fff;
-  font: 600 1rem/1 'Noto Serif SC', serif;
+  font: 600 0.94rem/1 'Noto Serif SC', serif;
   cursor: pointer;
 }
 
@@ -580,10 +614,10 @@ watch(
 }
 
 .message-banner {
-  margin-bottom: 1.25rem;
-  padding: 1rem 1.15rem;
+  margin-bottom: 0.8rem;
+  padding: 0.75rem 0.95rem;
   border-radius: 18px;
-  font: 500 0.95rem/1.7 'Manrope', sans-serif;
+  font: 500 0.88rem/1.55 'Manrope', sans-serif;
 }
 
 .message-banner--error {
@@ -592,7 +626,7 @@ watch(
 }
 
 .success-panel {
-  padding: 2rem;
+  padding: 1.4rem;
   border-radius: 28px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(246, 244, 240, 0.88));
   backdrop-filter: blur(24px);
@@ -639,6 +673,15 @@ watch(
 }
 
 @media (max-width: 900px) {
+  .appointment-page {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .appointment-shell {
+    height: auto;
+  }
+
   .layout-grid {
     grid-template-columns: 1fr;
   }

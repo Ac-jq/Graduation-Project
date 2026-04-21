@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { buildConsultChatWebSocketUrl, fetchConsultChatMessagesApi, fetchConsultChatSessionApi } from '@/api/chat'
 import type { ConsultChatMessage, ConsultChatSession, ConsultChatSocketPayload } from '@/api/types'
 import { getToken } from '@/core/session'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
+const router = useRouter()
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -50,7 +51,7 @@ const roomAvailabilityText = computed(() => {
     return '正在读取会话状态'
   }
   if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
-    return '聊天室已结束'
+    return '已结束聊天'
   }
   if (chatSession.value.status === 'ARCHIVED') {
     return '聊天室已归档'
@@ -106,6 +107,21 @@ function resolveSenderLabel(senderType: string): string {
   }
 }
 
+function resolveSenderName(message: ConsultChatMessage): string {
+  if (message.senderDisplayName?.trim()) {
+    return message.senderDisplayName.trim()
+  }
+  return resolveSenderLabel(message.senderType)
+}
+
+function resolveSenderInitial(message: ConsultChatMessage): string {
+  return resolveSenderName(message).slice(0, 1) || (message.senderType === 'COUNSELOR' ? '师' : '我')
+}
+
+function goBack(): void {
+  router.back()
+}
+
 function resolveMessageClass(senderType: string): string {
   if (senderType === 'STUDENT') {
     return 'chat-bubble chat-bubble--self'
@@ -156,6 +172,19 @@ function applySocketPayload(payload: ConsultChatSocketPayload): void {
     }
     if (payload.action === 'WAITING_PEER' || payload.action === 'USER_LEFT') {
       peerOnline.value = false
+    }
+    if (payload.action === 'CHAT_CLOSED') {
+      if (payload.session) {
+        chatSession.value = payload.session
+      } else if (chatSession.value) {
+        chatSession.value = {
+          ...chatSession.value,
+          status: 'CLOSED',
+          sealed: true
+        }
+      }
+      peerOnline.value = false
+      composeForm.content = ''
     }
     if (payload.tip) {
       errorMessage.value = ''
@@ -275,9 +304,21 @@ onBeforeUnmount(() => {
 <template>
   <main class="healing-chat-page">
     <div class="healing-chat-shell">
+      <nav class="back-nav">
+        <button class="back-link" type="button" @click="goBack">
+          <span class="arrow">←</span> 返回上一页
+        </button>
+      </nav>
+
       <header class="healing-chat-hero">
         <div class="healing-chat-copy">
-          <p class="healing-chat-eyebrow">学生私密交流空间</p>
+          <p class="healing-chat-eyebrow">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M19.8 4.4c-4.9.3-8.9 2.1-11.2 5.1-1.8 2.4-2.2 5.2-1.3 7.7 2.7.7 5.5.1 7.8-1.8 2.9-2.4 4.5-6.4 4.7-11Z" />
+              <path d="M4.5 19.5c2.3-3.7 5.2-6.3 8.6-7.8" />
+            </svg>
+            学生私密交流空间
+          </p>
           <h1 class="healing-chat-title">把想说的话，轻轻放在这里。</h1>
           <p class="healing-chat-summary">
             这里不是任务面板，也不是冷冰冰的工单窗口。它更像一间被安静留白包裹的谈话室，
@@ -371,9 +412,20 @@ onBeforeUnmount(() => {
                   :key="message.messageId"
                   :class="resolveMessageClass(message.senderType)"
                 >
-                  <div class="chat-bubble__meta">
-                    <span>{{ resolveSenderLabel(message.senderType) }}</span>
-                    <time>{{ formatDate(message.createdAt) }}</time>
+                  <div class="chat-bubble__profile">
+                    <img
+                      v-if="message.senderAvatarUrl"
+                      class="chat-avatar"
+                      :src="message.senderAvatarUrl"
+                      :alt="resolveSenderName(message)"
+                    >
+                    <span v-else class="chat-avatar chat-avatar--placeholder">
+                      {{ resolveSenderInitial(message) }}
+                    </span>
+                    <div class="chat-bubble__meta">
+                      <span>{{ resolveSenderName(message) }}</span>
+                      <time>{{ formatDate(message.createdAt) }}</time>
+                    </div>
                   </div>
                   <p class="chat-bubble__content">{{ message.content }}</p>
                 </article>
@@ -431,21 +483,21 @@ onBeforeUnmount(() => {
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
 .healing-chat-page {
-  --chat-bg: #fcfbfa;
+  --chat-bg: #ffffff;
   --chat-ink: #1e2821;
   --chat-muted: #667268;
-  --chat-soft: rgba(42, 54, 46, 0.08);
-  --chat-panel: linear-gradient(145deg, rgba(255, 255, 255, 0.75), rgba(248, 246, 242, 0.85));
-  --chat-shadow: 0 40px 80px rgba(54, 66, 58, 0.06);
-  --chat-highlight: #34453a;
-  --chat-sage: #91a693;
+  --chat-soft: rgba(42, 54, 46, 0.055);
+  --chat-panel: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 253, 251, 0.9));
+  --chat-shadow: 0 28px 72px rgba(54, 66, 58, 0.055);
+  --chat-highlight: #5f856e;
+  --chat-sage: #b9d8c4;
   --chat-sand: #d8b79d;
   min-height: 100vh;
   padding: clamp(2rem, 4vw, 4rem);
   background:
-    radial-gradient(circle at top left, rgba(145, 166, 147, 0.16), transparent 24%),
-    radial-gradient(circle at 85% 18%, rgba(216, 183, 157, 0.16), transparent 20%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(252, 251, 250, 0.92)),
+    radial-gradient(circle at top left, rgba(185, 216, 196, 0.22), transparent 24%),
+    radial-gradient(circle at 85% 18%, rgba(226, 244, 234, 0.42), transparent 20%),
+    linear-gradient(180deg, #ffffff, #fbfdfc),
     var(--chat-bg);
   color: var(--chat-ink);
   box-sizing: border-box;
@@ -455,7 +507,31 @@ onBeforeUnmount(() => {
   max-width: 1420px;
   margin: 0 auto;
   display: grid;
-  gap: 2rem;
+  gap: 1.65rem;
+}
+
+.back-nav {
+  display: flex;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  color: #5c6b60;
+  padding: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.back-link:hover {
+  color: #1e2821;
+  transform: translateX(-4px);
 }
 
 .healing-chat-hero {
@@ -485,6 +561,18 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
+.healing-chat-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.healing-chat-eyebrow svg {
+  width: 1rem;
+  height: 1rem;
+  fill: #7fa78c;
+}
+
 .healing-chat-title {
   margin: 1rem 0 0;
   color: var(--chat-ink);
@@ -510,7 +598,7 @@ onBeforeUnmount(() => {
   background: var(--chat-panel);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(42, 54, 46, 0.035);
   border-radius: 28px;
   box-shadow: var(--chat-shadow);
 }
@@ -719,7 +807,7 @@ onBeforeUnmount(() => {
 
 .message-viewport::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(52, 69, 58, 0.14);
+  background: rgba(95, 133, 110, 0.18);
 }
 
 .message-stream {
@@ -730,7 +818,7 @@ onBeforeUnmount(() => {
 .chat-bubble {
   max-width: min(82%, 40rem);
   padding: 1.25rem 1.35rem;
-  border-radius: 24px;
+  border-radius: 28px;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -741,14 +829,15 @@ onBeforeUnmount(() => {
 
 .chat-bubble--self {
   margin-left: auto;
-  background: linear-gradient(145deg, rgba(60, 81, 68, 0.92), rgba(84, 108, 92, 0.82));
+  background: linear-gradient(145deg, rgba(91, 126, 105, 0.94), rgba(118, 155, 130, 0.86));
   color: #f8f6f2;
 }
 
 .chat-bubble--peer {
   margin-right: auto;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(246, 241, 235, 0.9));
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 252, 249, 0.96));
   color: var(--chat-ink);
+  box-shadow: inset 0 0 0 1px rgba(95, 133, 110, 0.055);
 }
 
 .chat-bubble--system {
@@ -759,9 +848,33 @@ onBeforeUnmount(() => {
 
 .chat-bubble__meta {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.22rem;
+}
+
+.chat-bubble__profile {
+  display: flex;
   align-items: center;
+  gap: 0.75rem;
+}
+
+.chat-avatar {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 999px;
+  object-fit: cover;
+  flex: 0 0 auto;
+  box-shadow: 0 12px 26px rgba(54, 66, 58, 0.08);
+}
+
+.chat-avatar--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #edf8f1, #ffffff);
+  color: #5f856e;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 700;
 }
 
 .chat-bubble--self .chat-bubble__meta span,

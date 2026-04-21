@@ -124,8 +124,8 @@ onMounted(() => {
 
             <transition name="fade-slide">
               <ul v-show="showDropdown" class="dropdown-menu">
-                <li @click="handleDropdownClick('role')">角色信息</li>
                 <li @click="handleDropdownClick('home')">首页</li>
+                <li @click="handleDropdownClick('role')">角色信息</li>
                 <li @click="handleDropdownClick('security')">账户安全</li>
                 <li class="logout" @click="handleDropdownClick('logout')">退出登录</li>
               </ul>

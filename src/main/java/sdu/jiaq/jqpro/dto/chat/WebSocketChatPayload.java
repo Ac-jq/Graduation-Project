@@ -16,6 +16,8 @@ public class WebSocketChatPayload {
 
     private ConsultChatMessageResponse message;
 
+    private ConsultChatSessionResponse session;
+
     private String tip;
 
     private Integer onlineCount;

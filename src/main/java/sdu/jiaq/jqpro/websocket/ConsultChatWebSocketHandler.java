@@ -8,6 +8,7 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 import sdu.jiaq.jqpro.dto.chat.ConsultChatMessageResponse;
+import sdu.jiaq.jqpro.dto.chat.ConsultChatSessionResponse;
 import sdu.jiaq.jqpro.dto.chat.WebSocketChatPayload;
 import sdu.jiaq.jqpro.service.ConsultChatService;
 
@@ -114,6 +115,16 @@ public class ConsultChatWebSocketHandler extends TextWebSocketHandler {
                 .action("USER_LEFT")
                 .tip("对方暂时离开了聊天室")
                 .onlineCount(onlineCount)
+                .build());
+    }
+
+    public void broadcastChatClosed(Long appointmentId, ConsultChatSessionResponse session) throws IOException {
+        broadcast(appointmentId, WebSocketChatPayload.builder()
+                .type("SYSTEM")
+                .action("CHAT_CLOSED")
+                .tip("咨询师已结束本次聊天")
+                .session(session)
+                .onlineCount(countOpenSessions(appointmentSessions.get(appointmentId)))
                 .build());
     }
 

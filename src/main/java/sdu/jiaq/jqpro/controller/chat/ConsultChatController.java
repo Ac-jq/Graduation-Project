@@ -9,6 +9,7 @@ import sdu.jiaq.jqpro.common.result.Result;
 import sdu.jiaq.jqpro.dto.chat.ConsultChatMessageResponse;
 import sdu.jiaq.jqpro.dto.chat.ConsultChatSessionResponse;
 import sdu.jiaq.jqpro.service.ConsultChatService;
+import sdu.jiaq.jqpro.websocket.ConsultChatWebSocketHandler;
 
 import java.util.List;
 
@@ -20,9 +21,12 @@ import java.util.List;
 public class ConsultChatController {
 
     private final ConsultChatService consultChatService;
+    private final ConsultChatWebSocketHandler consultChatWebSocketHandler;
 
-    public ConsultChatController(ConsultChatService consultChatService) {
+    public ConsultChatController(ConsultChatService consultChatService,
+                                 ConsultChatWebSocketHandler consultChatWebSocketHandler) {
         this.consultChatService = consultChatService;
+        this.consultChatWebSocketHandler = consultChatWebSocketHandler;
     }
 
     @GetMapping("/session")
@@ -37,6 +41,12 @@ public class ConsultChatController {
 
     @PostMapping("/close")
     public Result<ConsultChatSessionResponse> closeChat(@PathVariable("appointmentId") Long appointmentId) {
-        return Result.success(consultChatService.closeAppointmentChat(appointmentId));
+        ConsultChatSessionResponse session = consultChatService.closeAppointmentChat(appointmentId);
+        try {
+            consultChatWebSocketHandler.broadcastChatClosed(appointmentId, session);
+        } catch (Exception exception) {
+            // 数据库状态已经完成更新，广播失败不应影响关闭接口的业务结果。
+        }
+        return Result.success(session);
     }
 }

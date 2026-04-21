@@ -15,11 +15,13 @@ import sdu.jiaq.jqpro.entity.ConsultAppointment;
 import sdu.jiaq.jqpro.entity.ConsultAppointmentSlot;
 import sdu.jiaq.jqpro.entity.ConsultChatMessage;
 import sdu.jiaq.jqpro.entity.ConsultChatSession;
+import sdu.jiaq.jqpro.entity.StudentProfile;
 import sdu.jiaq.jqpro.entity.SysUser;
 import sdu.jiaq.jqpro.mapper.ConsultAppointmentMapper;
 import sdu.jiaq.jqpro.mapper.ConsultAppointmentSlotMapper;
 import sdu.jiaq.jqpro.mapper.ConsultChatMessageMapper;
 import sdu.jiaq.jqpro.mapper.ConsultChatSessionMapper;
+import sdu.jiaq.jqpro.mapper.StudentProfileMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.ConsultChatService;
 
@@ -36,17 +38,20 @@ public class ConsultChatServiceImpl implements ConsultChatService {
     private final ConsultAppointmentSlotMapper consultAppointmentSlotMapper;
     private final ConsultChatSessionMapper consultChatSessionMapper;
     private final ConsultChatMessageMapper consultChatMessageMapper;
+    private final StudentProfileMapper studentProfileMapper;
     private final SysUserMapper sysUserMapper;
 
     public ConsultChatServiceImpl(ConsultAppointmentMapper consultAppointmentMapper,
                                   ConsultAppointmentSlotMapper consultAppointmentSlotMapper,
                                   ConsultChatSessionMapper consultChatSessionMapper,
                                   ConsultChatMessageMapper consultChatMessageMapper,
+                                  StudentProfileMapper studentProfileMapper,
                                   SysUserMapper sysUserMapper) {
         this.consultAppointmentMapper = consultAppointmentMapper;
         this.consultAppointmentSlotMapper = consultAppointmentSlotMapper;
         this.consultChatSessionMapper = consultChatSessionMapper;
         this.consultChatMessageMapper = consultChatMessageMapper;
+        this.studentProfileMapper = studentProfileMapper;
         this.sysUserMapper = sysUserMapper;
     }
 
@@ -182,14 +187,36 @@ public class ConsultChatServiceImpl implements ConsultChatService {
     }
 
     private ConsultChatMessageResponse buildMessageResponse(ConsultChatMessage message) {
+        SysUser sender = sysUserMapper.selectById(message.getSenderUserId());
+        StudentProfile profile = null;
+        if (sender != null && RoleConstants.STUDENT.equals(sender.getRoleCode())) {
+            profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+                    .eq(StudentProfile::getUserId, sender.getId())
+                    .last("limit 1"));
+        }
         return ConsultChatMessageResponse.builder()
                 .messageId(message.getId())
                 .chatSessionId(message.getChatSessionId())
                 .senderUserId(message.getSenderUserId())
                 .senderType(message.getSenderType())
+                .senderDisplayName(resolveSenderDisplayName(sender))
+                .senderAvatarUrl(profile == null ? null : profile.getAvatarUrl())
                 .content(ChatCryptoUtil.decrypt(message.getContentCipherText()))
                 .createdAt(message.getCreatedAt())
                 .build();
+    }
+
+    private String resolveSenderDisplayName(SysUser sender) {
+        if (sender == null) {
+            return "未知用户";
+        }
+        if (sender.getDisplayName() != null && !sender.getDisplayName().isBlank()) {
+            return sender.getDisplayName();
+        }
+        if (sender.getRealName() != null && !sender.getRealName().isBlank()) {
+            return sender.getRealName();
+        }
+        return sender.getAccount();
     }
 
     private SysUser getRequiredUser(Long userId) {

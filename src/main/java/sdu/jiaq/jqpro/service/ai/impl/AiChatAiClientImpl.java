@@ -12,8 +12,6 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
-import sdu.jiaq.jqpro.common.enums.ResultCode;
-import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.config.ai.AiChatAiProperties;
 import sdu.jiaq.jqpro.service.ai.AiChatAiClient;
 import sdu.jiaq.jqpro.service.ai.AiChatAiRequest;
@@ -24,11 +22,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * OpenAI-compatible client for student AI mentor chat.
+ * 学生 AI 导师客户端。
+ * 本地演示优先保证页面闭环：远端错误会转成一条 AI 回复，而不是抛出 400 中断聊天。
  */
 @Slf4j
 @Service
 public class AiChatAiClientImpl implements AiChatAiClient {
+
+    private static final String DEFAULT_MODEL = "deepseek-chat";
+    private static final String DEFAULT_BASE_URL = "https://api.deepseek.com";
+    private static final String DEFAULT_PATH = "/v1/chat/completions";
 
     private final AiChatAiProperties properties;
 
@@ -38,8 +41,15 @@ public class AiChatAiClientImpl implements AiChatAiClient {
 
     @Override
     public String generateReply(AiChatAiRequest request) {
+        String apiKey = defaultText(properties.getApiKey(), "").trim();
+        if (!StringUtils.hasText(apiKey)) {
+            log.warn("Student AI mentor API key is empty. Return demo-visible configuration message.");
+            return "AI 导师接口还没有读取到 DeepSeek API Key。请确认后端启动脚本已经加载 .local/deepseek.env.ps1，"
+                    + "或在当前终端设置 JQPRO_AI_CHAT_API_KEY / JQPRO_AI_INTERPRETATION_API_KEY 后重启后端。";
+        }
+
         ChatCompletionRequest completionRequest = new ChatCompletionRequest(
-                defaultText(properties.getModel(), "deepseek-chat"),
+                defaultText(properties.getModel(), DEFAULT_MODEL),
                 buildMessages(request),
                 properties.getTemperature(),
                 properties.getMaxTokens()
@@ -49,7 +59,7 @@ public class AiChatAiClientImpl implements AiChatAiClient {
             JsonNode responseBody = buildRestClient().post()
                     .uri(buildRequestUri())
                     .contentType(MediaType.APPLICATION_JSON)
-                    .header(defaultText(properties.getAuthHeaderName(), "Authorization"), buildAuthorizationValue())
+                    .header(defaultText(properties.getAuthHeaderName(), "Authorization"), buildAuthorizationValue(apiKey))
                     .body(completionRequest)
                     .retrieve()
                     .body(JsonNode.class);
@@ -57,24 +67,22 @@ public class AiChatAiClientImpl implements AiChatAiClient {
         } catch (RestClientResponseException exception) {
             String message = extractRemoteErrorMessage(exception.getResponseBodyAsString());
             log.warn("Student AI mentor remote error: status={}, message={}", exception.getStatusCode(), message);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, message);
+            return buildRemoteErrorReply(message);
         } catch (ResourceAccessException exception) {
-            log.error("Student AI mentor request timed out", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 导师请求超时，请稍后重试");
+            log.warn("Student AI mentor request timed out", exception);
+            return "AI 导师请求 DeepSeek 超时。当前聊天记录已保存，请稍后再试，或检查本机网络到 api.deepseek.com 的连通性。";
         } catch (RestClientException exception) {
-            log.error("Student AI mentor API invocation failed", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 导师调用失败：" + defaultText(exception.getMessage(), "未知错误"));
-        } catch (BusinessException exception) {
-            throw exception;
+            log.warn("Student AI mentor API invocation failed", exception);
+            return "AI 导师调用 DeepSeek 失败：" + defaultText(exception.getMessage(), "未知网络错误");
         } catch (Exception exception) {
-            log.error("Student AI mentor response parsing failed", exception);
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 导师返回内容无法解析：" + defaultText(exception.getMessage(), "未知错误"));
+            log.warn("Student AI mentor response parsing failed", exception);
+            return "AI 导师返回内容解析失败：" + defaultText(exception.getMessage(), "未知解析错误");
         }
     }
 
     private List<ChatMessage> buildMessages(AiChatAiRequest request) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(new ChatMessage("system", defaultText(properties.getSystemPrompt(), "你是一位高校心理支持 AI 导师。")));
+        messages.add(new ChatMessage("system", resolveSystemPrompt()));
         messages.add(new ChatMessage("user", buildContextPrompt(request)));
         return messages;
     }
@@ -82,7 +90,7 @@ public class AiChatAiClientImpl implements AiChatAiClient {
     private String buildContextPrompt(AiChatAiRequest request) {
         StringBuilder builder = new StringBuilder();
         builder.append("会话标题：").append(safeText(request.sessionTitle())).append('\n');
-        builder.append("风险等级：").append(safeText(request.riskLevel())).append('\n');
+        builder.append("当前风险等级：").append(safeText(request.riskLevel())).append('\n');
         builder.append("是否命中高风险关键词：").append(request.riskFlag() ? "是" : "否").append('\n');
         builder.append("最近对话：\n");
         if (request.historyMessages() == null || request.historyMessages().isEmpty()) {
@@ -93,7 +101,7 @@ public class AiChatAiClientImpl implements AiChatAiClient {
             }
         }
         builder.append("学生刚刚发送：").append(safeText(request.latestStudentMessage())).append('\n');
-        builder.append("请直接以 AI 导师口吻自然回应。");
+        builder.append("请直接以 AI 导师口吻自然回应，重点结合学生最新表达，不要输出系统配置说明。");
         return builder.toString();
     }
 
@@ -106,14 +114,14 @@ public class AiChatAiClientImpl implements AiChatAiClient {
     }
 
     private URI buildRequestUri() {
-        return UriComponentsBuilder.fromUriString(defaultText(properties.getBaseUrl(), "https://api.deepseek.com").trim())
-                .path(normalizePath(defaultText(properties.getPath(), "/v1/chat/completions")))
+        return UriComponentsBuilder.fromUriString(defaultText(properties.getBaseUrl(), DEFAULT_BASE_URL).trim())
+                .path(normalizePath(defaultText(properties.getPath(), DEFAULT_PATH)))
                 .build(true)
                 .toUri();
     }
 
-    private String buildAuthorizationValue() {
-        return defaultText(properties.getAuthPrefix(), "Bearer ") + defaultText(properties.getApiKey(), "").trim();
+    private String buildAuthorizationValue(String apiKey) {
+        return defaultText(properties.getAuthPrefix(), "Bearer ") + apiKey;
     }
 
     private int resolveTimeoutSeconds() {
@@ -123,18 +131,18 @@ public class AiChatAiClientImpl implements AiChatAiClient {
 
     private String extractContent(JsonNode responseBody) {
         if (responseBody == null || responseBody.isNull()) {
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 导师返回空响应");
+            return "AI 导师返回了空响应。请稍后再试。";
         }
         JsonNode contentNode = responseBody.at("/choices/0/message/content");
         String content = extractTextContent(contentNode);
-        if (!StringUtils.hasText(content)) {
-            JsonNode errorMessageNode = responseBody.at("/error/message");
-            if (errorMessageNode.isTextual() && StringUtils.hasText(errorMessageNode.asText())) {
-                throw new BusinessException(ResultCode.BUSINESS_ERROR, errorMessageNode.asText().trim());
-            }
-            throw new BusinessException(ResultCode.BUSINESS_ERROR, "AI 导师返回空内容");
+        if (StringUtils.hasText(content)) {
+            return content.trim();
         }
-        return content.trim();
+        JsonNode errorMessageNode = responseBody.at("/error/message");
+        if (errorMessageNode.isTextual() && StringUtils.hasText(errorMessageNode.asText())) {
+            return buildRemoteErrorReply(errorMessageNode.asText().trim());
+        }
+        return "AI 导师没有返回有效内容。请稍后再试。";
     }
 
     private String extractTextContent(JsonNode contentNode) {
@@ -162,7 +170,7 @@ public class AiChatAiClientImpl implements AiChatAiClient {
 
     private String extractRemoteErrorMessage(String responseBody) {
         if (!StringUtils.hasText(responseBody)) {
-            return "AI 导师服务返回错误";
+            return "远端没有返回错误详情";
         }
         try {
             JsonNode body = JacksonHolder.MAPPER.readTree(responseBody);
@@ -177,6 +185,40 @@ public class AiChatAiClientImpl implements AiChatAiClient {
         } catch (Exception ignored) {
         }
         return responseBody.trim();
+    }
+
+    private String buildRemoteErrorReply(String remoteMessage) {
+        String normalized = defaultText(remoteMessage, "未知远端错误");
+        String lower = normalized.toLowerCase();
+        if (lower.contains("insufficient") || normalized.contains("余额") || normalized.contains("quota")) {
+            return "DeepSeek 接口返回余额或额度不足：" + normalized + "。当前学生消息已保存，请充值或更换可用 API Key 后再继续测试。";
+        }
+        if (lower.contains("auth") || lower.contains("unauthorized") || lower.contains("invalid api key")
+                || normalized.contains("认证") || normalized.contains("鉴权")) {
+            return "DeepSeek 接口鉴权失败：" + normalized + "。请检查本地 API Key 是否正确加载。";
+        }
+        return "DeepSeek 接口返回错误：" + normalized;
+    }
+
+    private String defaultSystemPrompt() {
+        return """
+                你是高校心理自助服务平台中的 AI 导师。
+                请用简体中文回应学生，语气自然、具体、温和，优先结合学生最新输入和最近几轮上下文。
+                不要输出 Markdown 标题，不要只说模板化安慰。
+                如果学生提到自伤、自杀、无法保证安全，请明确建议立刻联系老师、家人或当地紧急支持。
+                """;
+    }
+
+    private String resolveSystemPrompt() {
+        String configuredPrompt = properties.getSystemPrompt();
+        if (!StringUtils.hasText(configuredPrompt) || looksLikeMojibake(configuredPrompt)) {
+            return defaultSystemPrompt();
+        }
+        return configuredPrompt;
+    }
+
+    private boolean looksLikeMojibake(String value) {
+        return value.contains("浣犳槸") || value.contains("鐢ㄧ畝") || value.contains("瀵煎笀");
     }
 
     private String safeText(String value) {

@@ -6,8 +6,20 @@ import { fetchStudentAiSessionMessagesApi, fetchStudentAiSessionsApi, sendStuden
 import type { AiChatMessage, AiChatSession } from '@/api/types'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
+interface AiPersonaConfig {
+  name: string
+  avatar: string
+}
+
 const route = useRoute()
 const router = useRouter()
+
+const PERSONA_STORAGE_KEY = 'jqpro.student.ai-persona'
+const DEFAULT_PERSONA: AiPersonaConfig = {
+  name: '青禾导师',
+  avatar: '🌿'
+}
+const avatarOptions = ['🌿', '🕯️', '☁️', '🍃', '🌙', '🫧']
 
 const loading = ref(false)
 const sending = ref(false)
@@ -16,9 +28,13 @@ const messages = ref<AiChatMessage[]>([])
 const sessions = ref<AiChatSession[]>([])
 const draft = ref('')
 const messageViewport = ref<HTMLElement | null>(null)
+const personaDialogVisible = ref(false)
+const aiPersona = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
+const personaForm = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
 
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
 const activeSession = computed(() => sessions.value.find((item) => item.sessionId === sessionId.value) ?? null)
+const aiPersonaInitial = computed(() => aiPersona.value.name.trim().slice(0, 1) || '青')
 
 function resolveSessionStatusText(status: string | null | undefined): string {
   switch (status) {
@@ -33,6 +49,42 @@ function formatDateTime(value: string | null | undefined): string {
   if (!value) return '暂无'
   const d = new Date(value)
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function loadAiPersona(): void {
+  const rawConfig = localStorage.getItem(PERSONA_STORAGE_KEY)
+  if (!rawConfig) return
+
+  try {
+    const parsedConfig = JSON.parse(rawConfig) as Partial<AiPersonaConfig>
+    aiPersona.value = {
+      name: parsedConfig.name?.trim() || DEFAULT_PERSONA.name,
+      avatar: parsedConfig.avatar || DEFAULT_PERSONA.avatar
+    }
+  } catch {
+    localStorage.removeItem(PERSONA_STORAGE_KEY)
+  }
+}
+
+function openPersonaDialog(): void {
+  personaForm.value = { ...aiPersona.value }
+  personaDialogVisible.value = true
+}
+
+function savePersonaConfig(): void {
+  const name = personaForm.value.name.trim()
+  if (!name) {
+    ElMessage.warning('请给 AI 导师起一个名字')
+    return
+  }
+
+  aiPersona.value = {
+    name: name.slice(0, 12),
+    avatar: personaForm.value.avatar || DEFAULT_PERSONA.avatar
+  }
+  localStorage.setItem(PERSONA_STORAGE_KEY, JSON.stringify(aiPersona.value))
+  personaDialogVisible.value = false
+  ElMessage.success('AI 形象已更新')
 }
 
 async function scrollToBottom(smooth = true): Promise<void> {
@@ -125,6 +177,7 @@ watch(messages, async () => {
 })
 
 onMounted(() => {
+  loadAiPersona()
   void loadSession()
 })
 </script>
@@ -184,8 +237,16 @@ onMounted(() => {
       <section class="editorial-chat-area">
 
         <div class="connection-status">
-          <div class="status-indicator"></div>
-          <span class="status-text">DeepSeek 认知模型已接入并准备倾听</span>
+          <div class="status-copy">
+            <div class="status-indicator"></div>
+            <span class="status-text">你的专属导师在线</span>
+          </div>
+          <button class="persona-edit-btn" type="button" aria-label="设置 AI 导师形象" @click="openPersonaDialog">
+            <span>{{ aiPersona.avatar }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15.7 5.3 18.7 8.3 8.6 18.4 5 19l.6-3.6L15.7 5.3Zm1.4-1.4a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5l-.5.5-3-3 .5-.5Z" />
+            </svg>
+          </button>
         </div>
 
         <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
@@ -209,7 +270,10 @@ onMounted(() => {
                 :class="message.senderType === 'STUDENT' ? 'is-student' : 'is-ai'"
             >
               <div class="row-actor">
-                <span class="actor-name">{{ message.senderType === 'STUDENT' ? 'YOU' : 'AI MENTOR' }}</span>
+                <span class="actor-avatar" :class="message.senderType === 'STUDENT' ? 'is-you' : 'is-mentor'">
+                  {{ message.senderType === 'STUDENT' ? '你' : aiPersona.avatar }}
+                </span>
+                <span class="actor-name">{{ message.senderType === 'STUDENT' ? '我' : aiPersona.name }}</span>
                 <span class="actor-time">{{ formatDateTime(message.createdAt) }}</span>
               </div>
 
@@ -244,29 +308,76 @@ onMounted(() => {
       </section>
 
     </div>
+
+    <el-dialog
+      v-model="personaDialogVisible"
+      title="设置你的 AI 导师"
+      width="480px"
+      destroy-on-close
+      class="persona-dialog"
+    >
+      <div class="persona-dialog-body">
+        <div class="persona-preview">
+          <div class="preview-avatar">{{ personaForm.avatar || aiPersonaInitial }}</div>
+          <div>
+            <p class="preview-kicker">你的倾听伙伴</p>
+            <h2>{{ personaForm.name || DEFAULT_PERSONA.name }}</h2>
+          </div>
+        </div>
+
+        <label class="persona-field">
+          <span>AI 的名字</span>
+          <input v-model="personaForm.name" maxlength="12" type="text" placeholder="例如：青禾导师">
+        </label>
+
+        <div class="persona-field">
+          <span>选择头像</span>
+          <div class="avatar-picker">
+            <button
+              v-for="avatar in avatarOptions"
+              :key="avatar"
+              class="avatar-option"
+              :class="{ 'is-selected': personaForm.avatar === avatar }"
+              type="button"
+              @click="personaForm.avatar = avatar"
+            >
+              {{ avatar }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="persona-dialog-footer">
+          <button class="dialog-btn" type="button" @click="personaDialogVisible = false">取消</button>
+          <button class="dialog-btn dialog-btn--primary" type="button" @click="savePersonaConfig">保存</button>
+        </div>
+      </template>
+    </el-dialog>
   </main>
 </template>
 
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 全局极简纸张底色 */
+/* 全局亮白日记底色 */
 .split-editorial-page {
   min-height: 100vh;
-  background: #fcfbf9;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(229, 244, 236, 0.5), transparent 28rem),
+    linear-gradient(180deg, #ffffff 0%, #fbfcfc 100%);
   color: #1e2821;
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
-  padding: 4rem 2vw 4rem;
+  padding: 3.5rem clamp(1.2rem, 3vw, 3rem);
   box-sizing: border-box;
 }
 
 .page-container {
-  max-width: 1200px;
+  max-width: 1240px;
   margin: 0 auto;
   display: grid;
-  /* 严格的左右对半分栏，左侧稍微收紧，右半部分留给聊天 */
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: 6rem;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: clamp(3rem, 6vw, 6.5rem);
   align-items: start;
 }
 
@@ -277,10 +388,10 @@ onMounted(() => {
 
 .sidebar-sticky {
   position: sticky;
-  top: 4rem;
+  top: 3.5rem;
   display: flex;
   flex-direction: column;
-  gap: 3rem;
+  gap: 2.6rem;
 }
 
 .dossier-nav {
@@ -299,11 +410,12 @@ onMounted(() => {
   align-items: center;
   gap: 0.5rem;
   padding: 0;
-  transition: color 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ghost-link:hover {
   color: #1e2821;
+  transform: translateX(-3px);
 }
 
 .side-header {
@@ -324,11 +436,11 @@ onMounted(() => {
 /* 缩小的标题尺寸，克制且专业 */
 .side-title {
   font-family: 'Noto Serif SC', serif;
-  font-size: 2.2rem;
+  font-size: clamp(2rem, 3vw, 2.65rem);
   font-weight: 600;
   color: #1e2821;
   margin: 0;
-  line-height: 1.25;
+  line-height: 1.18;
   letter-spacing: 0.02em;
 }
 
@@ -341,8 +453,8 @@ onMounted(() => {
 
 .thick-accent-line {
   width: 100%;
-  height: 4px;
-  background: #2a362e;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(42, 54, 46, 0.18), transparent);
 }
 
 .tips-title {
@@ -355,10 +467,10 @@ onMounted(() => {
 
 .tips-list {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: 1rem;
   color: #5c6b60;
   font-size: 0.95rem;
-  line-height: 1.8;
+  line-height: 1.9;
 }
 
 .tips-list li {
@@ -371,7 +483,7 @@ onMounted(() => {
   gap: 1.5rem 1rem;
   margin: 0;
   padding-top: 1.5rem;
-  border-top: 1px solid rgba(42, 54, 46, 0.1);
+  border-top: 1px solid rgba(42, 54, 46, 0.06);
 }
 
 .meta-grid dt {
@@ -396,21 +508,32 @@ onMounted(() => {
 .editorial-chat-area {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 8rem); /* 让右侧区域适应屏幕高度 */
+  height: calc(100vh - 7rem);
+  min-height: 660px;
+  padding: clamp(1.2rem, 2vw, 1.8rem);
+  border-radius: 34px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 30px 80px rgba(35, 48, 39, 0.06),
+    inset 0 0 0 1px rgba(42, 54, 46, 0.035);
+  backdrop-filter: blur(18px);
 }
 
 /* 呼吸灯状态 */
 .connection-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+  padding: 0.2rem 0.1rem 0.8rem;
+  flex-shrink: 0;
+}
+
+.status-copy {
   display: inline-flex;
   align-items: center;
-  gap: 0.8rem;
-  margin-bottom: 2rem;
-  padding: 0.6rem 1.2rem;
-  border-radius: 100px;
-  background: rgba(255, 255, 255, 0.6);
-  border: 1px solid rgba(42, 54, 46, 0.08);
-  align-self: flex-start;
-  flex-shrink: 0;
+  gap: 0.75rem;
 }
 
 .status-indicator {
@@ -429,25 +552,55 @@ onMounted(() => {
 
 .status-text {
   font-family: 'Noto Serif SC', serif;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   font-weight: 600;
   color: #5c6b60;
+}
+
+.persona-edit-btn {
+  border: none;
+  background: rgba(247, 249, 248, 0.9);
+  color: #2a362e;
+  min-width: 3rem;
+  height: 2.55rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.055);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.persona-edit-btn svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentColor;
+  opacity: 0.62;
+}
+
+.persona-edit-btn:hover {
+  transform: translateY(-2px);
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(42, 54, 46, 0.08);
 }
 
 /* 无框聊天流 */
 .transcript-wrapper {
   flex: 1;
   overflow-y: auto;
-  padding-right: 1.5rem;
-  margin-bottom: 2rem;
-  border-bottom: 1px solid rgba(42, 54, 46, 0.1);
+  padding: 0.8rem 1rem 0.8rem 0.25rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.055);
 }
 
 .transcript-wrapper::-webkit-scrollbar {
   width: 4px;
 }
 .transcript-wrapper::-webkit-scrollbar-thumb {
-  background: rgba(42, 54, 46, 0.15);
+  background: rgba(42, 54, 46, 0.12);
   border-radius: 4px;
 }
 
@@ -458,10 +611,10 @@ onMounted(() => {
 
 .transcript-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 2rem;
-  padding: 2rem 0;
-  border-bottom: 1px dashed rgba(42, 54, 46, 0.06);
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 1.8rem;
+  padding: 1.7rem 0;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.045);
   align-items: start;
 }
 
@@ -473,17 +626,41 @@ onMounted(() => {
 .row-actor {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.45rem;
   text-align: right;
-  padding-top: 0.4rem;
+  align-items: flex-end;
+  padding-top: 0.2rem;
+}
+
+.actor-avatar {
+  width: 2.45rem;
+  height: 2.45rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #2a362e;
+  box-shadow: 0 12px 28px rgba(42, 54, 46, 0.07);
+}
+
+.actor-avatar.is-mentor {
+  background: linear-gradient(145deg, #f7fbf8, #eef6f1);
+}
+
+.actor-avatar.is-you {
+  background: linear-gradient(145deg, #fff9f3, #f7efe5);
+  color: #8c6a5c;
 }
 
 .actor-name {
   font-family: 'Manrope', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
-  color: #5c7062; /* AI导师的颜色 */
+  letter-spacing: 0.08em;
+  color: #5c7062;
 }
 
 .is-student .actor-name {
@@ -492,8 +669,8 @@ onMounted(() => {
 
 .actor-time {
   font-family: 'Manrope', sans-serif;
-  font-size: 0.8rem;
-  color: #b5c2b9;
+  font-size: 0.76rem;
+  color: #aebbb2;
 }
 
 /* 消息正文 */
@@ -504,8 +681,8 @@ onMounted(() => {
 
 .message-content {
   font-family: 'Noto Serif SC', serif;
-  font-size: 1.1rem;
-  line-height: 1.9;
+  font-size: 1.08rem;
+  line-height: 1.95;
   color: #1e2821;
   margin: 0;
   white-space: pre-wrap;
@@ -521,6 +698,12 @@ onMounted(() => {
   flex-direction: column;
   gap: 1rem;
   flex-shrink: 0;
+  padding: 1.15rem 1.25rem;
+  border-radius: 26px;
+  background: #ffffff;
+  box-shadow:
+    0 18px 50px rgba(42, 54, 46, 0.07),
+    inset 0 0 0 1px rgba(42, 54, 46, 0.045);
 }
 
 .composer-label {
@@ -533,16 +716,17 @@ onMounted(() => {
 .sleek-textarea {
   width: 100%;
   border: none;
-  border-bottom: 1px dashed rgba(42, 54, 46, 0.2);
-  background: transparent;
-  padding: 0.5rem 0;
+  background: #fbfcfc;
+  padding: 1rem 1.05rem;
+  border-radius: 18px;
   font-family: 'Noto Serif SC', serif;
   font-size: 1.1rem;
   line-height: 1.8;
   color: #1e2821;
   resize: none;
   outline: none;
-  transition: border-color 0.3s ease;
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.045);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sleek-textarea::placeholder {
@@ -551,8 +735,10 @@ onMounted(() => {
 }
 
 .sleek-textarea:focus {
-  border-bottom-color: #2a362e;
-  border-bottom-style: solid;
+  background: #ffffff;
+  box-shadow:
+    0 16px 40px rgba(42, 54, 46, 0.06),
+    inset 0 0 0 1px rgba(92, 107, 96, 0.18);
 }
 
 .composer-footer {
@@ -570,9 +756,9 @@ onMounted(() => {
 }
 
 .action-btn {
-  background: transparent;
-  border: 1px solid rgba(42, 54, 46, 0.3);
-  color: #2a362e;
+  background: #2a362e;
+  border: none;
+  color: #ffffff;
   padding: 0.8rem 1.8rem;
   border-radius: 100px;
   font-family: 'Noto Serif SC', serif;
@@ -582,14 +768,14 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
-  transition: all 0.3s ease;
+  box-shadow: 0 12px 30px rgba(42, 54, 46, 0.16);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #2a362e;
+  transform: translateY(-2px);
   color: #ffffff;
-  border-color: #2a362e;
-  box-shadow: 0 8px 16px rgba(42, 54, 46, 0.15);
+  box-shadow: 0 18px 42px rgba(42, 54, 46, 0.2);
 }
 
 .action-btn:disabled {
@@ -599,10 +785,10 @@ onMounted(() => {
 
 /* 状态提示 */
 .error-banner {
-  background: rgba(140, 74, 74, 0.08);
+  background: rgba(140, 74, 74, 0.06);
   color: #8c4a4a;
   padding: 1.5rem;
-  border-radius: 12px;
+  border-radius: 18px;
   text-align: center;
   font-family: 'Noto Serif SC', serif;
   margin-bottom: 2rem;
@@ -637,7 +823,7 @@ onMounted(() => {
 /* 交互动画 */
 .arrow {
   font-family: 'Manrope', sans-serif;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .ghost-link:hover .arrow {
@@ -646,6 +832,174 @@ onMounted(() => {
 
 .action-btn:hover:not(:disabled) .arrow {
   transform: translateX(4px);
+}
+
+/* AI 形象设置弹窗 */
+:deep(.persona-dialog .el-dialog) {
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 36px 90px rgba(42, 54, 46, 0.14);
+  overflow: hidden;
+}
+
+:deep(.persona-dialog .el-dialog__header) {
+  padding: 1.5rem 1.6rem 0.6rem;
+  margin: 0;
+}
+
+:deep(.persona-dialog .el-dialog__title) {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e2821;
+}
+
+:deep(.persona-dialog .el-dialog__body) {
+  padding: 1rem 1.6rem 1.4rem;
+}
+
+:deep(.persona-dialog .el-dialog__footer) {
+  padding: 0 1.6rem 1.5rem;
+}
+
+.persona-dialog-body {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.persona-preview {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(226, 242, 235, 0.95), transparent 8rem),
+    linear-gradient(135deg, #ffffff, #f8faf8);
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.04);
+}
+
+.preview-avatar {
+  width: 3.8rem;
+  height: 3.8rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(42, 54, 46, 0.08);
+  font-size: 1.8rem;
+}
+
+.preview-kicker {
+  margin: 0 0 0.3rem;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: #8a9c90;
+  text-transform: uppercase;
+}
+
+.persona-preview h2 {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.45rem;
+  color: #1e2821;
+}
+
+.persona-field {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.persona-field span {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #5c6b60;
+}
+
+.persona-field input {
+  width: 100%;
+  border: none;
+  border-radius: 18px;
+  background: #fbfcfc;
+  color: #1e2821;
+  padding: 0.9rem 1rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.06);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.persona-field input:focus {
+  background: #ffffff;
+  box-shadow:
+    0 14px 34px rgba(42, 54, 46, 0.06),
+    inset 0 0 0 1px rgba(92, 107, 96, 0.18);
+}
+
+.avatar-picker {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.65rem;
+}
+
+.avatar-option {
+  border: none;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 18px;
+  background: #f8faf9;
+  font-size: 1.35rem;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.045);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.avatar-option:hover {
+  transform: translateY(-3px);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(42, 54, 46, 0.08);
+}
+
+.avatar-option.is-selected {
+  background: #eef7f1;
+  box-shadow:
+    0 12px 30px rgba(92, 140, 107, 0.12),
+    inset 0 0 0 1px rgba(92, 140, 107, 0.18);
+}
+
+.persona-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.8rem;
+}
+
+.dialog-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.35rem;
+  background: #f5f7f6;
+  color: #5c6b60;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dialog-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(42, 54, 46, 0.08);
+}
+
+.dialog-btn--primary {
+  background: #2a362e;
+  color: #ffffff;
+  box-shadow: 0 14px 30px rgba(42, 54, 46, 0.16);
 }
 
 /* 响应式 */
@@ -662,14 +1016,23 @@ onMounted(() => {
   }
 
   .editorial-chat-area {
-    height: 70vh; /* 移动端给予一定的独立滚动区域 */
+    height: 72vh;
+    min-height: 560px;
   }
 }
 
 @media (max-width: 600px) {
+  .split-editorial-page {
+    padding: 2rem 1rem;
+  }
+
+  .connection-status {
+    align-items: flex-start;
+  }
+
   .transcript-row {
     grid-template-columns: 1fr;
-    gap: 0.5rem;
+    gap: 0.8rem;
     padding: 1.5rem 0;
   }
 
@@ -682,6 +1045,11 @@ onMounted(() => {
     padding: 0;
   }
 
+  .actor-avatar {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
   .composer-footer {
     flex-direction: column;
     align-items: flex-start;
@@ -691,6 +1059,10 @@ onMounted(() => {
   .action-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .avatar-picker {
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 </style>

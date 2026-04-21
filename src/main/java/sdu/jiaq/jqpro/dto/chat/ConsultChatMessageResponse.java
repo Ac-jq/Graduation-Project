@@ -20,6 +20,10 @@ public class ConsultChatMessageResponse {
 
     private String senderType;
 
+    private String senderDisplayName;
+
+    private String senderAvatarUrl;
+
     private String content;
 
     private LocalDateTime createdAt;

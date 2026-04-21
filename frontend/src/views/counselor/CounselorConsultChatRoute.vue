@@ -66,6 +66,17 @@ function formatTime(value: string | Date): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function resolveSenderName(message: ConsultChatMessage): string {
+  if (message.senderDisplayName?.trim()) {
+    return message.senderDisplayName.trim()
+  }
+  return message.senderType === 'COUNSELOR' ? '我' : '来访学生'
+}
+
+function resolveSenderInitial(message: ConsultChatMessage): string {
+  return resolveSenderName(message).slice(0, 1) || (message.senderType === 'COUNSELOR' ? '我' : '生')
+}
+
 async function scrollToBottom(): Promise<void> {
   await nextTick()
   const viewport = messageViewportRef.value
@@ -104,6 +115,19 @@ function applySocketPayload(payload: ConsultChatSocketPayload): void {
     }
     if (payload.action === 'WAITING_PEER' || payload.action === 'USER_LEFT') {
       peerOnline.value = false
+    }
+    if (payload.action === 'CHAT_CLOSED') {
+      if (payload.session) {
+        chatSession.value = payload.session
+      } else if (chatSession.value) {
+        chatSession.value = {
+          ...chatSession.value,
+          status: 'CLOSED',
+          sealed: true
+        }
+      }
+      peerOnline.value = false
+      composeForm.content = ''
     }
     return
   }
@@ -272,7 +296,16 @@ onBeforeUnmount(() => {
               :class="{ 'is-counselor': message.senderType === 'COUNSELOR' }"
             >
               <div class="message-actor">
-                {{ message.senderType === 'COUNSELOR' ? 'YOU' : 'CLIENT' }}
+                <img
+                  v-if="message.senderAvatarUrl"
+                  class="message-avatar"
+                  :src="message.senderAvatarUrl"
+                  :alt="resolveSenderName(message)"
+                >
+                <span v-else class="message-avatar message-avatar--placeholder">
+                  {{ resolveSenderInitial(message) }}
+                </span>
+                <span>{{ resolveSenderName(message) }}</span>
               </div>
               <div class="message-body">
                 <span class="message-time">{{ formatTime(message.createdAt) }}</span>
@@ -315,6 +348,7 @@ onBeforeUnmount(() => {
                 maxlength="2000"
                 :disabled="!canSend"
                 placeholder="在此写下对学生的回应、关怀或下一步建议。"
+                @keydown.enter.exact.prevent="sendMessage"
               />
               <button
                 class="action-btn action-btn--primary"
@@ -337,7 +371,9 @@ onBeforeUnmount(() => {
 
 .editorial-chat-page {
   min-height: 100vh;
-  background: #fcfbf9;
+  background:
+    radial-gradient(circle at 12% 10%, rgba(196, 224, 207, 0.26), transparent 26rem),
+    linear-gradient(180deg, #ffffff, #fbfdfc);
   color: #1e2821;
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
   padding: 2rem 2vw 8rem;
@@ -365,11 +401,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.5rem;
   padding: 0;
-  transition: color 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .nav-ghost-btn:hover {
   color: #1e2821;
+  transform: translateX(-4px);
 }
 
 .transcript-header {
@@ -378,7 +415,7 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   padding-bottom: 3rem;
   margin-bottom: 3rem;
-  border-bottom: 1px solid rgba(42, 54, 46, 0.12);
+  border-bottom: 1px solid rgba(42, 54, 46, 0.055);
   gap: 4rem;
 }
 
@@ -421,10 +458,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 0.8rem;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.92);
   padding: 0.8rem 1.2rem;
   border-radius: 100px;
-  border: 1px solid rgba(42, 54, 46, 0.06);
+  box-shadow: 0 18px 40px rgba(54, 66, 58, 0.055);
 }
 
 .status-indicator {
@@ -435,7 +472,7 @@ onBeforeUnmount(() => {
 }
 
 .status-indicator.is-connected {
-  background: #5c8c6b;
+  background: #78a884;
   box-shadow: 0 0 0 0 rgba(92, 140, 107, 0.4);
   animation: pulse-green 2s infinite;
 }
@@ -502,24 +539,58 @@ onBeforeUnmount(() => {
   max-height: 70vh;
   overflow-y: auto;
   padding-right: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(95, 133, 110, 0.18) transparent;
+}
+
+.transcript-stream::-webkit-scrollbar {
+  width: 6px;
+}
+
+.transcript-stream::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(95, 133, 110, 0.18);
 }
 
 .message-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
+  grid-template-columns: 104px minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
 
 .message-actor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
   font-family: 'Manrope', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.76rem;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: #8a9c90;
   text-align: right;
-  padding-top: 0.4rem;
+  padding-top: 0.1rem;
   position: relative;
+}
+
+.message-avatar {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 999px;
+  object-fit: cover;
+  box-shadow: 0 12px 28px rgba(54, 66, 58, 0.08);
+}
+
+.message-avatar--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #edf8f1, #ffffff);
+  color: #5f856e;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .message-row.is-counselor .message-actor {
@@ -527,14 +598,17 @@ onBeforeUnmount(() => {
 }
 
 .message-row.is-counselor .message-body {
-  border-left: 2px solid rgba(42, 54, 46, 0.2);
-  padding-left: 1.5rem;
+  background: linear-gradient(145deg, rgba(229, 244, 235, 0.88), rgba(255, 255, 255, 0.96));
 }
 
 .message-body {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  padding: 1.15rem 1.25rem;
+  border-radius: 26px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 252, 249, 0.94));
+  box-shadow: 0 18px 44px rgba(54, 66, 58, 0.055);
 }
 
 .message-time {
@@ -566,9 +640,9 @@ onBeforeUnmount(() => {
 
 .session-meta-panel {
   padding: 1.5rem;
-  background: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(42, 54, 46, 0.08);
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 56px rgba(54, 66, 58, 0.06);
+  border-radius: 26px;
 }
 
 .meta-heading {
@@ -578,7 +652,7 @@ onBeforeUnmount(() => {
   color: #2a362e;
   margin: 0 0 1.2rem 0;
   padding-bottom: 0.8rem;
-  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
+  border-bottom: 1px solid rgba(42, 54, 46, 0.055);
 }
 
 .meta-list {
@@ -620,16 +694,19 @@ onBeforeUnmount(() => {
   width: 100%;
   box-sizing: border-box;
   border: none;
-  border-bottom: 1px dashed rgba(42, 54, 46, 0.2);
-  background: transparent;
-  padding: 0.8rem 0;
+  background: rgba(255, 255, 255, 0.96);
+  padding: 1rem 1.1rem;
+  border-radius: 22px;
   font-family: 'Noto Serif SC', serif;
   font-size: 1.05rem;
   line-height: 1.7;
   color: #1e2821;
   resize: vertical;
   outline: none;
-  transition: border-color 0.3s ease;
+  box-shadow:
+    0 18px 42px rgba(54, 66, 58, 0.055),
+    inset 0 0 0 1px rgba(42, 54, 46, 0.04);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sleek-textarea::placeholder {
@@ -638,8 +715,10 @@ onBeforeUnmount(() => {
 }
 
 .sleek-textarea:focus {
-  border-bottom-color: #2a362e;
-  border-bottom-style: solid;
+  transform: translateY(-3px);
+  box-shadow:
+    0 24px 52px rgba(54, 66, 58, 0.075),
+    inset 0 0 0 1px rgba(120, 168, 132, 0.22);
 }
 
 .sleek-textarea:disabled {
@@ -663,29 +742,29 @@ onBeforeUnmount(() => {
 }
 
 .action-btn--primary {
-  background: #2a362e;
+  background: linear-gradient(135deg, #5f856e, #7ca98a);
   border: none;
   color: #ffffff;
-  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
+  box-shadow: 0 18px 36px rgba(95, 133, 110, 0.18);
 }
 
 .action-btn--primary:hover:not(:disabled) {
-  background: #1c2620;
+  background: linear-gradient(135deg, #567a64, #72a17f);
   transform: translateY(-2px);
   box-shadow: 0 16px 32px rgba(42, 54, 46, 0.25);
 }
 
 .action-btn:disabled {
-  background: #8a9c90;
+  background: #c8d8cc;
   box-shadow: none;
   cursor: not-allowed;
 }
 
 .error-banner {
-  background: rgba(140, 74, 74, 0.08);
+  background: rgba(140, 74, 74, 0.06);
   color: #8c4a4a;
   padding: 1.5rem;
-  border-radius: 12px;
+  border-radius: 22px;
   text-align: center;
   font-family: 'Noto Serif SC', serif;
   margin-bottom: 3rem;
@@ -758,11 +837,13 @@ onBeforeUnmount(() => {
   .message-actor {
     text-align: left;
     padding-top: 0;
+    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
   }
 
   .message-row.is-counselor .message-body {
-    border-left: none;
-    padding-left: 0;
+    padding-left: 1.25rem;
   }
 }
 </style>
