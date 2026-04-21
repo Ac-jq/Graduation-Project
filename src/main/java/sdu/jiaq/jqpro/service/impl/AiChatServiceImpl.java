@@ -101,6 +101,7 @@ public class AiChatServiceImpl implements AiChatService {
         studentMessage.setContentText(ChatCryptoUtil.encryptWithPrefix(content));
         studentMessage.setRiskLevel(risk.level());
         studentMessage.setHitKeywords(risk.hitKeywords());
+        studentMessage.setCreatedAt(LocalDateTime.now());
         aiChatMessageMapper.insert(studentMessage);
 
         String aiReplyText = aiChatAiClient.generateReply(new AiChatAiRequest(
@@ -117,12 +118,13 @@ public class AiChatServiceImpl implements AiChatService {
         aiMessage.setContentText(ChatCryptoUtil.encryptWithPrefix(aiReplyText));
         aiMessage.setRiskLevel(risk.level());
         aiMessage.setHitKeywords(risk.hitKeywords());
+        aiMessage.setCreatedAt(LocalDateTime.now());
         aiChatMessageMapper.insert(aiMessage);
 
         session.setSummaryText(content.length() > 80 ? content.substring(0, 80) : content);
         session.setRiskFlag(risk.riskFlag() ? 1 : 0);
         session.setRiskLevel(risk.level());
-        session.setLastActiveAt(LocalDateTime.now());
+        session.setLastActiveAt(aiMessage.getCreatedAt());
         aiChatSessionMapper.updateById(session);
 
         return SendAiChatMessageResponse.builder()

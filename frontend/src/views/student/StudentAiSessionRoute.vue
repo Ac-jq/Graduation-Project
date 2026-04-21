@@ -11,6 +11,11 @@ interface AiPersonaConfig {
   avatar: string
 }
 
+type AiChatMessageView = AiChatMessage & {
+  optimistic?: boolean
+  typing?: boolean
+}
+
 const route = useRoute()
 const router = useRouter()
 
@@ -24,13 +29,14 @@ const avatarOptions = ['🌿', '🕯️', '☁️', '🍃', '🌙', '🫧']
 const loading = ref(false)
 const sending = ref(false)
 const errorMessage = ref('')
-const messages = ref<AiChatMessage[]>([])
+const messages = ref<AiChatMessageView[]>([])
 const sessions = ref<AiChatSession[]>([])
 const draft = ref('')
 const messageViewport = ref<HTMLElement | null>(null)
 const personaDialogVisible = ref(false)
 const aiPersona = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
 const personaForm = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
+const transientMessageId = ref(-1)
 
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
 const activeSession = computed(() => sessions.value.find((item) => item.sessionId === sessionId.value) ?? null)
@@ -48,7 +54,29 @@ function resolveSessionStatusText(status: string | null | undefined): string {
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '暂无'
   const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '暂无'
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function formatMessageTime(value: string | null | undefined): string {
+  if (!value) return '刚刚'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '刚刚'
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function createTransientMessage(senderType: 'STUDENT' | 'AI', content: string, typing = false): AiChatMessageView {
+  return {
+    messageId: transientMessageId.value--,
+    sessionId: sessionId.value ?? 0,
+    senderType,
+    content,
+    riskLevel: null,
+    hitKeywords: null,
+    createdAt: new Date().toISOString(),
+    optimistic: true,
+    typing
+  }
 }
 
 function loadAiPersona(): void {
@@ -139,9 +167,19 @@ async function sendMessage(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    const response = await sendStudentAiChatMessageApi(sessionId.value, { content })
     draft.value = ''
-    messages.value = [...messages.value, response.studentMessage, response.aiMessage]
+    const optimisticStudentMessage = createTransientMessage('STUDENT', content)
+    const typingMessage = createTransientMessage('AI', '', true)
+    messages.value = [...messages.value, optimisticStudentMessage, typingMessage]
+    await scrollToBottom()
+
+    const response = await sendStudentAiChatMessageApi(sessionId.value, { content })
+    messages.value = messages.value
+        .filter((message) =>
+            message.messageId !== optimisticStudentMessage.messageId
+            && message.messageId !== typingMessage.messageId
+        )
+        .concat(response.studentMessage, response.aiMessage)
     sessions.value = sessions.value.map((item) =>
         item.sessionId === sessionId.value
             ? {
@@ -153,6 +191,7 @@ async function sendMessage(): Promise<void> {
     )
     await scrollToBottom()
   } catch (error) {
+    messages.value = messages.value.filter((message) => !message.typing)
     errorMessage.value = toErrorMessage(error)
   } finally {
     sending.value = false
@@ -274,11 +313,17 @@ onMounted(() => {
                   {{ message.senderType === 'STUDENT' ? '你' : aiPersona.avatar }}
                 </span>
                 <span class="actor-name">{{ message.senderType === 'STUDENT' ? '我' : aiPersona.name }}</span>
-                <span class="actor-time">{{ formatDateTime(message.createdAt) }}</span>
+                <span class="actor-time">{{ formatMessageTime(message.createdAt) }}</span>
               </div>
 
               <div class="row-content">
-                <p class="message-content">{{ message.content }}</p>
+                <div v-if="message.typing" class="typing-bubble" aria-live="polite">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <em>对方正在输入...</em>
+                </div>
+                <p v-else class="message-content">{{ message.content }}</p>
               </div>
             </article>
           </div>
@@ -690,6 +735,54 @@ onMounted(() => {
 
 .is-student .message-content {
   color: #4a5c51;
+}
+
+.typing-bubble {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.42rem;
+  width: max-content;
+  max-width: 100%;
+  padding: 0.78rem 1rem;
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(247, 251, 248, 0.98), rgba(238, 246, 241, 0.86));
+  color: #6f7e73;
+  box-shadow: 0 16px 38px rgba(42, 54, 46, 0.06);
+}
+
+.typing-bubble span {
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 50%;
+  background: #8fb19a;
+  animation: typing-dot 1.05s infinite ease-in-out;
+}
+
+.typing-bubble span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+
+.typing-bubble span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+.typing-bubble em {
+  margin-left: 0.25rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.92rem;
+  font-style: normal;
+}
+
+@keyframes typing-dot {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.42;
+  }
+
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
 }
 
 /* 沉浸式书写台 */

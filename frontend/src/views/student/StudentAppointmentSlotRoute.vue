@@ -142,7 +142,7 @@ watch(
           <span class="hero-tag">咨询预约</span>
           <h1 class="hero-title">先选咨询师，再挑一个合适的时段</h1>
           <p class="hero-lead">
-            系统会根据你选中的咨询师和日期，实时显示当天固定 5 个时段的预约状态。
+            系统会根据你选中的咨询师和日期，实时显示当天固定 6 个时段的预约状态。
           </p>
         </div>
       </header>

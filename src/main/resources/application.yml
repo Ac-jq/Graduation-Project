@@ -43,7 +43,7 @@ jqpro:
       enabled: ${JQPRO_AI_CHAT_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:true}}
       base-url: ${JQPRO_AI_CHAT_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_CHAT_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
-      api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
+      api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
       model: ${JQPRO_AI_CHAT_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
       auth-header-name: ${JQPRO_AI_CHAT_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
       auth-prefix: ${JQPRO_AI_CHAT_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
@@ -63,7 +63,7 @@ jqpro:
       enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_ADMIN_OPS_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
-      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
+      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
       model: ${JQPRO_AI_ADMIN_OPS_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
       auth-header-name: ${JQPRO_AI_ADMIN_OPS_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
       auth-prefix: ${JQPRO_AI_ADMIN_OPS_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
@@ -127,7 +127,7 @@ jqpro:
       enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:true}
       base-url: ${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}
       path: ${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}
-      api-key: ${JQPRO_AI_INTERPRETATION_API_KEY:}
+      api-key: ${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}
       model: ${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}
       auth-header-name: ${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}
       auth-prefix: ${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }

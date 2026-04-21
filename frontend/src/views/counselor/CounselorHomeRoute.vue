@@ -21,12 +21,51 @@ const pendingAppointments = computed(() => appointments.value.filter((item) => i
 const unreadNotifications = computed(() => notifications.value.filter((item) => !item.read))
 const latestStudent = computed(() => students.value[0] ?? null)
 const latestAppointment = computed(() => appointments.value[0] ?? null)
+const todayAppointments = computed(() => {
+  const now = new Date()
+  return appointments.value
+      .filter((item) => isSameDate(item.startTime, now))
+      .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime())
+})
+const todayPendingAppointments = computed(() => todayAppointments.value.filter((item) => item.status === 'PENDING'))
+const focusStudentCount = computed(() => {
+  const uniqueStudentIds = new Set(
+      pendingAppointments.value
+          .map((item) => item.studentUserId)
+          .filter((id): id is number => typeof id === 'number')
+  )
+  return uniqueStudentIds.size
+})
 const currentUser = computed(() => authStore.currentUser)
 const roleAvatarUrl = computed(() => `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/counselor-default.jpg`)
+
+function isSameDate(value: string | Date, target: Date): boolean {
+  const d = new Date(value)
+  return d.getFullYear() === target.getFullYear()
+      && d.getMonth() === target.getMonth()
+      && d.getDate() === target.getDate()
+}
 
 function formatDateTime(value: string | Date): string {
   const d = new Date(value)
   return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function formatTimeRange(start: string | Date, end: string | Date): string {
+  const begin = new Date(start)
+  const finish = new Date(end)
+  return `${String(begin.getHours()).padStart(2, '0')}:${String(begin.getMinutes()).padStart(2, '0')} - ${String(finish.getHours()).padStart(2, '0')}:${String(finish.getMinutes()).padStart(2, '0')}`
+}
+
+function resolveAppointmentStatus(status: string): string {
+  switch (status) {
+    case 'PENDING': return '待回应'
+    case 'ACCEPTED': return '已接单'
+    case 'REJECTED': return '已拒绝'
+    case 'COMPLETED': return '已完成'
+    case 'CANCELED': return '已取消'
+    default: return status
+  }
 }
 
 async function loadDashboard(): Promise<void> {
@@ -99,6 +138,9 @@ onMounted(() => {
 
 <template>
   <main class="editorial-desk-page">
+    <div class="bg-layer-aurora"></div>
+    <div class="bg-layer-grid"></div>
+
     <div class="desk-container">
       <header class="glass-nav">
         <div class="brand-mark">
@@ -164,39 +206,52 @@ onMounted(() => {
 
       <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
 
+      <section class="todo-card-grid">
+        <article class="todo-card todo-card--warm">
+          <span class="todo-label">今日待处理预约</span>
+          <strong>{{ loading ? '-' : todayPendingAppointments.length }}</strong>
+          <p>优先处理学生新提交的预约请求。</p>
+        </article>
+
+        <article class="todo-card">
+          <span class="todo-label">未读消息</span>
+          <strong>{{ loading ? '-' : unreadNotifications.length }}</strong>
+          <p>来自预约流转、公告与平台提醒。</p>
+        </article>
+
+        <article class="todo-card">
+          <span class="todo-label">重点关注学生数</span>
+          <strong>{{ loading ? '-' : focusStudentCount }}</strong>
+          <p>依据待处理预约聚合，方便先做响应。</p>
+        </article>
+      </section>
+
       <section class="desk-grid">
 
-        <aside class="desk-menu">
-          <div class="section-head">
-            <h2 class="section-title">工作台入口</h2>
-            <span class="section-subtitle">Workstreams</span>
+        <aside class="desk-sidebar">
+          <div class="schedule-board">
+            <div class="schedule-head">
+              <h3>今日日程</h3>
+              <span>{{ todayAppointments.length }} 项</span>
+            </div>
+
+            <div v-if="loading" class="schedule-empty">正在整理今日安排...</div>
+            <div v-else-if="!todayAppointments.length" class="schedule-empty">今天暂时没有安排，可以处理归档。</div>
+
+            <div v-else class="schedule-list">
+              <article
+                  v-for="appointment in todayAppointments"
+                  :key="appointment.appointmentId"
+                  class="schedule-item"
+              >
+                <time>{{ formatTimeRange(appointment.startTime, appointment.endTime) }}</time>
+                <div>
+                  <strong>{{ appointment.anonymousName || '匿名来访者' }}</strong>
+                  <span>{{ resolveAppointmentStatus(appointment.status) }}</span>
+                </div>
+              </article>
+            </div>
           </div>
-
-          <nav class="menu-list">
-            <a class="menu-item" @click="openStudents">
-              <div class="item-text">
-                <span class="item-title">学生档案库</span>
-                <span class="item-desc">查阅报告、AI 会话与绑定信息</span>
-              </div>
-              <span class="arrow">鈫</span>
-            </a>
-
-            <a class="menu-item" @click="openAppointments">
-              <div class="item-text">
-                <span class="item-title">预约处理台</span>
-                <span class="item-desc">受理请求、拒绝或留言跟进</span>
-              </div>
-              <span class="arrow">鈫</span>
-            </a>
-
-            <a class="menu-item" @click="openNotifications">
-              <div class="item-text">
-                <span class="item-title">系统通知中心</span>
-                <span class="item-desc">查阅流转提醒与系统简报</span>
-              </div>
-              <span class="arrow">鈫</span>
-            </a>
-          </nav>
         </aside>
 
         <section class="desk-insights">
@@ -211,13 +266,12 @@ onMounted(() => {
           </div>
 
           <div v-else class="insights-columns">
-
             <article class="insight-article">
               <div class="thick-accent-line"></div>
               <h3 class="article-kicker">重点关注对象</h3>
               <h4 class="article-headline">{{ latestStudent?.studentName || '暂无绑定学生' }}</h4>
               <p class="article-copy">
-                {{ latestStudent ? `${latestStudent.college || '学院未知'} · ${latestStudent.grade || '年级未知'} · 学号 ${latestStudent.studentNo || '未记录'}` : '当有学生绑定您为咨询师后，其最近的动态会展示在这里。' }}
+                {{ latestStudent ? `${latestStudent.college || '学院未知'} · ${latestStudent.grade || '年级未知'} · 学号 ${latestStudent.studentNo || '未记录'}` : '绑定学生后，其动态会展示在这里。' }}
               </p>
               <button
                   class="action-btn"
@@ -225,7 +279,7 @@ onMounted(() => {
                   :disabled="!latestStudent"
                   @click="openLatestStudentReports"
               >
-                查阅该学生报告 <span class="arrow">→</span>
+                查阅学生报告 <span class="arrow">→</span>
               </button>
             </article>
 
@@ -238,10 +292,10 @@ onMounted(() => {
               <p class="article-copy">
                 <template v-if="latestAppointment">
                   <strong>{{ latestAppointment.anonymousName }}</strong> 提交于 {{ formatDateTime(latestAppointment.createdAt) }}。<br>
-                  当前状态：<strong>{{ latestAppointment.status }}</strong>
+                  当前状态：<strong>{{ resolveAppointmentStatus(latestAppointment.status) }}</strong>
                 </template>
                 <template v-else>
-                  目前没有学生向您发起咨询预约，您可以去通知中心查看其他消息。
+                  目前没有学生向您发起咨询预约。
                 </template>
               </p>
               <button
@@ -253,7 +307,6 @@ onMounted(() => {
                 前往处理 <span class="arrow">→</span>
               </button>
             </article>
-
           </div>
         </section>
 
@@ -265,19 +318,49 @@ onMounted(() => {
 <style scoped>
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
-/* 鏋佺畝绾稿紶搴曡壊 */
 .editorial-desk-page {
   min-height: 100vh;
-  background: #fcfbf9;
+  position: relative;
+  isolation: isolate;
+  background-color: #faf9f6;
   color: #1e2821;
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
-  padding: 4rem 2vw 8rem;
+  padding: 1.5rem clamp(1rem, 2vw, 2rem) 3rem;
   box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+/* 高级极光晕影背景 */
+.bg-layer-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+      radial-gradient(circle at 10% 20%, rgba(179, 202, 185, 0.45), transparent 30rem),
+      radial-gradient(circle at 90% 10%, rgba(229, 194, 164, 0.35), transparent 30rem),
+      radial-gradient(circle at 50% 80%, rgba(199, 215, 205, 0.35), transparent 40rem);
+  filter: blur(60px);
+  pointer-events: none;
+}
+
+/* 高级细网格线背景 */
+.bg-layer-grid {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+      linear-gradient(rgba(42, 54, 46, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(42, 54, 46, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.1) 80%, transparent 100%);
+  pointer-events: none;
 }
 
 .desk-container {
   max-width: 1100px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .glass-nav {
@@ -287,19 +370,20 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 32px;
+  padding: 12px 24px;
   margin-bottom: 1.5rem;
-  background: rgba(253, 251, 247, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(44, 53, 45, 0.04);
+  background: rgba(250, 249, 246, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(44, 53, 45, 0.06);
+  border-radius: 16px;
 }
 
 .brand-mark {
   font-family: 'Noto Serif SC', serif;
   font-weight: 900;
-  font-size: 1.4rem;
-  letter-spacing: 0.15em;
+  font-size: 1.3rem;
+  letter-spacing: 0.1em;
 }
 
 .brand-mark span {
@@ -317,27 +401,24 @@ onMounted(() => {
   position: relative;
   background: rgba(44, 53, 45, 0.04);
   border: none;
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   color: #2c352d;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
 }
 
 .notification-btn:hover {
   background: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(44, 53, 45, 0.06);
+  box-shadow: 0 4px 12px rgba(44, 53, 45, 0.08);
 }
 
-.notification-btn svg {
-  width: 18px;
-  height: 18px;
-}
+.notification-btn svg { width: 18px; height: 18px; }
 
 .notification-dot {
   position: absolute;
@@ -350,9 +431,7 @@ onMounted(() => {
   box-shadow: 0 0 0 2px #fdfbf7;
 }
 
-.profile-dropdown-wrapper {
-  position: relative;
-}
+.profile-dropdown-wrapper { position: relative; }
 
 .avatar-btn {
   display: flex;
@@ -363,73 +442,60 @@ onMounted(() => {
   padding: 4px 10px 4px 4px;
   border-radius: 20px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
 }
 
 .avatar-btn:hover {
   background: #fff;
-  box-shadow: 0 6px 16px rgba(44, 53, 45, 0.06);
-  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(44, 53, 45, 0.08);
 }
 
 .avatar-btn img {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   object-fit: cover;
 }
 
 .avatar-name {
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .chevron {
   width: 14px;
   height: 14px;
   opacity: 0.6;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.3s ease;
 }
 
-.chevron-up {
-  transform: rotate(180deg);
-}
+.chevron-up { transform: rotate(180deg); }
 
 .dropdown-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 8px);
   right: 0;
-  width: 140px;
+  width: 130px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(44, 53, 45, 0.08);
-  border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(135, 126, 115, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(135, 126, 115, 0.12);
   list-style: none;
-  padding: 8px;
+  padding: 6px;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  transform-origin: top right;
-}
-
-.dropdown-menu::before {
-  content: '';
-  position: absolute;
-  top: -12px;
-  left: 0;
-  right: 0;
-  height: 12px;
-  background: transparent;
+  gap: 2px;
+  z-index: 1000;
 }
 
 .dropdown-menu li {
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
 }
 
 .dropdown-menu li:hover {
@@ -445,117 +511,242 @@ onMounted(() => {
   border-radius: 0 0 8px 8px;
 }
 
-.dropdown-menu li.logout:hover {
-  background: rgba(209, 107, 107, 0.08);
+.fade-slide-enter-active, .fade-slide-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
-
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.fade-slide-enter-from,
-.fade-slide-leave-to {
+.fade-slide-enter-from, .fade-slide-leave-to {
   opacity: 0;
-  transform: translateY(-10px) scale(0.95);
+  transform: translateY(-8px) scale(0.95);
 }
 
-/* 妗堝ご瀵艰鍖?*/
+/* 案头导语区 */
 .desk-hero {
-  margin-bottom: 5rem;
+  margin-bottom: 1.5rem;
 }
 
 .hero-copy {
-  margin-bottom: 3.5rem;
-  padding-bottom: 2.5rem;
-  border-bottom: 1px solid rgba(42, 54, 46, 0.1);
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
 }
 
 .hero-tag {
   display: block;
   font-family: 'Manrope', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.15em;
   color: #8a9c90;
   text-transform: uppercase;
-  margin-bottom: 1.2rem;
+  margin-bottom: 0.5rem;
 }
 
 .hero-title {
   font-family: 'Noto Serif SC', serif;
-  font-size: clamp(2.8rem, 4vw, 4.2rem);
+  font-size: clamp(2.2rem, 3.5vw, 3.2rem);
   font-weight: 600;
   color: #1e2821;
-  margin: 0 0 1.2rem 0;
+  margin: 0 0 0.5rem 0;
   line-height: 1.1;
-  letter-spacing: 0.02em;
 }
 
 .hero-lead {
-  font-size: 1.1rem;
+  font-size: 1rem;
   color: #5c6b60;
-  line-height: 1.8;
+  line-height: 1.6;
   margin: 0;
   max-width: 680px;
 }
 
-/* 鏁ｆ枃寮忔暟鎹湅鏉匡紙鏃犳锛?*/
+/* 数据核心指标 */
 .hero-metrics {
   display: flex;
   align-items: center;
-  gap: 3.5rem;
+  gap: 2rem;
   flex-wrap: wrap;
 }
 
 .metric-block {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .metric-label {
   font-family: 'Noto Serif SC', serif;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: #8a9c90;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .metric-value {
   font-family: 'Manrope', sans-serif;
-  font-size: 3.2rem;
+  font-size: 2.2rem;
   font-weight: 600;
   color: #2a362e;
   line-height: 1;
 }
 
-.metric-value.highlight {
-  color: #8c4a4a; /* 濡傛灉鏈夊緟澶勭悊棰勭害锛岀敤鑾叞杩孩寮鸿皟 */
-}
+.metric-value.highlight { color: #8c4a4a; }
 
 .metric-divider {
   width: 1px;
-  height: 3rem;
-  background: rgba(42, 54, 46, 0.15);
+  height: 2.5rem;
+  background: rgba(42, 54, 46, 0.1);
 }
 
-/* 鏍稿績缃戞牸鎺掔増 */
+/* ----------------------------------------------------
+   重构区：横向 3 列的待办卡片网格
+------------------------------------------------------- */
+.todo-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 1.5rem; /* 与下方模块的间距 */
+}
+
+.todo-card {
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 24px rgba(54, 66, 58, 0.04), inset 0 0 0 1px rgba(255,255,255,1);
+  backdrop-filter: blur(10px);
+}
+
+.todo-card--warm {
+  background: linear-gradient(135deg, rgba(255, 253, 250, 0.9), rgba(246, 237, 230, 0.6));
+}
+
+.todo-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #7b8c80;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.todo-card strong {
+  display: block;
+  color: #2a362e;
+  font-family: 'Manrope', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.todo-card p {
+  margin: 0.6rem 0 0;
+  color: #5c6b60;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* ----------------------------------------------------
+   重构区：下半部分左右分栏布局
+------------------------------------------------------- */
 .desk-grid {
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  gap: 6rem;
+  grid-template-columns: 340px minmax(0, 1fr); /* 严格限制左侧宽度，右侧自适应 */
+  gap: 2rem;
   align-items: start;
 }
 
-/* 閫氱敤鍖哄潡澶撮儴 */
-.section-head {
-  margin-bottom: 2rem;
+/* 左侧：日程表容器 */
+.schedule-board {
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 12px 32px rgba(54, 66, 58, 0.03), inset 0 0 0 1px rgba(255,255,255,1);
+  backdrop-filter: blur(10px);
 }
+
+.schedule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.schedule-head h3 {
+  margin: 0;
+  color: #1e2821;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.schedule-head span, .schedule-empty {
+  color: #8a9c90;
+  font-size: 0.8rem;
+}
+
+/* 策略 2：日程列表局部滚动，彻底防止撑破页面 */
+.schedule-list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: 260px; /* 控制最大高度，超出会出现滚动条 */
+  overflow-y: auto;
+  padding-right: 8px; /* 为滚动条留出间距 */
+}
+
+/* 美化内部滚动条 */
+.schedule-list::-webkit-scrollbar {
+  width: 4px;
+}
+.schedule-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.schedule-list::-webkit-scrollbar-thumb {
+  background: rgba(130, 150, 138, 0.25);
+  border-radius: 4px;
+}
+.schedule-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(130, 150, 138, 0.5);
+}
+
+.schedule-item {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: center;
+  padding: 0.7rem 0;
+  border-top: 1px solid rgba(42, 54, 46, 0.05);
+}
+
+.schedule-item time {
+  color: #2a362e;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.schedule-item div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.schedule-item strong {
+  color: #1e2821;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-item span {
+  color: #7b8c80;
+  font-size: 0.75rem;
+}
+
+/* 右侧：线索专栏 */
+.section-head { margin-bottom: 1rem; }
 
 .section-title {
   font-family: 'Noto Serif SC', serif;
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   font-weight: 600;
   color: #1e2821;
   margin: 0 0 0.2rem 0;
@@ -563,138 +754,75 @@ onMounted(() => {
 
 .section-subtitle {
   font-family: 'Manrope', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: #8a9c90;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
-/* ================= 宸︿晶锛氬伐浣滄祦鐩綍 ================= */
-.menu-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.menu-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem 0;
-  border-bottom: 1px solid rgba(42, 54, 46, 0.08);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  text-decoration: none;
-}
-
-.menu-item:first-child {
-  border-top: 1px solid rgba(42, 54, 46, 0.08);
-}
-
-.item-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.item-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.15rem;
-  font-weight: 600;
-  color: #2a362e;
-  transition: color 0.3s ease;
-}
-
-.item-desc {
-  font-size: 0.85rem;
-  color: #7b8c80;
-}
-
-.menu-item .arrow {
-  color: #b5c2b9;
-  font-size: 1.2rem;
-  transition: all 0.3s ease;
-}
-
-/* 鐩綍鎮仠浜や簰锛氭枃瀛楀彉鑹层€佹暣浣撳彸绉荤缉杩?*/
-.menu-item:hover {
-  transform: translateX(8px);
-}
-
-.menu-item:hover .item-title {
-  color: #5c6b60;
-}
-
-.menu-item:hover .arrow {
-  color: #2a362e;
-  transform: translateX(4px);
-}
-
-/* ================= 鍙充晶锛氭渶鏂扮嚎绱笓鏍?================= */
 .insights-columns {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 3rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
 }
 
 .insight-article {
   display: flex;
   flex-direction: column;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 1.5rem;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.02);
 }
 
 .thick-accent-line {
-  width: 100%;
-  height: 4px;
+  width: 32px;
+  height: 3px;
   background: #2a362e;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
+  border-radius: 2px;
 }
 
 .article-kicker {
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: #8a9c90;
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.6rem 0;
 }
 
 .article-headline {
   font-family: 'Noto Serif SC', serif;
-  font-size: 1.6rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: #1e2821;
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.6rem 0;
   line-height: 1.3;
 }
 
 .article-copy {
-  font-size: 1rem;
-  line-height: 1.8;
+  font-size: 0.95rem;
+  line-height: 1.6;
   color: #5c6b60;
-  margin: 0 0 2rem 0;
+  margin: 0 0 1.5rem 0;
 }
 
-.article-copy strong {
-  color: #2a362e;
-  font-weight: 600;
-}
-
-/* 涓撴爮鎿嶄綔鎸夐挳 */
 .action-btn {
   align-self: flex-start;
   margin-top: auto;
-  background: transparent;
+  background: rgba(255,255,255,0.8);
   border: 1px solid rgba(130, 150, 138, 0.4);
   color: #2a362e;
-  padding: 0.8rem 1.8rem;
+  padding: 0.7rem 1.4rem;
   border-radius: 100px;
   font-family: 'Noto Serif SC', serif;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.4rem;
   transition: all 0.3s ease;
 }
 
@@ -702,83 +830,46 @@ onMounted(() => {
   background: #2a362e;
   border-color: #2a362e;
   color: #ffffff;
-  transform: translateY(-2px);
 }
 
-.action-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.action-btn .arrow {
-  transition: transform 0.3s ease;
-}
-
-.action-btn:hover:not(:disabled) .arrow {
-  transform: translateX(4px);
-}
-
-/* 鐘舵€佹牱寮?*/
 .error-banner {
   background: rgba(140, 74, 74, 0.08);
   color: #8c4a4a;
-  padding: 1.5rem;
+  padding: 1rem;
   border-radius: 12px;
   text-align: center;
-  font-family: 'Noto Serif SC', serif;
-  margin-bottom: 3rem;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
 }
 
 .loading-state {
-  padding: 4rem 0;
+  padding: 2rem 0;
   color: #7b8c80;
-  font-family: 'Noto Serif SC', serif;
   display: flex;
   align-items: center;
   gap: 1rem;
+  font-size: 0.9rem;
 }
 
 .spinner {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 2px solid rgba(130, 150, 138, 0.2);
   border-top-color: #2a362e;
   animation: spin 0.8s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* 鍝嶅簲寮?*/
+/* 响应式调整 */
 @media (max-width: 1024px) {
+  .todo-card-grid {
+    grid-template-columns: 1fr; /* 窄屏幕下待办卡片变回单列堆叠 */
+  }
   .desk-grid {
-    grid-template-columns: 1fr;
-    gap: 4rem;
-  }
-
-  .menu-list {
-    margin-bottom: 2rem;
-  }
-}
-
-@media (max-width: 768px) {
-  .hero-metrics {
-    gap: 2rem;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .metric-divider {
-    display: none;
-  }
-
-  .insights-columns {
-    grid-template-columns: 1fr;
-    gap: 3rem;
+    grid-template-columns: 1fr; /* 左右分栏变为上下堆叠 */
+    gap: 1.5rem;
   }
 }
 </style>
-
-

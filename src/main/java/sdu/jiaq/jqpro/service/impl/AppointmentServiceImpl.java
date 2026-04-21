@@ -46,7 +46,8 @@ public class AppointmentServiceImpl implements AppointmentService {
             new FixedSlotDefinition(LocalTime.of(10, 30), LocalTime.of(11, 30), "10:30~11:30"),
             new FixedSlotDefinition(LocalTime.of(14, 0), LocalTime.of(15, 0), "14:00~15:00"),
             new FixedSlotDefinition(LocalTime.of(16, 0), LocalTime.of(17, 0), "16:00~17:00"),
-            new FixedSlotDefinition(LocalTime.of(19, 0), LocalTime.of(20, 0), "19:00~20:00")
+            new FixedSlotDefinition(LocalTime.of(19, 0), LocalTime.of(20, 0), "19:00~20:00"),
+            new FixedSlotDefinition(LocalTime.of(20, 30), LocalTime.of(21, 30), "20:30~21:30")
     );
 
     private static final String[] ANONYMOUS_PREFIX = {"向日葵", "银杏", "云杉", "海棠", "木槿", "晚风"};
