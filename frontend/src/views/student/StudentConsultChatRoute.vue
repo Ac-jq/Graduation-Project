@@ -80,18 +80,28 @@ const composerDescription = computed(() => {
   return '对方已经上线，你可以继续和咨询师交流。'
 })
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return '暂无记录'
+function parseChatDate(value: string | Date | number[] | null | undefined): Date | null {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value
+    const parsed = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1000000))
+    return Number.isNaN(parsed.getTime()) ? null : parsed
   }
+  const parsed = new Date(String(value).trim().replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
 
+function formatDate(value: string | Date | number[] | null | undefined): string {
+  const date = parseChatDate(value)
+  if (!date) return '暂无记录'
   return new Intl.DateTimeFormat('zh-CN', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
-  }).format(new Date(value))
+  }).format(date)
 }
 
 function resolveSenderLabel(senderType: string): string {

@@ -87,6 +87,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                         .counselorUserId(counselor.getId())
                         .counselorName(counselor.getDisplayName())
                         .counselorNo(counselor.getCounselorNo())
+                        .avatarUrl(counselor.getAvatarUrl())
                         .build())
                 .toList();
     }
@@ -285,6 +286,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                 .anonymousName(appointment.getAnonymousName())
                 .counselorUserId(appointment.getCounselorUserId())
                 .counselorName(counselor == null ? null : counselor.getDisplayName())
+                .counselorAvatarUrl(counselor == null ? null : counselor.getAvatarUrl())
                 .issueSummary(appointment.getIssueSummary())
                 .status(appointment.getStatus())
                 .resultMessage(appointment.getResultMessage())

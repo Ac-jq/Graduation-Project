@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { fetchNotificationsApi, markAllNotificationsReadApi, markNotificationReadApi } from '@/api/notification'
 import type { NotificationItem } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
+import SaaSBackground from '@/components/SaaSBackground.vue'
 
 const loading = ref(false)
 const processing = ref(false)
@@ -130,6 +131,7 @@ watch(searchKeyword, () => {
 
 <template>
   <main class="editorial-dispatch-page">
+    <SaaSBackground />
     <div class="page-container">
 
       <header class="dispatch-header">
@@ -256,15 +258,20 @@ watch(searchKeyword, () => {
 
 /* 全局极简白纸底色 */
 .editorial-dispatch-page {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   background: #fcfbf9;
   color: #1e2821;
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
   padding: 4rem 2vw 8rem;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .page-container {
+  position: relative;
+  z-index: 1;
   max-width: 1060px;
   margin: 0 auto;
 }

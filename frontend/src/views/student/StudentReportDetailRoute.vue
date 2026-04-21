@@ -135,7 +135,7 @@ onMounted(() => {
         <section class="editorial-columns">
           <div class="column-block">
             <h3 class="column-heading">深度解读</h3>
-            <p class="column-text">
+            <p class="column-text ai-interpretation-scroll">
               {{ reportDetail.aiInterpretation || '本次评估显示数据较为稳定，系统未生成额外的异常预警解释。请结合自身实际感受进行判断。' }}
             </p>
           </div>
@@ -389,6 +389,32 @@ onMounted(() => {
   line-height: 1.85;
   color: #4a5c51;
   margin: 0 0 2rem 0;
+}
+
+.ai-interpretation-scroll {
+  max-height: 350px;
+  overflow-y: auto;
+  padding-right: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(130, 150, 138, 0.42) rgba(130, 150, 138, 0.08);
+}
+
+.ai-interpretation-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ai-interpretation-scroll::-webkit-scrollbar-track {
+  background: rgba(130, 150, 138, 0.08);
+  border-radius: 999px;
+}
+
+.ai-interpretation-scroll::-webkit-scrollbar-thumb {
+  background: rgba(130, 150, 138, 0.38);
+  border-radius: 999px;
+}
+
+.ai-interpretation-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(92, 107, 96, 0.5);
 }
 
 .action-btn {

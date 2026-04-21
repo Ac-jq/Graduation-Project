@@ -67,6 +67,7 @@ export function hydrateFromLogin(payload: LoginResponse): CurrentUser {
     account: payload.account,
     roleCode: payload.roleCode,
     displayName: payload.displayName,
+    avatarUrl: payload.avatarUrl ?? null,
     roles: payload.roles
   }
   localStorage.setItem(TOKEN_KEY, payload.token)

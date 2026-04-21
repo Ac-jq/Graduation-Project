@@ -47,6 +47,7 @@ import sdu.jiaq.jqpro.mapper.MentalScaleSessionMapper;
 import sdu.jiaq.jqpro.service.AiInterpretationService;
 import sdu.jiaq.jqpro.service.AssessmentService;
 import sdu.jiaq.jqpro.service.AuditLogService;
+import sdu.jiaq.jqpro.service.ReportRecommendationService;
 
 /**
  * 心理测评核心服务。
@@ -65,6 +66,7 @@ public class AssessmentServiceImpl implements AssessmentService {
     private final MentalScaleReportMapper mentalScaleReportMapper;
     private final MentalScaleRuleMapper mentalScaleRuleMapper;
     private final AiInterpretationService aiInterpretationService;
+    private final ReportRecommendationService reportRecommendationService;
     private final AuditLogService auditLogService;
 
     public AssessmentServiceImpl(
@@ -76,6 +78,7 @@ public class AssessmentServiceImpl implements AssessmentService {
             MentalScaleReportMapper mentalScaleReportMapper,
             MentalScaleRuleMapper mentalScaleRuleMapper,
             AiInterpretationService aiInterpretationService,
+            ReportRecommendationService reportRecommendationService,
             AuditLogService auditLogService
     ) {
         this.mentalScaleMapper = mentalScaleMapper;
@@ -86,6 +89,7 @@ public class AssessmentServiceImpl implements AssessmentService {
         this.mentalScaleReportMapper = mentalScaleReportMapper;
         this.mentalScaleRuleMapper = mentalScaleRuleMapper;
         this.aiInterpretationService = aiInterpretationService;
+        this.reportRecommendationService = reportRecommendationService;
         this.auditLogService = auditLogService;
     }
 
@@ -297,11 +301,12 @@ public class AssessmentServiceImpl implements AssessmentService {
         int totalScore = answers.stream().mapToInt(MentalScaleAnswer::getScore).sum();
         MentalScaleRule matchedRule = resolveMatchedRule(scale, totalScore);
         String summaryText = buildSummary(scale.getName(), totalScore, matchedRule);
+        String detailedAnswerContext = buildDetailedAnswerContext(scale, answers);
         String interpretation = aiInterpretationService.generateInterpretation(
                 scale,
                 totalScore,
                 matchedRule.getLevelCode(),
-                buildDetailedAnswerContext(scale, answers)
+                detailedAnswerContext
         );
 
         session.setStatus(ScaleSessionStatusConstants.SUBMITTED);
@@ -318,6 +323,7 @@ public class AssessmentServiceImpl implements AssessmentService {
         report.setTotalScore(totalScore);
         report.setSummaryText(summaryText);
         report.setAiInterpretation(interpretation);
+        report.setRecommendedResourceIds(reportRecommendationService.buildRecommendedResourceIdSnapshot(scale, report, detailedAnswerContext));
         mentalScaleReportMapper.insert(report);
 
         auditLogService.record(

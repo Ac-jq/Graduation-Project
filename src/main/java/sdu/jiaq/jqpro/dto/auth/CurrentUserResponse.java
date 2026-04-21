@@ -22,6 +22,8 @@ public class CurrentUserResponse {
 
     private String displayName;
 
+    private String avatarUrl;
+
     private String studentNo;
 
     private String counselorNo;

@@ -15,4 +15,6 @@ public class AppointmentCounselorOptionResponse {
     private String counselorName;
 
     private String counselorNo;
+
+    private String avatarUrl;
 }

@@ -61,8 +61,21 @@ const peerStatusText = computed(() => {
   return peerOnline.value ? '学生已在线' : '学生暂未进入'
 })
 
-function formatTime(value: string | Date): string {
-  const d = new Date(value)
+function parseChatDate(value: string | Date | number[] | null | undefined): Date | null {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value
+    const parsed = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1000000))
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+  const parsed = new Date(String(value).trim().replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatTime(value: string | Date | number[] | null | undefined): string {
+  const d = parseChatDate(value)
+  if (!d) return '暂无记录'
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 

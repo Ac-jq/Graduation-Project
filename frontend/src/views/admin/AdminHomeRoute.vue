@@ -359,6 +359,16 @@ onMounted(() => {
   z-index: 20;
 }
 
+.admin-home-profile-menu::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: 0;
+  width: 100%;
+  height: 15px;
+  background: transparent;
+}
+
 .admin-home-profile-menu li {
   padding: 10px 14px;
   font-size: 14px;

@@ -60,6 +60,7 @@ public class AuthServiceImpl implements AuthService {
                 .account(sysUser.getAccount())
                 .roleCode(sysUser.getRoleCode())
                 .displayName(sysUser.getDisplayName())
+                .avatarUrl(sysUser.getAvatarUrl())
                 .roles(List.of(sysUser.getRoleCode()))
                 .build();
     }
@@ -100,6 +101,7 @@ public class AuthServiceImpl implements AuthService {
                 .roleCode(sysUser.getRoleCode())
                 .realName(sysUser.getRealName())
                 .displayName(sysUser.getDisplayName())
+                .avatarUrl(sysUser.getAvatarUrl())
                 .studentNo(sysUser.getStudentNo())
                 .counselorNo(sysUser.getCounselorNo())
                 .roles(List.of(sysUser.getRoleCode()))

@@ -33,6 +33,8 @@ public class SysUser {
 
     private String counselorNo;
 
+    private String avatarUrl;
+
     private String status;
 
     private LocalDateTime createdAt;

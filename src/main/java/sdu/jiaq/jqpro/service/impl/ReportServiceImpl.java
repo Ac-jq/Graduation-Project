@@ -16,12 +16,14 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import sdu.jiaq.jqpro.common.constant.AppointmentConstants;
 import sdu.jiaq.jqpro.common.constant.AssessmentNoticeConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.assessment.ReportDetailResponse;
 import sdu.jiaq.jqpro.dto.assessment.ReportSummaryResponse;
 import sdu.jiaq.jqpro.dto.resource.ResourceSummaryResponse;
+import sdu.jiaq.jqpro.entity.ConsultAppointment;
 import sdu.jiaq.jqpro.entity.CounselorStudent;
 import sdu.jiaq.jqpro.entity.MentalScale;
 import sdu.jiaq.jqpro.entity.MentalScaleAnswer;
@@ -29,6 +31,7 @@ import sdu.jiaq.jqpro.entity.MentalScaleOption;
 import sdu.jiaq.jqpro.entity.MentalScaleQuestion;
 import sdu.jiaq.jqpro.entity.MentalScaleReport;
 import sdu.jiaq.jqpro.entity.SysUser;
+import sdu.jiaq.jqpro.mapper.ConsultAppointmentMapper;
 import sdu.jiaq.jqpro.mapper.CounselorStudentMapper;
 import sdu.jiaq.jqpro.mapper.MentalScaleAnswerMapper;
 import sdu.jiaq.jqpro.mapper.MentalScaleMapper;
@@ -38,6 +41,7 @@ import sdu.jiaq.jqpro.mapper.MentalScaleReportMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.AuditLogService;
 import sdu.jiaq.jqpro.service.ReportService;
+import sdu.jiaq.jqpro.service.ReportRecommendationService;
 import sdu.jiaq.jqpro.service.ResourceService;
 import sdu.jiaq.jqpro.service.ai.InterpretationAiClient;
 import sdu.jiaq.jqpro.service.ai.ResourceRecommendationAiRequest;
@@ -61,8 +65,10 @@ public class ReportServiceImpl implements ReportService {
     private final MentalScaleOptionMapper mentalScaleOptionMapper;
     private final SysUserMapper sysUserMapper;
     private final CounselorStudentMapper counselorStudentMapper;
+    private final ConsultAppointmentMapper consultAppointmentMapper;
     private final ResourceService resourceService;
     private final AuditLogService auditLogService;
+    private final ReportRecommendationService reportRecommendationService;
     private final InterpretationAiClient interpretationAiClient;
 
     public ReportServiceImpl(MentalScaleReportMapper mentalScaleReportMapper,
@@ -72,8 +78,10 @@ public class ReportServiceImpl implements ReportService {
                              MentalScaleOptionMapper mentalScaleOptionMapper,
                              SysUserMapper sysUserMapper,
                              CounselorStudentMapper counselorStudentMapper,
+                             ConsultAppointmentMapper consultAppointmentMapper,
                              ResourceService resourceService,
                              AuditLogService auditLogService,
+                             ReportRecommendationService reportRecommendationService,
                              InterpretationAiClient interpretationAiClient) {
         this.mentalScaleReportMapper = mentalScaleReportMapper;
         this.mentalScaleMapper = mentalScaleMapper;
@@ -82,8 +90,10 @@ public class ReportServiceImpl implements ReportService {
         this.mentalScaleOptionMapper = mentalScaleOptionMapper;
         this.sysUserMapper = sysUserMapper;
         this.counselorStudentMapper = counselorStudentMapper;
+        this.consultAppointmentMapper = consultAppointmentMapper;
         this.resourceService = resourceService;
         this.auditLogService = auditLogService;
+        this.reportRecommendationService = reportRecommendationService;
         this.interpretationAiClient = interpretationAiClient;
     }
 
@@ -160,8 +170,6 @@ public class ReportServiceImpl implements ReportService {
             throw new BusinessException("报告关联数据缺失");
         }
 
-        String assessmentContext = buildDetailedAssessmentContext(scale, report);
-
         return ReportDetailResponse.builder()
                 .reportId(report.getId())
                 .sessionId(report.getSessionId())
@@ -176,7 +184,7 @@ public class ReportServiceImpl implements ReportService {
                 .aiInterpretation(report.getAiInterpretation())
                 .recommendationNote(buildRecommendationNote(report.getLevelCode()))
                 .recommendAppointment("HIGH".equals(report.getLevelCode()) || "MEDIUM".equals(report.getLevelCode()))
-                .recommendedResources(buildRecommendedResources(scale, report, assessmentContext))
+                .recommendedResources(reportRecommendationService.listSnapshotResources(report.getRecommendedResourceIds()))
                 .noticeText(AssessmentNoticeConstants.NON_DIAGNOSTIC_NOTICE)
                 .createdAt(report.getCreatedAt())
                 .build();
@@ -190,77 +198,6 @@ public class ReportServiceImpl implements ReportService {
             return "当前结果建议先结合自助资源持续观察；如果困扰持续存在或明显影响学习生活，建议尽快预约咨询支持。";
         }
         return "当前结果整体相对平稳，可以继续保持规律作息、适度运动和稳定的自我照顾节奏。";
-    }
-
-    private List<ResourceSummaryResponse> buildRecommendedResources(MentalScale scale,
-                                                                   MentalScaleReport report,
-                                                                   String assessmentContext) {
-        List<ResourceSummaryResponse> allPublishedResources = resourceService.listPublishedResources(null, null, null);
-        if (allPublishedResources.isEmpty()) {
-            return List.of();
-        }
-
-        LinkedHashMap<Long, ResourceSummaryResponse> mergedResources = new LinkedHashMap<>();
-        try {
-            List<ResourceSummaryResponse> latestResources = allPublishedResources.stream()
-                    .sorted(Comparator.comparing(ResourceSummaryResponse::getPublishedAt, Comparator.nullsLast(LocalDateTime::compareTo)).reversed())
-                    .limit(AI_RESOURCE_CATALOG_LIMIT)
-                    .toList();
-            String resourceCatalog = buildResourceCatalog(latestResources);
-            List<Long> aiResourceIds = interpretationAiClient.selectRecommendedResourceIds(
-                    new ResourceRecommendationAiRequest(assessmentContext, resourceCatalog)
-            );
-            latestResources.stream()
-                    .filter(resource -> aiResourceIds.contains(resource.getResourceId()))
-                    .sorted(Comparator.comparingInt(resource -> aiResourceIds.indexOf(resource.getResourceId())))
-                    .forEach(resource -> mergedResources.put(resource.getResourceId(), resource));
-        } catch (Exception exception) {
-            log.warn("AI resource recommendation failed, fallback to rule-based recommendation. reportId={}", report.getId(), exception);
-        }
-
-        if (mergedResources.size() < RECOMMENDED_RESOURCE_LIMIT) {
-            RecommendationProfile profile = buildRecommendationProfile(scale, report, assessmentContext);
-
-            for (String keyword : profile.primaryKeywords()) {
-                allPublishedResources.stream()
-                        .map(resource -> new ScoredResource(resource, scoreResource(resource, List.of(keyword), profile.preferArticle())))
-                        .filter(scoredResource -> scoredResource.score() > 0)
-                        .sorted(Comparator
-                                .comparingInt(ScoredResource::score).reversed()
-                                .thenComparing(scoredResource -> scoredResource.resource().getPublishedAt(),
-                                        Comparator.nullsLast(LocalDateTime::compareTo).reversed())
-                                .thenComparing(scoredResource -> scoredResource.resource().getFavoriteCount(), Comparator.reverseOrder())
-                                .thenComparing(scoredResource -> scoredResource.resource().getViewCount(), Comparator.reverseOrder()))
-                        .map(ScoredResource::resource)
-                        .filter(resource -> !mergedResources.containsKey(resource.getResourceId()))
-                        .findFirst()
-                        .ifPresent(resource -> mergedResources.put(resource.getResourceId(), resource));
-                if (mergedResources.size() >= RECOMMENDED_RESOURCE_LIMIT) {
-                    break;
-                }
-            }
-
-            List<ResourceSummaryResponse> targetedResources = allPublishedResources.stream()
-                    .map(resource -> new ScoredResource(resource, scoreResource(resource, profile.primaryKeywords(), profile.preferArticle())))
-                    .filter(scoredResource -> scoredResource.score() > 0)
-                    .sorted(Comparator
-                            .comparingInt(ScoredResource::score).reversed()
-                            .thenComparing(scoredResource -> scoredResource.resource().getPublishedAt(),
-                                    Comparator.nullsLast(LocalDateTime::compareTo).reversed())
-                            .thenComparing(scoredResource -> scoredResource.resource().getFavoriteCount(), Comparator.reverseOrder())
-                            .thenComparing(scoredResource -> scoredResource.resource().getViewCount(), Comparator.reverseOrder()))
-                    .map(ScoredResource::resource)
-                    .toList();
-            targetedResources.forEach(resource -> mergedResources.putIfAbsent(resource.getResourceId(), resource));
-
-            if (mergedResources.size() < RECOMMENDED_RESOURCE_LIMIT) {
-                buildGenericFallbackResources(allPublishedResources).forEach(resource -> mergedResources.putIfAbsent(resource.getResourceId(), resource));
-            }
-        }
-
-        return mergedResources.values().stream()
-                .limit(RECOMMENDED_RESOURCE_LIMIT)
-                .toList();
     }
 
     private String buildDetailedAssessmentContext(MentalScale scale, MentalScaleReport report) {
@@ -442,7 +379,20 @@ public class ReportServiceImpl implements ReportService {
                         .eq(CounselorStudent::getStudentUserId, studentUserId)
                         .last("limit 1")
         );
-        if (relation == null) {
+        if (relation != null) {
+            return;
+        }
+
+        Long appointmentCount = consultAppointmentMapper.selectCount(
+                new LambdaQueryWrapper<ConsultAppointment>()
+                        .eq(ConsultAppointment::getCounselorUserId, counselorUserId)
+                        .eq(ConsultAppointment::getStudentUserId, studentUserId)
+                        .in(ConsultAppointment::getStatus, List.of(
+                                AppointmentConstants.APPOINTMENT_ACCEPTED,
+                                AppointmentConstants.APPOINTMENT_COMPLETED
+                        ))
+        );
+        if (appointmentCount == null || appointmentCount <= 0) {
             throw new BusinessException("无权查看该学生报告");
         }
     }

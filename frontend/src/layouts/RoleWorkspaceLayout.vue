@@ -136,6 +136,7 @@ const assetOrigin = `${window.location.protocol}//${window.location.hostname}:80
 const studentAvatarStorageKey = 'jqpro.student-avatar-url'
 const avatarEventName = 'jqpro:student-avatar-updated'
 const studentAvatarUrl = ref(localStorage.getItem(studentAvatarStorageKey))
+const defaultCounselorAvatarUrl = `${assetOrigin}/assets/avatars/roles/counselor-default.jpg`
 
 const currentUser = computed(() => authStore.currentUser)
 const sidebarAvatarUrl = computed(() => {
@@ -143,7 +144,7 @@ const sidebarAvatarUrl = computed(() => {
     return studentAvatarUrl.value || `${assetOrigin}/assets/avatars/roles/student-default.jpg`
   }
   if (currentUser.value?.roleCode === 'COUNSELOR') {
-    return `${assetOrigin}/assets/avatars/roles/counselor-default.jpg`
+    return currentUser.value.avatarUrl || defaultCounselorAvatarUrl
   }
   if (currentUser.value?.roleCode === 'ADMIN') {
     return `${assetOrigin}/assets/avatars/roles/admin-default.jpg`

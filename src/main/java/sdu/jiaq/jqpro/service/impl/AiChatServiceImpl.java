@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.AiChatConstants;
+import sdu.jiaq.jqpro.common.constant.AppointmentConstants;
 import sdu.jiaq.jqpro.common.constant.ReportLevelConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.ChatCryptoUtil;
@@ -21,10 +22,12 @@ import sdu.jiaq.jqpro.dto.aichat.SendAiChatMessageRequest;
 import sdu.jiaq.jqpro.dto.aichat.SendAiChatMessageResponse;
 import sdu.jiaq.jqpro.entity.AiChatMessage;
 import sdu.jiaq.jqpro.entity.AiChatSession;
+import sdu.jiaq.jqpro.entity.ConsultAppointment;
 import sdu.jiaq.jqpro.entity.CounselorStudent;
 import sdu.jiaq.jqpro.entity.SysUser;
 import sdu.jiaq.jqpro.mapper.AiChatMessageMapper;
 import sdu.jiaq.jqpro.mapper.AiChatSessionMapper;
+import sdu.jiaq.jqpro.mapper.ConsultAppointmentMapper;
 import sdu.jiaq.jqpro.mapper.CounselorStudentMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.AiChatService;
@@ -43,17 +46,20 @@ public class AiChatServiceImpl implements AiChatService {
     private final AiChatSessionMapper aiChatSessionMapper;
     private final AiChatMessageMapper aiChatMessageMapper;
     private final CounselorStudentMapper counselorStudentMapper;
+    private final ConsultAppointmentMapper consultAppointmentMapper;
     private final SysUserMapper sysUserMapper;
     private final AiChatAiClient aiChatAiClient;
 
     public AiChatServiceImpl(AiChatSessionMapper aiChatSessionMapper,
                              AiChatMessageMapper aiChatMessageMapper,
                              CounselorStudentMapper counselorStudentMapper,
+                             ConsultAppointmentMapper consultAppointmentMapper,
                              SysUserMapper sysUserMapper,
                              AiChatAiClient aiChatAiClient) {
         this.aiChatSessionMapper = aiChatSessionMapper;
         this.aiChatMessageMapper = aiChatMessageMapper;
         this.counselorStudentMapper = counselorStudentMapper;
+        this.consultAppointmentMapper = consultAppointmentMapper;
         this.sysUserMapper = sysUserMapper;
         this.aiChatAiClient = aiChatAiClient;
     }
@@ -232,7 +238,18 @@ public class AiChatServiceImpl implements AiChatService {
                 .eq(CounselorStudent::getCounselorUserId, counselorUserId)
                 .eq(CounselorStudent::getStudentUserId, studentUserId)
                 .last("limit 1"));
-        if (relation == null) {
+        if (relation != null) {
+            return;
+        }
+
+        Long appointmentCount = consultAppointmentMapper.selectCount(new LambdaQueryWrapper<ConsultAppointment>()
+                .eq(ConsultAppointment::getCounselorUserId, counselorUserId)
+                .eq(ConsultAppointment::getStudentUserId, studentUserId)
+                .in(ConsultAppointment::getStatus, List.of(
+                        AppointmentConstants.APPOINTMENT_ACCEPTED,
+                        AppointmentConstants.APPOINTMENT_COMPLETED
+                )));
+        if (appointmentCount == null || appointmentCount <= 0) {
             throw new BusinessException("无权查看该学生AI会话");
         }
     }

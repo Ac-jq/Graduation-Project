@@ -2,6 +2,7 @@ export interface AppointmentCounselorOption {
   counselorUserId: number
   counselorName: string
   counselorNo: string | null
+  avatarUrl?: string | null
 }
 
 export interface AppointmentSlot {
@@ -23,6 +24,7 @@ export interface Appointment {
   anonymousName: string
   counselorUserId: number | null
   counselorName: string | null
+  counselorAvatarUrl?: string | null
   issueSummary: string
   status: string
   resultMessage: string | null

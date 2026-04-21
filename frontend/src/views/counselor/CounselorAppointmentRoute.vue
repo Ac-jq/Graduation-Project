@@ -5,6 +5,7 @@ import { acceptAppointmentApi, fetchCounselorAppointmentsApi, rejectAppointmentA
 import { closeConsultChatSessionApi } from '@/api/chat'
 import type { Appointment, AppointmentActionRequest } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
+import SaaSBackground from '@/components/SaaSBackground.vue'
 
 type AppointmentTone = 'pending' | 'accepted' | 'active' | 'done' | 'muted'
 
@@ -254,6 +255,7 @@ watch(searchKeyword, () => {
 
 <template>
   <main class="editorial-ledger-page">
+    <SaaSBackground />
     <div class="page-container">
       <header class="ledger-header">
         <div class="header-main">
@@ -408,16 +410,21 @@ watch(searchKeyword, () => {
 
 .editorial-ledger-page {
   min-height: 100vh;
+  position: relative;
+  isolation: isolate;
   background: #fcfbf9;
   color: #1e2821;
   font-family: 'Manrope', 'Noto Serif SC', sans-serif;
   padding: 4rem 2vw 8rem;
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .page-container {
   max-width: 1060px;
   margin: 0 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .ledger-header {

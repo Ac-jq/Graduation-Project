@@ -1,7 +1,7 @@
 ﻿import { defineStore } from 'pinia'
 import type { CurrentUser } from '@/types/common'
 import { applyLoginSession, fetchCurrentUser, login, logout } from '@/core/auth-service'
-import { clearSession, getCurrentUserCache, getToken } from '@/core/session'
+import { clearSession, getCurrentUserCache, getToken, setCurrentUserCache } from '@/core/session'
 
 interface AuthState {
   token: string | null
@@ -28,6 +28,13 @@ export const useAuthStore = defineStore('auth', {
       clearSession()
       this.syncFromStorage()
       this.sessionRestored = true
+    },
+    updateCurrentUser(patch: Partial<CurrentUser>): void {
+      if (!this.currentUser) {
+        return
+      }
+      this.currentUser = { ...this.currentUser, ...patch }
+      setCurrentUserCache(this.currentUser)
     },
     async restoreSession(force = false): Promise<CurrentUser | null> {
       if (this.sessionRestored && !force) {

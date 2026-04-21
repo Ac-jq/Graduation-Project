@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { changePassword } from '@/core/auth-service'
 import { useAuthStore } from '@/stores/auth'
+import { fetchCounselorProfileApi, updateCounselorProfileApi } from '@/api/user'
+import type { CounselorProfile } from '@/api/types'
 import { fetchSystemBusinessErrorApi, fetchSystemPingApi } from '@/api/system'
 import { resolveRoleHome } from '@/core/session'
 import { toErrorMessage } from '@/views/shared/page-logic'
@@ -12,18 +14,96 @@ const router = useRouter()
 const authStore = useAuthStore()
 const saving = ref(false)
 const probing = ref(false)
+const loadingCounselorProfile = ref(false)
+const savingCounselorAvatar = ref(false)
 const errorMessage = ref('')
 const pingResult = ref('')
+const assetOrigin = `${window.location.protocol}//${window.location.hostname}:8080`
+const counselorAvatarEventName = 'jqpro:counselor-avatar-updated'
+const avatarPresets = Array.from({ length: 10 }, (_, index) => ({
+  id: index + 1,
+  label: `预设头像 ${String(index + 1).padStart(2, '0')}`,
+  url: `${assetOrigin}/assets/avatars/presets/avatar-${String(index + 1).padStart(2, '0')}.jpg`
+}))
 const form = reactive({
   oldPassword: '',
   newPassword: '',
   confirmPassword: ''
 })
+const counselorAvatarForm = reactive({
+  avatarUrl: ''
+})
+const counselorProfile = ref<CounselorProfile | null>(null)
 
 const homePath = computed(() => {
   const roleCode = authStore.currentUser?.roleCode
   return roleCode ? resolveRoleHome(roleCode) : '/login'
 })
+const isCounselorAccount = computed(() => authStore.currentUser?.roleCode === 'COUNSELOR')
+const currentCounselorAvatarUrl = computed(() =>
+  counselorAvatarForm.avatarUrl || authStore.currentUser?.avatarUrl || avatarPresets[0]?.url || ''
+)
+const currentPresetId = computed(() =>
+  avatarPresets.find((preset) => preset.url === currentCounselorAvatarUrl.value)?.id ?? null
+)
+
+async function loadCounselorProfile(): Promise<void> {
+  if (!isCounselorAccount.value) {
+    return
+  }
+
+  loadingCounselorProfile.value = true
+  errorMessage.value = ''
+
+  try {
+    const profile = await fetchCounselorProfileApi()
+    counselorProfile.value = profile
+    counselorAvatarForm.avatarUrl = profile.avatarUrl || authStore.currentUser?.avatarUrl || avatarPresets[0].url
+    authStore.updateCurrentUser({
+      realName: profile.realName,
+      displayName: profile.displayName,
+      counselorNo: profile.counselorNo,
+      avatarUrl: profile.avatarUrl
+    })
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loadingCounselorProfile.value = false
+  }
+}
+
+function chooseCounselorAvatar(url: string): void {
+  counselorAvatarForm.avatarUrl = url
+}
+
+async function saveCounselorAvatar(): Promise<void> {
+  if (!isCounselorAccount.value) {
+    return
+  }
+
+  savingCounselorAvatar.value = true
+  errorMessage.value = ''
+
+  try {
+    const profile = await updateCounselorProfileApi({
+      avatarUrl: counselorAvatarForm.avatarUrl || null
+    })
+    counselorProfile.value = profile
+    counselorAvatarForm.avatarUrl = profile.avatarUrl || avatarPresets[0].url
+    authStore.updateCurrentUser({
+      realName: profile.realName,
+      displayName: profile.displayName,
+      counselorNo: profile.counselorNo,
+      avatarUrl: profile.avatarUrl
+    })
+    window.dispatchEvent(new Event(counselorAvatarEventName))
+    ElMessage.success('头像已更新，学生端将同步显示新的咨询师形象。')
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    savingCounselorAvatar.value = false
+  }
+}
 
 function resetForm(): void {
   form.oldPassword = ''
@@ -81,6 +161,10 @@ async function runBusinessErrorProbe(): Promise<void> {
 async function goHome(): Promise<void> {
   await router.push(homePath.value)
 }
+
+onMounted(() => {
+  void loadCounselorProfile()
+})
 </script>
 
 <template>
@@ -106,6 +190,44 @@ async function goHome(): Promise<void> {
       <section class="dossier-grid">
 
         <aside class="session-specs">
+          <section v-if="isCounselorAccount" class="portrait-card">
+            <div class="portrait-circle">
+              <img :src="currentCounselorAvatarUrl" alt="咨询师头像" class="portrait-image">
+            </div>
+
+            <div class="portrait-copy">
+              <span class="portrait-kicker">Counselor Avatar</span>
+              <h3>选择你的咨询师形象</h3>
+              <p>
+                使用学生端同款本地预设头像。保存后会写入后端资料，并同步到工作台、预约列表与聊天室。
+              </p>
+            </div>
+
+            <div class="preset-grid" aria-label="咨询师预设头像">
+              <button
+                v-for="preset in avatarPresets"
+                :key="preset.id"
+                type="button"
+                class="preset-item"
+                :class="{ 'is-selected': currentPresetId === preset.id }"
+                :aria-label="preset.label"
+                :disabled="loadingCounselorProfile || savingCounselorAvatar"
+                @click="chooseCounselorAvatar(preset.url)"
+              >
+                <img :src="preset.url" :alt="preset.label">
+              </button>
+            </div>
+
+            <button
+              class="portrait-save-btn"
+              type="button"
+              :disabled="loadingCounselorProfile || savingCounselorAvatar"
+              @click="saveCounselorAvatar"
+            >
+              {{ savingCounselorAvatar ? '正在保存...' : '保存头像' }}
+            </button>
+          </section>
+
           <h3 class="specs-heading">当前会话标识</h3>
 
           <div class="spec-row">
@@ -293,6 +415,120 @@ async function goHome(): Promise<void> {
 .session-specs {
   display: flex;
   flex-direction: column;
+}
+
+.portrait-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-bottom: 2.4rem;
+  padding: 1.25rem;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 20% 12%, rgba(206, 219, 203, 0.55), transparent 32%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(247, 244, 239, 0.72));
+  box-shadow: 0 28px 56px rgba(52, 65, 55, 0.08);
+}
+
+.portrait-circle {
+  width: 92px;
+  height: 92px;
+  border-radius: 30px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #dfe8dc, #f3e7dc);
+  box-shadow: 0 18px 36px rgba(52, 65, 55, 0.12);
+}
+
+.portrait-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.portrait-copy {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.portrait-kicker {
+  color: #8a9c90;
+  font: 700 0.72rem/1 'Manrope', sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.portrait-copy h3 {
+  margin: 0;
+  color: #1e2821;
+  font: 600 1.25rem/1.3 'Noto Serif SC', serif;
+}
+
+.portrait-copy p {
+  margin: 0;
+  color: #6a7c70;
+  font: 500 0.88rem/1.7 'Manrope', sans-serif;
+}
+
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.6rem;
+}
+
+.preset-item {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0.16rem;
+  border: none;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.68);
+  cursor: pointer;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.06);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.preset-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 15px;
+  object-fit: cover;
+}
+
+.preset-item:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 26px rgba(52, 65, 55, 0.1);
+}
+
+.preset-item.is-selected {
+  background: #2a362e;
+  box-shadow: 0 18px 32px rgba(42, 54, 46, 0.18);
+}
+
+.portrait-save-btn {
+  width: 100%;
+  min-height: 2.9rem;
+  border: none;
+  border-radius: 999px;
+  background: #2a362e;
+  color: #ffffff;
+  cursor: pointer;
+  font: 600 0.95rem/1 'Noto Serif SC', serif;
+  box-shadow: 0 18px 32px rgba(42, 54, 46, 0.16);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.portrait-save-btn:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 38px rgba(42, 54, 46, 0.22);
+}
+
+.portrait-save-btn:disabled,
+.preset-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .specs-heading {

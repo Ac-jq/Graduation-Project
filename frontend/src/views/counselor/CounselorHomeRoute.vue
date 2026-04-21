@@ -7,6 +7,7 @@ import { fetchCounselorStudentsApi } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
 import type { Appointment, CounselorStudentSummary, NotificationItem } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
+import SaaSBackground from '@/components/SaaSBackground.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -37,7 +38,8 @@ const focusStudentCount = computed(() => {
   return uniqueStudentIds.size
 })
 const currentUser = computed(() => authStore.currentUser)
-const roleAvatarUrl = computed(() => `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/counselor-default.jpg`)
+const defaultCounselorAvatarUrl = `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/counselor-default.jpg`
+const roleAvatarUrl = computed(() => currentUser.value?.avatarUrl || defaultCounselorAvatarUrl)
 
 function isSameDate(value: string | Date, target: Date): boolean {
   const d = new Date(value)
@@ -138,8 +140,7 @@ onMounted(() => {
 
 <template>
   <main class="editorial-desk-page">
-    <div class="bg-layer-aurora"></div>
-    <div class="bg-layer-grid"></div>
+    <SaaSBackground />
 
     <div class="desk-container">
       <header class="glass-nav">
@@ -330,32 +331,6 @@ onMounted(() => {
   overflow-x: hidden;
 }
 
-/* 高级极光晕影背景 */
-.bg-layer-aurora {
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
-      radial-gradient(circle at 10% 20%, rgba(179, 202, 185, 0.45), transparent 30rem),
-      radial-gradient(circle at 90% 10%, rgba(229, 194, 164, 0.35), transparent 30rem),
-      radial-gradient(circle at 50% 80%, rgba(199, 215, 205, 0.35), transparent 40rem);
-  filter: blur(60px);
-  pointer-events: none;
-}
-
-/* 高级细网格线背景 */
-.bg-layer-grid {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background-image:
-      linear-gradient(rgba(42, 54, 46, 0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(42, 54, 46, 0.04) 1px, transparent 1px);
-  background-size: 32px 32px;
-  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.1) 80%, transparent 100%);
-  pointer-events: none;
-}
-
 .desk-container {
   max-width: 1100px;
   margin: 0 auto;
@@ -429,6 +404,21 @@ onMounted(() => {
   border-radius: 50%;
   background: #e88656;
   box-shadow: 0 0 0 2px #fdfbf7;
+  animation: breathe 2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(0.95);
+    box-shadow: 0 0 0 2px #fdfbf7, 0 0 0 0 rgba(232, 134, 86, 0);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px #fdfbf7, 0 0 12px rgba(232, 134, 86, 0.42);
+  }
 }
 
 .profile-dropdown-wrapper { position: relative; }
@@ -488,6 +478,16 @@ onMounted(() => {
   flex-direction: column;
   gap: 2px;
   z-index: 1000;
+}
+
+.dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -15px;
+  left: 0;
+  width: 100%;
+  height: 15px;
+  background: transparent;
 }
 
 .dropdown-menu li {

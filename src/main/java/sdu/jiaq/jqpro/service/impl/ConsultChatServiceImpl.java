@@ -188,11 +188,14 @@ public class ConsultChatServiceImpl implements ConsultChatService {
 
     private ConsultChatMessageResponse buildMessageResponse(ConsultChatMessage message) {
         SysUser sender = sysUserMapper.selectById(message.getSenderUserId());
-        StudentProfile profile = null;
+        String avatarUrl = null;
         if (sender != null && RoleConstants.STUDENT.equals(sender.getRoleCode())) {
-            profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+            StudentProfile profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
                     .eq(StudentProfile::getUserId, sender.getId())
                     .last("limit 1"));
+            avatarUrl = profile == null ? null : profile.getAvatarUrl();
+        } else if (sender != null && RoleConstants.COUNSELOR.equals(sender.getRoleCode())) {
+            avatarUrl = sender.getAvatarUrl();
         }
         return ConsultChatMessageResponse.builder()
                 .messageId(message.getId())
@@ -200,7 +203,7 @@ public class ConsultChatServiceImpl implements ConsultChatService {
                 .senderUserId(message.getSenderUserId())
                 .senderType(message.getSenderType())
                 .senderDisplayName(resolveSenderDisplayName(sender))
-                .senderAvatarUrl(profile == null ? null : profile.getAvatarUrl())
+                .senderAvatarUrl(avatarUrl)
                 .content(ChatCryptoUtil.decrypt(message.getContentCipherText()))
                 .createdAt(message.getCreatedAt())
                 .build();

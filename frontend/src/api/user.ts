@@ -3,10 +3,12 @@ import type {
   AdminUserQuery,
   AdminUserSummary,
   AvatarUploadResponse,
+  CounselorProfile,
   CounselorStudentSummary,
   CreateCounselorRequest,
   StudentProfile,
   UpdateAdminUserRequest,
+  UpdateCounselorProfileRequest,
   UpdateStudentProfileRequest
 } from './types'
 
@@ -26,6 +28,14 @@ export function uploadStudentAvatarApi(file: File): Promise<AvatarUploadResponse
       'Content-Type': 'multipart/form-data'
     }
   })
+}
+
+export function fetchCounselorProfileApi(): Promise<CounselorProfile> {
+  return get<CounselorProfile>('/counselor/profile')
+}
+
+export function updateCounselorProfileApi(payload: UpdateCounselorProfileRequest): Promise<CounselorProfile> {
+  return put<CounselorProfile>('/counselor/profile', payload)
 }
 
 export function fetchCounselorStudentsApi(): Promise<CounselorStudentSummary[]> {

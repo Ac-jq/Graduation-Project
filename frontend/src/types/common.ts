@@ -13,6 +13,7 @@ export interface CurrentUser {
   roleCode: RoleCode
   realName?: string | null
   displayName: string
+  avatarUrl?: string | null
   studentNo?: string | null
   counselorNo?: string | null
   roles: string[]
@@ -24,6 +25,7 @@ export interface LoginResponse {
   account: string
   roleCode: RoleCode
   displayName: string
+  avatarUrl?: string | null
   roles: string[]
 }
 

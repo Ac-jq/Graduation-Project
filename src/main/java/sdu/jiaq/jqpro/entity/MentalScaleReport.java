@@ -31,5 +31,7 @@ public class MentalScaleReport {
 
     private String aiInterpretation;
 
+    private String recommendedResourceIds;
+
     private LocalDateTime createdAt;
 }

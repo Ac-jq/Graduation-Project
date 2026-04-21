@@ -24,6 +24,8 @@ public class AppointmentResponse {
 
     private String counselorName;
 
+    private String counselorAvatarUrl;
+
     private String issueSummary;
 
     private String status;

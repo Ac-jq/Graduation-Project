@@ -24,6 +24,20 @@ export interface UpdateStudentProfileRequest {
   emergencyPhone?: string | null
 }
 
+export interface CounselorProfile {
+  userId: number
+  account: string
+  realName: string | null
+  displayName: string
+  counselorNo: string | null
+  roleCode: string
+  avatarUrl: string | null
+}
+
+export interface UpdateCounselorProfileRequest {
+  avatarUrl?: string | null
+}
+
 export interface AvatarUploadResponse {
   avatarUrl: string
 }

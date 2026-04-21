@@ -15,6 +15,7 @@ const errorMessage = ref('')
 const counselorOptions = ref<AppointmentCounselorOption[]>([])
 const slots = ref<AppointmentSlot[]>([])
 const createdAppointment = ref<Appointment | null>(null)
+const defaultCounselorAvatarUrl = `${window.location.protocol}//${window.location.hostname}:8080/assets/avatars/roles/counselor-default.jpg`
 
 const form = reactive({
   counselorUserId: null as number | null,
@@ -190,6 +191,12 @@ watch(
               :class="{ 'counselor-card--active': form.counselorUserId === counselor.counselorUserId }"
               @click="form.counselorUserId = counselor.counselorUserId"
             >
+              <span class="counselor-avatar">
+                <img
+                  :src="counselor.avatarUrl || defaultCounselorAvatarUrl"
+                  :alt="`${counselor.counselorName}头像`"
+                >
+              </span>
               <div class="counselor-main">
                 <span class="counselor-name">{{ counselor.counselorName }}</span>
                 <span class="counselor-sub">工号 {{ counselor.counselorNo || '未设置' }}</span>
@@ -417,8 +424,8 @@ watch(
 .counselor-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  justify-content: flex-start;
+  gap: 0.85rem;
   width: 100%;
   padding: 0.72rem 0.9rem;
   border: none;
@@ -426,6 +433,23 @@ watch(
   background: rgba(255, 255, 255, 0.7);
   cursor: pointer;
   text-align: left;
+}
+
+.counselor-avatar {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(206, 219, 203, 0.9), rgba(244, 232, 217, 0.9));
+  box-shadow: 0 12px 22px rgba(54, 66, 58, 0.08);
+}
+
+.counselor-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .counselor-card:hover {
@@ -442,6 +466,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  min-width: 0;
+  margin-right: auto;
 }
 
 .counselor-name {

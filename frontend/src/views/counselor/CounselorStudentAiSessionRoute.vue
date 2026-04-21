@@ -14,10 +14,23 @@ const messages = ref<AiChatMessage[]>([])
 const studentUserId = computed(() => toNumberParam(route.params.studentUserId))
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
 
-const alertCount = computed(() => messages.value.filter(m => m.riskLevel || m.hitKeywords).length)
+const alertCount = computed(() => messages.value.filter(m => Boolean(m.hitKeywords)).length)
 
-function formatTime(value: string | Date): string {
-  const d = new Date(value)
+function parseChatDate(value: string | Date | number[] | null | undefined): Date | null {
+  if (!value) return null
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (Array.isArray(value)) {
+    const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value
+    const parsed = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1000000))
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+  const parsed = new Date(String(value).trim().replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatTime(value: string | Date | number[] | null | undefined): string {
+  const d = parseChatDate(value)
+  if (!d) return '暂无记录'
   return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
@@ -121,11 +134,8 @@ onMounted(() => {
             <div class="row-content-col">
               <p class="message-content">{{ message.content }}</p>
 
-              <div v-if="message.riskLevel || message.hitKeywords" class="message-annotations">
-                <span v-if="message.riskLevel" class="annotation-pill risk-pill">
-                  Level {{ message.riskLevel }}
-                </span>
-                <span v-if="message.hitKeywords" class="annotation-pill keyword-pill">
+              <div v-if="message.hitKeywords" class="message-annotations">
+                <span class="annotation-pill keyword-pill">
                   触发关键词: {{ message.hitKeywords }}
                 </span>
               </div>
@@ -361,12 +371,6 @@ onMounted(() => {
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
-}
-
-.risk-pill {
-  background: rgba(140, 74, 74, 0.1);
-  color: #8c4a4a;
-  border: 1px solid rgba(140, 74, 74, 0.2);
 }
 
 .keyword-pill {
