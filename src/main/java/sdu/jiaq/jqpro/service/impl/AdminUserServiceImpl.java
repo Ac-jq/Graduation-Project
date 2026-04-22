@@ -10,6 +10,7 @@ import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.PasswordCryptoUtil;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.adminuser.AdminUserSummaryResponse;
+import sdu.jiaq.jqpro.dto.adminuser.CreateAdminUserRequest;
 import sdu.jiaq.jqpro.dto.adminuser.CreateCounselorRequest;
 import sdu.jiaq.jqpro.dto.adminuser.UpdateAdminUserRequest;
 import sdu.jiaq.jqpro.entity.AiChatSession;
@@ -116,28 +117,61 @@ public class AdminUserServiceImpl implements AdminUserService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public AdminUserSummaryResponse createCounselor(CreateCounselorRequest request) {
-        if (findByAccount(request.getAccount()) != null) {
-            throw new BusinessException("Account already exists");
+    public AdminUserSummaryResponse createUser(CreateAdminUserRequest request) {
+        String account = request.getAccount().trim();
+        String roleCode = normalizeRoleCode(request.getRoleCode());
+        String displayName = request.getDisplayName().trim();
+        String realName = blankToDefault(request.getRealName(), displayName);
+        String password = normalizeOptional(request.getPassword());
+
+        if (!RoleConstants.STUDENT.equals(roleCode)
+                && !RoleConstants.COUNSELOR.equals(roleCode)
+                && !RoleConstants.ADMIN.equals(roleCode)) {
+            throw new BusinessException("用户角色不受支持");
         }
-        if (sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getCounselorNo, request.getCounselorNo())) > 0) {
-            throw new BusinessException("Counselor number already exists");
-        }
-        String salt = PasswordCryptoUtil.generateSalt();
+        validateUniqueAccount(account, null);
+
         SysUser user = new SysUser();
-        user.setAccount(request.getAccount().trim());
+        String salt = PasswordCryptoUtil.generateSalt();
+        user.setAccount(account);
         user.setPasswordSalt(salt);
-        user.setPasswordHash(PasswordCryptoUtil.hashPassword(DEFAULT_PASSWORD, salt));
-        user.setRoleCode(RoleConstants.COUNSELOR);
-        user.setRealName(blankToDefault(request.getRealName(), request.getDisplayName().trim()));
-        user.setDisplayName(request.getDisplayName().trim());
-        user.setCounselorNo(request.getCounselorNo().trim());
+        user.setPasswordHash(PasswordCryptoUtil.hashPassword(password == null ? DEFAULT_PASSWORD : password, salt));
+        user.setRoleCode(roleCode);
+        user.setRealName(realName);
+        user.setDisplayName(displayName);
         user.setStatus(UserStatusConstants.ACTIVE);
-        sysUserMapper.insert(user);
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_USER_CREATE_COUNSELOR", "Create counselor",
-                "Created counselor account " + user.getAccount(), null);
-        return buildUserSummary(user, null);
+
+        StudentProfile profile = null;
+        if (RoleConstants.STUDENT.equals(roleCode)) {
+            String studentNo = requireRoleIdentity(request.getStudentNo(), "学生学号不能为空");
+            validateUniqueStudentNo(studentNo, null);
+            user.setStudentNo(studentNo);
+            sysUserMapper.insert(user);
+            profile = createStudentProfile(user.getId(), request);
+        } else if (RoleConstants.COUNSELOR.equals(roleCode)) {
+            String counselorNo = requireRoleIdentity(request.getCounselorNo(), "咨询师工号不能为空");
+            validateUniqueCounselorNo(counselorNo, null);
+            user.setCounselorNo(counselorNo);
+            sysUserMapper.insert(user);
+        } else {
+            sysUserMapper.insert(user);
+        }
+
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_USER_CREATE", "创建用户账号",
+                "创建" + roleCode + "账号 " + user.getAccount(), null);
+        return buildUserSummary(user, profile);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AdminUserSummaryResponse createCounselor(CreateCounselorRequest request) {
+        CreateAdminUserRequest genericRequest = new CreateAdminUserRequest();
+        genericRequest.setAccount(request.getAccount());
+        genericRequest.setRoleCode(RoleConstants.COUNSELOR);
+        genericRequest.setDisplayName(request.getDisplayName());
+        genericRequest.setRealName(request.getRealName());
+        genericRequest.setCounselorNo(request.getCounselorNo());
+        return createUser(genericRequest);
     }
 
     @Override
@@ -275,6 +309,10 @@ public class AdminUserServiceImpl implements AdminUserService {
         return value == null || value.isBlank() ? null : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    private String normalizeRoleCode(String value) {
+        return value == null || value.isBlank() ? null : value.trim().toUpperCase(Locale.ROOT);
+    }
+
     private String normalizeGrade(String value) {
         String normalized = normalize(value);
         if (normalized == null) {
@@ -334,6 +372,27 @@ public class AdminUserServiceImpl implements AdminUserService {
             throw new BusinessException(message);
         }
         return value.trim();
+    }
+
+    private StudentProfile createStudentProfile(Long userId, CreateAdminUserRequest request) {
+        String college = normalizeOptional(request.getCollege());
+        String grade = normalizeOptional(request.getGrade());
+        String phone = normalizeOptional(request.getPhone());
+
+        if (!StringUtils.hasText(college)) {
+            throw new BusinessException("学生学院不能为空");
+        }
+        if (!StringUtils.hasText(grade)) {
+            throw new BusinessException("学生年级不能为空");
+        }
+
+        StudentProfile profile = new StudentProfile();
+        profile.setUserId(userId);
+        profile.setCollege(college);
+        profile.setGrade(grade);
+        profile.setPhone(phone);
+        studentProfileMapper.insert(profile);
+        return profile;
     }
 
     private StudentProfile saveStudentProfile(Long userId, StudentProfile profile, UpdateAdminUserRequest request) {

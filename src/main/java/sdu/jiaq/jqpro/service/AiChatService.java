@@ -21,6 +21,10 @@ public interface AiChatService {
 
     SendAiChatMessageResponse sendMessage(Long sessionId, SendAiChatMessageRequest request);
 
+    AiChatSessionResponse archiveCurrentStudentSession(Long sessionId);
+
+    void deleteEmptyCurrentStudentSession(Long sessionId);
+
     List<AiChatSessionResponse> listCounselorStudentSessions(Long studentUserId);
 
     List<AiChatMessageResponse> listCounselorStudentMessages(Long studentUserId, Long sessionId);

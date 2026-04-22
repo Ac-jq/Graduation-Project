@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  createCounselorApi,
+  createAdminUserApi,
   deleteAdminUserApi,
   disableUserApi,
   enableUserApi,
@@ -10,7 +10,7 @@ import {
   resetUserPasswordApi,
   updateAdminUserApi
 } from '@/api/user'
-import type { AdminUserQuery, AdminUserSummary, CreateCounselorRequest, UpdateAdminUserRequest } from '@/api/types'
+import type { AdminUserQuery, AdminUserSummary, CreateAdminUserRequest, UpdateAdminUserRequest } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
 interface AdminUserEditForm {
@@ -64,11 +64,17 @@ const collegeOptions = [
   '电子信息工程学院'
 ]
 
-const createForm = reactive<CreateCounselorRequest>({
+const createForm = reactive<CreateAdminUserRequest>({
   account: '',
+  roleCode: 'STUDENT',
   displayName: '',
   realName: '',
-  counselorNo: ''
+  studentNo: '',
+  counselorNo: '',
+  college: '',
+  grade: '',
+  phone: '',
+  password: ''
 })
 
 const editForm = reactive<AdminUserEditForm>({
@@ -115,6 +121,8 @@ const editIdentityValue = computed({
 })
 
 const isStudentEditing = computed(() => editForm.roleCode === 'STUDENT')
+const isCreatingStudent = computed(() => createForm.roleCode === 'STUDENT')
+const isCreatingCounselor = computed(() => createForm.roleCode === 'COUNSELOR')
 
 function rowIndex(index: number): number {
   return (currentPage.value - 1) * pageSize + index + 1
@@ -153,9 +161,15 @@ function formatDate(value?: string): string {
 
 function resetCreateForm(): void {
   createForm.account = ''
+  createForm.roleCode = 'STUDENT'
   createForm.displayName = ''
   createForm.realName = ''
+  createForm.studentNo = ''
   createForm.counselorNo = ''
+  createForm.college = ''
+  createForm.grade = ''
+  createForm.phone = ''
+  createForm.password = ''
 }
 
 function fillEditForm(user: AdminUserSummary): void {
@@ -203,12 +217,57 @@ async function loadUsers(): Promise<void> {
   }
 }
 
-async function createCounselor(): Promise<void> {
+function buildCreatePayload(): CreateAdminUserRequest {
+  return {
+    account: createForm.account.trim(),
+    roleCode: createForm.roleCode,
+    displayName: createForm.displayName.trim(),
+    realName: createForm.realName?.trim() || null,
+    studentNo: createForm.roleCode === 'STUDENT' ? createForm.studentNo?.trim() || null : null,
+    counselorNo: createForm.roleCode === 'COUNSELOR' ? createForm.counselorNo?.trim() || null : null,
+    college: createForm.roleCode === 'STUDENT' ? createForm.college?.trim() || null : null,
+    grade: createForm.roleCode === 'STUDENT' ? createForm.grade?.trim() || null : null,
+    phone: createForm.roleCode === 'STUDENT' ? createForm.phone?.trim() || null : null,
+    password: createForm.password?.trim() || null
+  }
+}
+
+async function createUser(): Promise<void> {
+  if (!createForm.account.trim()) {
+    ElMessage.warning('账号不能为空')
+    return
+  }
+
+  if (!createForm.displayName.trim()) {
+    ElMessage.warning('显示名不能为空')
+    return
+  }
+
+  if (isCreatingStudent.value) {
+    if (!createForm.studentNo?.trim()) {
+      ElMessage.warning('学生学号不能为空')
+      return
+    }
+    if (!createForm.college?.trim()) {
+      ElMessage.warning('学生学院不能为空')
+      return
+    }
+    if (!createForm.grade?.trim()) {
+      ElMessage.warning('学生年级不能为空')
+      return
+    }
+  }
+
+  if (isCreatingCounselor.value && !createForm.counselorNo?.trim()) {
+    ElMessage.warning('咨询师工号不能为空')
+    return
+  }
+
   processing.value = true
   errorMessage.value = ''
 
   try {
-    await createCounselorApi(createForm)
+    await createAdminUserApi(buildCreatePayload())
     resetCreateForm()
     showCreatePanel.value = false
     await loadUsers()
@@ -353,6 +412,7 @@ function resetFilters(): void {
   filters.keyword = ''
   filters.grade = undefined
   filters.college = undefined
+  void loadUsers()
 }
 
 function exportUsers(): void {
@@ -482,12 +542,20 @@ onMounted(() => {
         <div class="create-panel-header">
           <div>
             <h2>新增用户</h2>
-            <p>当前接口仅支持新增咨询师账号。</p>
+            <p>根据角色填写必要身份信息，保存后账号默认启用。</p>
           </div>
           <button class="toolbar-btn" type="button" @click="showCreatePanel = false">收起</button>
         </div>
 
         <div class="create-panel-form">
+          <label class="toolbar-field">
+            <span>用户角色</span>
+            <select v-model="createForm.roleCode">
+              <option value="STUDENT">学生</option>
+              <option value="COUNSELOR">咨询师</option>
+              <option value="ADMIN">系统管理员</option>
+            </select>
+          </label>
           <label class="toolbar-field">
             <span>账号</span>
             <input v-model="createForm.account" type="text">
@@ -501,6 +569,36 @@ onMounted(() => {
             <input v-model="createForm.realName" type="text">
           </label>
           <label class="toolbar-field">
+            <span>登录密码</span>
+            <input v-model="createForm.password" type="password" placeholder="留空使用默认密码">
+          </label>
+
+          <template v-if="isCreatingStudent">
+            <label class="toolbar-field">
+              <span>学号</span>
+              <input v-model="createForm.studentNo" type="text">
+            </label>
+            <label class="toolbar-field toolbar-field--college">
+              <span>学院</span>
+              <select v-model="createForm.college">
+                <option value="">请选择学院</option>
+                <option v-for="college in collegeOptions" :key="college" :value="college">{{ college }}</option>
+              </select>
+            </label>
+            <label class="toolbar-field">
+              <span>年级</span>
+              <select v-model="createForm.grade">
+                <option value="">请选择年级</option>
+                <option v-for="grade in gradeOptions" :key="grade" :value="grade">{{ grade }}</option>
+              </select>
+            </label>
+            <label class="toolbar-field">
+              <span>手机号</span>
+              <input v-model="createForm.phone" type="text">
+            </label>
+          </template>
+
+          <label v-if="isCreatingCounselor" class="toolbar-field">
             <span>工号</span>
             <input v-model="createForm.counselorNo" type="text">
           </label>
@@ -511,7 +609,7 @@ onMounted(() => {
             class="toolbar-btn toolbar-btn--primary"
             type="button"
             :disabled="processing"
-            @click="createCounselor"
+            @click="createUser"
           >
             {{ processing ? '提交中...' : '保存' }}
           </button>

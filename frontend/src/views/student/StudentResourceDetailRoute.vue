@@ -11,6 +11,7 @@ const loading = ref(false)
 const togglingFavorite = ref(false)
 const errorMessage = ref('')
 const resourceDetail = ref<ResourceDetail | null>(null)
+const articleFrame = ref<HTMLIFrameElement | null>(null)
 const resourceId = computed(() => toNumberParam(route.params.resourceId))
 
 const isFavorited = computed(() => resourceDetail.value?.favorite)
@@ -96,6 +97,26 @@ function goBack(): void {
   router.back()
 }
 
+function resizeArticleFrame(): void {
+  if (!articleFrame.value || previewMode.value !== 'article') {
+    return
+  }
+
+  try {
+    const frameDocument = articleFrame.value.contentDocument
+    const frameBody = frameDocument?.body
+    const frameRoot = frameDocument?.documentElement
+    const contentHeight = Math.max(
+      frameBody?.scrollHeight ?? 0,
+      frameRoot?.scrollHeight ?? 0,
+      720
+    )
+    articleFrame.value.style.height = `${contentHeight}px`
+  } catch {
+    articleFrame.value.style.height = '72vh'
+  }
+}
+
 watch(() => route.params.resourceId, () => void loadResourceDetail())
 onMounted(() => void loadResourceDetail())
 </script>
@@ -158,7 +179,7 @@ onMounted(() => void loadResourceDetail())
           </div>
         </section>
 
-        <section class="media-stage">
+        <section class="media-stage" :class="{ 'is-article-stage': previewMode === 'article' }">
 
           <video
               v-if="previewMode === 'video'"
@@ -192,9 +213,12 @@ onMounted(() => void loadResourceDetail())
 
           <iframe
               v-else-if="previewMode === 'article'"
+              ref="articleFrame"
               class="media-iframe"
               :src="resourceDetail.contentUrl"
               title="内容阅览"
+              scrolling="no"
+              @load="resizeArticleFrame"
           />
 
           <div v-else class="external-prompt">
@@ -423,6 +447,15 @@ onMounted(() => void loadResourceDetail())
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.05);
 }
 
+.media-stage.is-article-stage {
+  max-width: 800px;
+  margin: 0 auto 5rem;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+}
+
 .media-player,
 .media-image,
 .media-iframe {
@@ -455,8 +488,12 @@ onMounted(() => void loadResourceDetail())
 }
 
 .media-iframe {
-  height: 70vh; /* 给长文章足够的阅读高度 */
-  min-height: 600px;
+  min-height: 720px;
+  background: transparent;
+}
+
+.media-stage.is-article-stage .media-iframe {
+  min-height: 720px;
 }
 
 .external-prompt {

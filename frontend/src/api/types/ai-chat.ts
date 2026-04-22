@@ -8,6 +8,7 @@ export interface AiChatSession {
   studentName: string | null
   title: string | null
   status: string
+  archivedAt: string | null
   summaryText: string | null
   riskFlag: boolean | null
   riskLevel: string | null
@@ -34,4 +35,15 @@ export interface SendAiChatMessageResponse {
   aiMessage: AiChatMessage
   riskFlag: boolean | null
   riskLevel: string | null
+}
+
+export interface AiPersonaSetting {
+  studentUserId: number
+  mentorName: string
+  avatarText: string
+}
+
+export interface UpdateAiPersonaSettingRequest {
+  mentorName: string
+  avatarText: string
 }

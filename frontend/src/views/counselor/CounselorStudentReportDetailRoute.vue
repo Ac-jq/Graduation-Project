@@ -130,7 +130,7 @@ onMounted(() => {
         <section class="editorial-columns">
           <div class="column-block">
             <h3 class="column-heading">AI 深度解读</h3>
-            <p class="column-text">
+            <p class="column-text column-text--scrollable">
               {{ reportDetail.aiInterpretation || '本次评估显示数据较为稳定，系统未生成额外的异常预警解释。' }}
             </p>
           </div>
@@ -372,6 +372,25 @@ onMounted(() => {
   line-height: 1.85;
   color: #4a5c51;
   margin: 0 0 2rem 0;
+}
+
+.column-text--scrollable {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 0.75rem;
+}
+
+.column-text--scrollable::-webkit-scrollbar {
+  width: 5px;
+}
+
+.column-text--scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.column-text--scrollable::-webkit-scrollbar-thumb {
+  background: rgba(138, 156, 144, 0.28);
+  border-radius: 999px;
 }
 
 /* 附录推荐资源（极简目录排版） */

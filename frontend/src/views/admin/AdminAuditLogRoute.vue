@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fetchAdminAuditLogsApi } from '@/api/admin-audit'
@@ -42,6 +42,7 @@ const actionCodeOptions = [
   { value: 'ADMIN_SCALE_UPDATE', label: '编辑量表' },
   { value: 'ADMIN_SCALE_ACTIVATE', label: '启用量表' },
   { value: 'ADMIN_SCALE_DEACTIVATE', label: '停用量表' },
+  { value: 'ADMIN_USER_CREATE', label: '创建用户账号' },
   { value: 'ADMIN_USER_CREATE_COUNSELOR', label: '创建咨询师账号' },
   { value: 'ADMIN_USER_ENABLE', label: '启用用户' },
   { value: 'ADMIN_USER_DISABLE', label: '停用用户' },
@@ -113,12 +114,14 @@ async function syncRouteQuery(): Promise<void> {
 
 async function applyFilters(): Promise<void> {
   await syncRouteQuery()
+  await loadLogs()
 }
 
 async function resetFilters(): Promise<void> {
   filters.actionCode = undefined
   filters.keyword = undefined
   await syncRouteQuery()
+  await loadLogs()
 }
 
 function prevPage(): void {
@@ -134,14 +137,6 @@ function nextPage(): void {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
-
-watch(
-  () => route.query,
-  () => {
-    syncFiltersFromRoute()
-    void loadLogs()
-  }
-)
 
 onMounted(() => {
   syncFiltersFromRoute()

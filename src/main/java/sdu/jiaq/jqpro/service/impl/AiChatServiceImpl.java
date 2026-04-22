@@ -97,6 +97,9 @@ public class AiChatServiceImpl implements AiChatService {
     @Transactional(rollbackFor = Exception.class)
     public SendAiChatMessageResponse sendMessage(Long sessionId, SendAiChatMessageRequest request) {
         AiChatSession session = getOwnedStudentSession(sessionId);
+        if (!AiChatConstants.SESSION_ACTIVE.equals(session.getStatus())) {
+            throw new BusinessException("该会话已归档，请开启新对话");
+        }
         String content = request.getContent().trim();
         RiskAnalysis risk = analyzeRisk(content);
         List<AiChatAiRequest.ConversationMessage> historyMessages = loadConversationHistory(sessionId);
@@ -142,6 +145,32 @@ public class AiChatServiceImpl implements AiChatService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AiChatSessionResponse archiveCurrentStudentSession(Long sessionId) {
+        AiChatSession session = getOwnedStudentSession(sessionId);
+        if (!AiChatConstants.SESSION_ARCHIVED.equals(session.getStatus())) {
+            LocalDateTime now = LocalDateTime.now();
+            session.setStatus(AiChatConstants.SESSION_ARCHIVED);
+            session.setArchivedAt(now);
+            session.setLastActiveAt(now);
+            aiChatSessionMapper.updateById(session);
+        }
+        return buildSessionResponse(session, getUserMap(session.getStudentUserId()));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteEmptyCurrentStudentSession(Long sessionId) {
+        AiChatSession session = getOwnedStudentSession(sessionId);
+        Long messageCount = aiChatMessageMapper.selectCount(new LambdaQueryWrapper<AiChatMessage>()
+                .eq(AiChatMessage::getSessionId, session.getId()));
+        if (messageCount != null && messageCount > 0) {
+            return;
+        }
+        aiChatSessionMapper.deleteById(session.getId());
+    }
+
+    @Override
     public List<AiChatSessionResponse> listCounselorStudentSessions(Long studentUserId) {
         verifyCounselorStudentOwnership(studentUserId);
         return buildSessionResponses(aiChatSessionMapper.selectList(new LambdaQueryWrapper<AiChatSession>()
@@ -178,6 +207,7 @@ public class AiChatServiceImpl implements AiChatService {
                 .studentName(student == null ? null : student.getDisplayName())
                 .title(session.getTitle())
                 .status(session.getStatus())
+                .archivedAt(session.getArchivedAt())
                 .summaryText(session.getSummaryText())
                 .riskFlag(session.getRiskFlag() != null && session.getRiskFlag() == 1)
                 .riskLevel(session.getRiskLevel())

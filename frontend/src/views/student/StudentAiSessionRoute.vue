@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { fetchStudentAiSessionMessagesApi, fetchStudentAiSessionsApi, sendStudentAiChatMessageApi } from '@/api/ai-chat'
+import {
+  archiveStudentAiSessionApi,
+  createAiChatSessionApi,
+  deleteEmptyStudentAiSessionApi,
+  fetchStudentAiPersonaApi,
+  fetchStudentAiSessionMessagesApi,
+  fetchStudentAiSessionsApi,
+  sendStudentAiChatMessageApi,
+  updateStudentAiPersonaApi
+} from '@/api/ai-chat'
 import type { AiChatMessage, AiChatSession } from '@/api/types'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
@@ -19,12 +28,11 @@ type AiChatMessageView = AiChatMessage & {
 const route = useRoute()
 const router = useRouter()
 
-const PERSONA_STORAGE_KEY = 'jqpro.student.ai-persona'
 const DEFAULT_PERSONA: AiPersonaConfig = {
   name: '青禾导师',
-  avatar: '🌿'
+  avatar: '青'
 }
-const avatarOptions = ['🌿', '🕯️', '☁️', '🍃', '🌙', '🫧']
+const avatarOptions = ['青', '灯', '云', '叶', '月', '澈']
 
 const loading = ref(false)
 const sending = ref(false)
@@ -37,9 +45,11 @@ const personaDialogVisible = ref(false)
 const aiPersona = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
 const personaForm = ref<AiPersonaConfig>({ ...DEFAULT_PERSONA })
 const transientMessageId = ref(-1)
+const pendingEmptyCleanupIds = new Set<number>()
 
 const sessionId = computed(() => toNumberParam(route.params.sessionId))
 const activeSession = computed(() => sessions.value.find((item) => item.sessionId === sessionId.value) ?? null)
+const isArchivedSession = computed(() => activeSession.value?.status === 'ARCHIVED')
 const aiPersonaInitial = computed(() => aiPersona.value.name.trim().slice(0, 1) || '青')
 
 function resolveSessionStatusText(status: string | null | undefined): string {
@@ -79,18 +89,15 @@ function createTransientMessage(senderType: 'STUDENT' | 'AI', content: string, t
   }
 }
 
-function loadAiPersona(): void {
-  const rawConfig = localStorage.getItem(PERSONA_STORAGE_KEY)
-  if (!rawConfig) return
-
+async function loadAiPersona(): Promise<void> {
   try {
-    const parsedConfig = JSON.parse(rawConfig) as Partial<AiPersonaConfig>
+    const setting = await fetchStudentAiPersonaApi()
     aiPersona.value = {
-      name: parsedConfig.name?.trim() || DEFAULT_PERSONA.name,
-      avatar: parsedConfig.avatar || DEFAULT_PERSONA.avatar
+      name: setting.mentorName?.trim() || DEFAULT_PERSONA.name,
+      avatar: setting.avatarText || DEFAULT_PERSONA.avatar
     }
   } catch {
-    localStorage.removeItem(PERSONA_STORAGE_KEY)
+    aiPersona.value = { ...DEFAULT_PERSONA }
   }
 }
 
@@ -99,20 +106,27 @@ function openPersonaDialog(): void {
   personaDialogVisible.value = true
 }
 
-function savePersonaConfig(): void {
+async function savePersonaConfig(): Promise<void> {
   const name = personaForm.value.name.trim()
   if (!name) {
     ElMessage.warning('请给 AI 导师起一个名字')
     return
   }
 
-  aiPersona.value = {
-    name: name.slice(0, 12),
-    avatar: personaForm.value.avatar || DEFAULT_PERSONA.avatar
+  try {
+    const setting = await updateStudentAiPersonaApi({
+      mentorName: name.slice(0, 12),
+      avatarText: personaForm.value.avatar || DEFAULT_PERSONA.avatar
+    })
+    aiPersona.value = {
+      name: setting.mentorName,
+      avatar: setting.avatarText
+    }
+    personaDialogVisible.value = false
+    ElMessage.success('AI 形象已更新')
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
   }
-  localStorage.setItem(PERSONA_STORAGE_KEY, JSON.stringify(aiPersona.value))
-  personaDialogVisible.value = false
-  ElMessage.success('AI 形象已更新')
 }
 
 async function scrollToBottom(smooth = true): Promise<void> {
@@ -154,8 +168,72 @@ async function goBack(): Promise<void> {
   await router.push({ name: 'student-ai-sessions' })
 }
 
+async function archiveCurrentConversation(): Promise<void> {
+  if (!sessionId.value || isArchivedSession.value) {
+    return
+  }
+
+  const confirmed = window.confirm('归档后本次对话将冻结，不能继续发送消息。确认归档吗？')
+  if (!confirmed) {
+    return
+  }
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const archivedSession = await archiveStudentAiSessionApi(sessionId.value)
+    sessions.value = sessions.value.map((item) =>
+        item.sessionId === archivedSession.sessionId ? archivedSession : item
+    )
+    ElMessage.success('本次对话已归档')
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function startNewConversation(): Promise<void> {
+  await cleanupEmptySession()
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const newSession = await createAiChatSessionApi({ title: '新的倾诉会话' })
+    messages.value = []
+    sessions.value = [newSession, ...sessions.value]
+    await router.push({ name: 'student-ai-session-detail', params: { sessionId: newSession.sessionId } })
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function cleanupEmptySession(targetSessionId = sessionId.value): Promise<void> {
+  if (!targetSessionId || loading.value || sending.value || messages.value.length > 0) {
+    return
+  }
+  if (pendingEmptyCleanupIds.has(targetSessionId)) {
+    return
+  }
+
+  pendingEmptyCleanupIds.add(targetSessionId)
+  try {
+    await deleteEmptyStudentAiSessionApi(targetSessionId)
+  } catch {
+    // Empty-session cleanup is best-effort and should never block navigation.
+  } finally {
+    pendingEmptyCleanupIds.delete(targetSessionId)
+  }
+}
+
 async function sendMessage(): Promise<void> {
   if (!sessionId.value || sending.value) return
+
+  if (isArchivedSession.value) {
+    ElMessage.warning('本次对话已归档，请开启新对话')
+    return
+  }
 
   const content = draft.value.trim()
   if (!content) {
@@ -215,8 +293,17 @@ watch(messages, async () => {
   }
 })
 
+onBeforeRouteUpdate((to, from) => {
+  const previousSessionId = toNumberParam(from.params.sessionId)
+  void cleanupEmptySession(previousSessionId)
+})
+
+onBeforeRouteLeave(() => {
+  void cleanupEmptySession()
+})
+
 onMounted(() => {
-  loadAiPersona()
+  void loadAiPersona()
   void loadSession()
 })
 </script>
@@ -268,6 +355,25 @@ onMounted(() => {
                 <dd>{{ resolveSessionStatusText(activeSession?.status) }}</dd>
               </div>
             </dl>
+          </div>
+
+          <div class="session-actions">
+            <button
+              class="session-action-btn"
+              type="button"
+              :disabled="loading || isArchivedSession"
+              @click="archiveCurrentConversation"
+            >
+              归档本次对话
+            </button>
+            <button
+              class="session-action-btn session-action-btn--primary"
+              type="button"
+              :disabled="loading"
+              @click="startNewConversation"
+            >
+              开启新对话
+            </button>
           </div>
 
         </div>
@@ -337,15 +443,16 @@ onMounted(() => {
               class="sleek-textarea"
               rows="3"
               maxlength="1000"
-              placeholder="例如：我最近总觉得胸口发紧，晚上躺下后脑子停不下来..."
+              :placeholder="isArchivedSession ? '本次对话已归档，开启新对话后可以继续书写。' : '例如：我最近总觉得胸口发紧，晚上躺下后脑子停不下来...'"
+              :disabled="isArchivedSession"
               @keydown="handleComposerKeydown"
           />
           <div class="composer-footer">
             <p class="composer-hint">
               Enter 直接发送，Shift + Enter 换行。
             </p>
-            <button class="action-btn" type="button" :disabled="sending || !draft.trim()" @click="sendMessage">
-              {{ sending ? '传递中...' : '发送' }} <span class="arrow">→</span>
+            <button class="action-btn" type="button" :disabled="sending || isArchivedSession || !draft.trim()" @click="sendMessage">
+              {{ isArchivedSession ? '已归档' : sending ? '传递中...' : '发送' }} <span class="arrow">→</span>
             </button>
           </div>
         </footer>
@@ -547,6 +654,48 @@ onMounted(() => {
   font-size: 1rem;
   color: #2a362e;
   font-weight: 600;
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.8rem;
+}
+
+.session-action-btn {
+  border: 1px solid rgba(42, 54, 46, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: #5c6b60;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.85rem 1.2rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.session-action-btn:hover:not(:disabled) {
+  background: #ffffff;
+  color: #1e2821;
+  box-shadow: 0 14px 32px rgba(42, 54, 46, 0.08);
+  transform: translateY(-2px);
+}
+
+.session-action-btn--primary {
+  border-color: #2a362e;
+  background: #2a362e;
+  color: #ffffff;
+}
+
+.session-action-btn--primary:hover:not(:disabled) {
+  background: #1e2821;
+  color: #ffffff;
+}
+
+.session-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ================= 右半部分会话界面 ================= */
@@ -832,6 +981,12 @@ onMounted(() => {
   box-shadow:
     0 16px 40px rgba(42, 54, 46, 0.06),
     inset 0 0 0 1px rgba(92, 107, 96, 0.18);
+}
+
+.sleek-textarea:disabled {
+  color: #8a9c90;
+  cursor: not-allowed;
+  background: rgba(244, 246, 244, 0.72);
 }
 
 .composer-footer {

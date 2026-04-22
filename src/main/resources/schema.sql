@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS ai_chat_session (
     student_user_id BIGINT NOT NULL COMMENT '学生用户ID',
     title VARCHAR(128) NOT NULL COMMENT '会话标题',
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' COMMENT '会话状态',
+    archived_at DATETIME NULL COMMENT '归档时间',
     summary_text VARCHAR(255) NULL COMMENT '会话摘要',
     risk_flag TINYINT NOT NULL DEFAULT 0 COMMENT '是否命中风险',
     risk_level VARCHAR(16) NULL COMMENT '风险等级',
@@ -186,6 +187,17 @@ CREATE TABLE IF NOT EXISTS ai_chat_message (
     INDEX idx_ai_chat_message_session (session_id),
     CONSTRAINT fk_ai_chat_message_session FOREIGN KEY (session_id) REFERENCES ai_chat_session (id)
 ) COMMENT='AI会话消息表';
+
+CREATE TABLE IF NOT EXISTS ai_persona_setting (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
+    student_user_id BIGINT NOT NULL COMMENT '学生用户ID',
+    mentor_name VARCHAR(64) NOT NULL DEFAULT '青禾导师' COMMENT 'AI导师昵称',
+    avatar_text VARCHAR(32) NOT NULL DEFAULT '青' COMMENT 'AI导师头像文本',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    UNIQUE KEY uk_ai_persona_student (student_user_id),
+    CONSTRAINT fk_ai_persona_student FOREIGN KEY (student_user_id) REFERENCES sys_user (id)
+) COMMENT='学生AI导师设定表';
 
 CREATE TABLE IF NOT EXISTS consult_appointment_slot (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',

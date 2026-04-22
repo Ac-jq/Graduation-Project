@@ -211,9 +211,16 @@ const navItems = computed<NavItem[]>(() => {
   }
 })
 
+function isWorkspaceRootPath(path: string): boolean {
+  return path === '/student' || path === '/counselor' || path === '/admin'
+}
+
 const activeNavItemPath = computed(() => {
   return navItems.value
-      .filter((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))
+      .filter((item) =>
+          route.path === item.path
+          || (!isWorkspaceRootPath(item.path) && route.path.startsWith(`${item.path}/`))
+      )
       .sort((left, right) => right.path.length - left.path.length)[0]?.path
 })
 
@@ -226,7 +233,7 @@ function rememberSidebarScroll(): void {
 }
 
 async function navigateTo(path: string): Promise<void> {
-  if (activeNavItemPath.value === path || route.path === path) {
+  if (route.path === path) {
     return
   }
   rememberSidebarScroll()

@@ -5,6 +5,7 @@ import type {
   AvatarUploadResponse,
   CounselorProfile,
   CounselorStudentSummary,
+  CreateAdminUserRequest,
   CreateCounselorRequest,
   StudentProfile,
   UpdateAdminUserRequest,
@@ -48,6 +49,10 @@ export function fetchAdminUsersApi(query: AdminUserQuery = {}): Promise<AdminUse
 
 export function createCounselorApi(payload: CreateCounselorRequest): Promise<AdminUserSummary> {
   return post<AdminUserSummary>('/admin/users/counselors', payload)
+}
+
+export function createAdminUserApi(payload: CreateAdminUserRequest): Promise<AdminUserSummary> {
+  return post<AdminUserSummary>('/admin/users', payload)
 }
 
 export function updateAdminUserApi(userId: number, payload: UpdateAdminUserRequest): Promise<AdminUserSummary> {

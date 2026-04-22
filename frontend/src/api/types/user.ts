@@ -81,6 +81,19 @@ export interface CreateCounselorRequest {
   counselorNo: string
 }
 
+export interface CreateAdminUserRequest {
+  account: string
+  roleCode: string
+  displayName: string
+  realName?: string | null
+  studentNo?: string | null
+  counselorNo?: string | null
+  college?: string | null
+  grade?: string | null
+  phone?: string | null
+  password?: string | null
+}
+
 export interface UpdateAdminUserRequest {
   account: string
   displayName: string

@@ -116,7 +116,7 @@ onMounted(() => {
 
           <article class="column-block">
             <h3 class="column-heading">补充视角与解释</h3>
-            <p class="column-text">
+            <p class="column-text column-text--scrollable">
               {{ reportDetail.aiInterpretation || '系统已生成结构化卷宗，你可以继续前往查阅包含建议的完整报告。' }}
             </p>
           </article>
@@ -306,6 +306,25 @@ onMounted(() => {
   line-height: 1.85;
   color: #4a5c51;
   margin: 0;
+}
+
+.column-text--scrollable {
+  max-height: 400px;
+  overflow-y: auto;
+  padding-right: 0.75rem;
+}
+
+.column-text--scrollable::-webkit-scrollbar {
+  width: 5px;
+}
+
+.column-text--scrollable::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.column-text--scrollable::-webkit-scrollbar-thumb {
+  background: rgba(138, 156, 144, 0.28);
+  border-radius: 999px;
 }
 
 /* ================= 极简声明 ================= */

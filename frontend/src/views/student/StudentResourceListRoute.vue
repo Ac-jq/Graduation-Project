@@ -1,10 +1,11 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { fetchResourceCategoriesApi, fetchResourcesApi, fetchResourceTagsApi } from '@/api/resource'
 import type { ResourceCategory, ResourceQuery, ResourceSummary, ResourceTag } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
@@ -69,7 +70,8 @@ async function loadResources(): Promise<void> {
       ...filters,
       keyword: filters.keyword?.trim() || undefined
     })
-    currentPage.value = 1
+    currentPage.value = resolvePageFromQuery()
+    clampCurrentPage()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -77,9 +79,30 @@ async function loadResources(): Promise<void> {
   }
 }
 
+function resolvePageFromQuery(): number {
+  const rawPage = Array.isArray(route.query.page) ? route.query.page[0] : route.query.page
+  const parsedPage = Number.parseInt(rawPage ?? '1', 10)
+  return Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1
+}
+
+function clampCurrentPage(): void {
+  currentPage.value = Math.min(Math.max(currentPage.value, 1), totalPages.value)
+}
+
+async function syncPageQuery(page: number): Promise<void> {
+  await router.replace({
+    name: 'student-resources',
+    query: {
+      ...route.query,
+      page: page > 1 ? String(page) : undefined
+    }
+  })
+}
+
 function prevPage(): void {
   if (currentPage.value > 1) {
     currentPage.value--
+    void syncPageQuery(currentPage.value)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
@@ -87,12 +110,14 @@ function prevPage(): void {
 function nextPage(): void {
   if (currentPage.value < totalPages.value) {
     currentPage.value++
+    void syncPageQuery(currentPage.value)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 
 async function applyFilters(): Promise<void> {
   await loadResources()
+  await syncPageQuery(1)
 }
 
 async function resetFilters(): Promise<void> {
@@ -100,6 +125,7 @@ async function resetFilters(): Promise<void> {
   filters.tagId = undefined
   filters.keyword = ''
   await loadResources()
+  await syncPageQuery(1)
 }
 
 async function openResource(resourceId: number): Promise<void> {
@@ -116,6 +142,11 @@ function toggleTag(tagId?: number): void {
 
 onMounted(() => {
   void loadResources()
+})
+
+watch(() => route.query.page, () => {
+  currentPage.value = resolvePageFromQuery()
+  clampCurrentPage()
 })
 </script>
 

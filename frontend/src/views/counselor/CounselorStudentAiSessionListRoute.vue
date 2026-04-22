@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { fetchCounselorStudentAiSessionsApi } from '@/api/ai-chat'
-import type { AiChatSession } from '@/api/types'
+import { fetchCounselorStudentAiSessionMessagesApi, fetchCounselorStudentAiSessionsApi } from '@/api/ai-chat'
+import type { AiChatMessage, AiChatSession } from '@/api/types'
 import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
+const messagesLoading = ref(false)
 const errorMessage = ref('')
 const sessions = ref<AiChatSession[]>([])
+const messages = ref<AiChatMessage[]>([])
+const selectedSessionId = ref<number | null>(null)
 const studentUserId = computed(() => toNumberParam(route.params.studentUserId))
 
 // 分页状态
@@ -23,6 +26,8 @@ const pagedSessions = computed(() => {
 })
 
 const alertCount = computed(() => sessions.value.filter(s => Boolean(s.riskFlag)).length)
+const selectedSession = computed(() => sessions.value.find((session) => session.sessionId === selectedSessionId.value) ?? null)
+const selectedAlertCount = computed(() => messages.value.filter((message) => Boolean(message.hitKeywords)).length)
 
 // 日期格式化
 function getDayMonth(value: string | Date): string {
@@ -40,6 +45,25 @@ function formatFullDate(value: string | Date): string {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function formatMessageTime(value: string | Date | null | undefined): string {
+  if (!value) return '暂无记录'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '暂无记录'
+  return `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function resolveSessionStatus(status: string | null | undefined): string {
+  if (status === 'ARCHIVED') return '已归档'
+  if (status === 'ACTIVE') return '进行中'
+  return status || '未知'
+}
+
+function resolveRiskLevel(level: string | null | undefined): string {
+  if (level === 'HIGH') return '高关注'
+  if (level === 'MEDIUM') return '中等关注'
+  return '常规'
+}
+
 async function loadSessions(): Promise<void> {
   if (!studentUserId.value) {
     errorMessage.value = '无法定位到该学生档案'
@@ -52,11 +76,31 @@ async function loadSessions(): Promise<void> {
 
   try {
     sessions.value = await fetchCounselorStudentAiSessionsApi(studentUserId.value)
+    selectedSessionId.value = sessions.value[0]?.sessionId ?? null
+    if (selectedSessionId.value) {
+      await loadMessages(selectedSessionId.value)
+    } else {
+      messages.value = []
+    }
     currentPage.value = 1
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+async function loadMessages(sessionId: number): Promise<void> {
+  if (!studentUserId.value) return
+
+  messagesLoading.value = true
+  errorMessage.value = ''
+  try {
+    messages.value = await fetchCounselorStudentAiSessionMessagesApi(studentUserId.value, sessionId)
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    messagesLoading.value = false
   }
 }
 
@@ -75,8 +119,8 @@ function nextPage(): void {
 }
 
 async function openSession(sessionId: number): Promise<void> {
-  if (!studentUserId.value) return
-  await router.push({ name: 'counselor-student-ai-session-detail', params: { studentUserId: studentUserId.value, sessionId } })
+  selectedSessionId.value = sessionId
+  await loadMessages(sessionId)
 }
 
 function goBack(): void {
@@ -141,63 +185,95 @@ onMounted(() => {
           <span class="toolbar-status">当前显示第 {{ currentPage }} 页，共 {{ totalPages }} 页</span>
         </div>
 
-        <div class="archive-stream">
-          <article
-              v-for="session in pagedSessions"
-              :key="session.sessionId"
-              class="archive-row"
-              :class="{ 'row--alert': Boolean(session.riskFlag) }"
-              @click="openSession(session.sessionId)"
-          >
-            <div class="row-time-col">
-              <span class="huge-date">{{ getDayMonth(session.createdAt) }}</span>
-              <span class="time-stamp">{{ getTime(session.createdAt) }}</span>
+        <div class="archive-workspace">
+          <aside class="session-history-panel">
+            <div class="archive-stream">
+              <article
+                  v-for="session in pagedSessions"
+                  :key="session.sessionId"
+                  class="archive-row"
+                  :class="{ 'row--alert': Boolean(session.riskFlag), 'is-selected': selectedSessionId === session.sessionId }"
+                  @click="openSession(session.sessionId)"
+              >
+                <div class="row-time-col">
+                  <span class="huge-date">{{ getDayMonth(session.createdAt) }}</span>
+                  <span class="time-stamp">{{ getTime(session.createdAt) }}</span>
+                  <span v-if="session.riskFlag" class="risk-badge">重点关注</span>
+                </div>
 
-              <span v-if="session.riskFlag" class="risk-badge">
-                重点关注
-              </span>
+                <div class="row-content-col">
+                  <div class="content-topline">
+                    <span class="session-id">Session #{{ session.sessionId }}</span>
+                    <h3 class="session-title">{{ session.title || '未命名会话' }}</h3>
+                  </div>
+
+                  <blockquote class="session-quote">
+                    “{{ session.summaryText || '暂无摘要，请在右侧查看完整对话。' }}”
+                  </blockquote>
+
+                  <div class="session-meta">
+                    <span class="meta-item">{{ resolveRiskLevel(session.riskLevel) }}</span>
+                    <span class="dot">·</span>
+                    <span class="meta-item">{{ resolveSessionStatus(session.status) }}</span>
+                  </div>
+                </div>
+              </article>
             </div>
 
-            <div class="row-content-col">
-              <div class="content-topline">
-                <span class="session-id">Session #{{ session.sessionId }}</span>
-                <h3 class="session-title">{{ session.title || '未命名会话' }}</h3>
-              </div>
-
-              <blockquote class="session-quote">
-                “{{ session.summaryText || '暂无摘要，您可以进入详情查看完整的对话脉络。' }}”
-              </blockquote>
-
-              <div class="session-meta">
-                <span class="meta-item">风险层级: {{ session.riskLevel || '常规' }}</span>
-                <span class="dot">·</span>
-                <span class="meta-item">最后活跃于 {{ session.lastActiveAt ? formatFullDate(session.lastActiveAt) : '未知' }}</span>
-                <span class="dot">·</span>
-                <span class="meta-item">状态: {{ session.status }}</span>
-              </div>
-            </div>
-
-            <div class="row-action-col">
-              <button class="action-link" type="button">
-                查阅完整记录 <span class="arrow">→</span>
+            <nav class="pagination-nav" v-if="totalPages > 1">
+              <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
+                <span class="arrow">←</span> 往前翻
               </button>
+
+              <div class="page-indicator">
+                <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
+              </div>
+
+              <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+                往后翻 <span class="arrow">→</span>
+              </button>
+            </nav>
+          </aside>
+
+          <article class="transcript-detail-panel">
+            <header class="detail-panel-header">
+              <span class="session-id">Session #{{ selectedSession?.sessionId || '-' }}</span>
+              <h2>{{ selectedSession?.title || '请选择左侧会话' }}</h2>
+              <p>
+                {{ selectedSession ? `共 ${messages.length} 条发言，触发关注 ${selectedAlertCount} 次` : '点击左侧归档会话后，在这里查看完整聊天实录。' }}
+              </p>
+            </header>
+
+            <div v-if="messagesLoading" class="detail-loading">
+              <div class="spinner"></div>
+              <p>正在同步聊天实录...</p>
+            </div>
+
+            <div v-else-if="!selectedSession" class="detail-empty">
+              <p>暂无选中的会话。</p>
+            </div>
+
+            <div v-else-if="!messages.length" class="detail-empty">
+              <p>该会话中尚未产生发言记录。</p>
+            </div>
+
+            <div v-else class="detail-transcript">
+              <section
+                v-for="message in messages"
+                :key="message.messageId"
+                class="detail-message"
+                :class="{ 'is-student': message.senderType === 'STUDENT' }"
+              >
+                <div class="message-meta">
+                  <strong>{{ message.senderType === 'STUDENT' ? '来访学生' : 'AI 导师' }}</strong>
+                  <span>{{ formatMessageTime(message.createdAt) }}</span>
+                </div>
+                <p>{{ message.content }}</p>
+                <span v-if="message.hitKeywords" class="keyword-pill">触发关键词 {{ message.hitKeywords }}</span>
+              </section>
             </div>
           </article>
         </div>
-
-        <nav class="pagination-nav" v-if="totalPages > 1">
-          <button class="page-btn" :disabled="currentPage <= 1" @click="prevPage">
-            <span class="arrow">←</span> 往前翻
-          </button>
-
-          <div class="page-indicator">
-            <span>{{ currentPage }}</span> / <span>{{ totalPages }}</span>
-          </div>
-
-          <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
-            往后翻 <span class="arrow">→</span>
-          </button>
-        </nav>
 
       </section>
     </div>
@@ -218,7 +294,7 @@ onMounted(() => {
 }
 
 .page-container {
-  max-width: 1060px;
+  max-width: 1280px;
   margin: 0 auto;
 }
 
@@ -336,6 +412,115 @@ onMounted(() => {
   color: #8a9c90;
 }
 
+.archive-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
+  gap: 3rem;
+  align-items: start;
+}
+
+.session-history-panel {
+  min-width: 0;
+}
+
+.transcript-detail-panel {
+  position: sticky;
+  top: 2rem;
+  max-height: calc(100vh - 4rem);
+  overflow: hidden;
+  border-radius: 28px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(248, 246, 242, 0.9));
+  box-shadow: 0 32px 72px rgba(54, 66, 58, 0.08);
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-panel-header {
+  padding: 2rem 2rem 1.4rem;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.07);
+}
+
+.detail-panel-header h2 {
+  font-family: 'Noto Serif SC', serif;
+  font-size: clamp(1.5rem, 2.4vw, 2.2rem);
+  font-weight: 600;
+  color: #1e2821;
+  margin: 0.5rem 0 0.8rem;
+}
+
+.detail-panel-header p {
+  margin: 0;
+  color: #7b8c80;
+  line-height: 1.7;
+}
+
+.detail-transcript {
+  overflow-y: auto;
+  padding: 0.5rem 2rem 2rem;
+}
+
+.detail-transcript::-webkit-scrollbar {
+  width: 5px;
+}
+
+.detail-transcript::-webkit-scrollbar-thumb {
+  background: rgba(138, 156, 144, 0.28);
+  border-radius: 999px;
+}
+
+.detail-message {
+  padding: 1.55rem 0;
+  border-bottom: 1px solid rgba(42, 54, 46, 0.06);
+}
+
+.message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+  color: #8a9c90;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.85rem;
+}
+
+.message-meta strong {
+  color: #5c7062;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.98rem;
+}
+
+.detail-message.is-student .message-meta strong {
+  color: #8c6a5c;
+}
+
+.detail-message p {
+  white-space: pre-wrap;
+  margin: 0;
+  color: #1e2821;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.04rem;
+  line-height: 1.85;
+}
+
+.detail-loading,
+.detail-empty {
+  padding: 5rem 2rem;
+  text-align: center;
+  color: #7b8c80;
+}
+
+.keyword-pill {
+  display: inline-flex;
+  margin-top: 1rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(193, 150, 83, 0.1);
+  color: #9e7330;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
 /* 会话流行排版 */
 .archive-stream {
   display: flex;
@@ -344,16 +529,22 @@ onMounted(() => {
 
 .archive-row {
   display: grid;
-  grid-template-columns: 140px minmax(0, 1fr) auto;
-  gap: 3rem;
-  padding: 2.5rem 1rem;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 1.4rem;
+  padding: 1.6rem 1rem;
   border-bottom: 1px solid rgba(42, 54, 46, 0.08);
   cursor: pointer;
-  transition: background 0.4s ease;
+  border-radius: 18px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .archive-row:hover {
   background: rgba(255, 255, 255, 0.6);
+}
+
+.archive-row.is-selected {
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 44px rgba(54, 66, 58, 0.07);
 }
 
 /* 左侧：巨幕时间 */
@@ -435,7 +626,7 @@ onMounted(() => {
 
 /* 杂志风引言摘要 */
 .session-quote {
-  margin: 0 0 2rem 0;
+  margin: 0 0 1.4rem 0;
   padding-left: 1.5rem;
   border-left: 3px solid rgba(42, 54, 46, 0.15);
   font-size: 1.05rem;
@@ -465,7 +656,7 @@ onMounted(() => {
 
 /* 右侧：动作按钮 */
 .row-action-col {
-  display: flex;
+  display: none;
   align-items: center;
 }
 
@@ -599,6 +790,15 @@ onMounted(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 2rem;
+  }
+
+  .archive-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .transcript-detail-panel {
+    position: static;
+    max-height: none;
   }
 
   .header-stats {

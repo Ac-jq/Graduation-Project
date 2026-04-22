@@ -12,17 +12,30 @@ const errorMessage = ref('')
 const sessions = ref<AiChatSession[]>([])
 const currentPage = ref(1)
 const pageSize = 6
+const activeTab = ref<'ACTIVE' | 'ARCHIVED'>('ACTIVE')
 
 const createForm = reactive({
   title: ''
 })
 
-const totalSessions = computed(() => sessions.value.length)
-const totalPages = computed(() => Math.max(1, Math.ceil(sessions.value.length / pageSize)))
+const activeSessions = computed(() => sessions.value.filter((session) => session.status === 'ACTIVE'))
+const archivedSessions = computed(() =>
+  sessions.value.filter((session) => session.status === 'ARCHIVED' || session.status === 'CLOSED')
+)
+const filteredSessions = computed(() =>
+  activeTab.value === 'ARCHIVED' ? archivedSessions.value : activeSessions.value
+)
+const totalSessions = computed(() => filteredSessions.value.length)
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredSessions.value.length / pageSize)))
 const pagedSessions = computed(() => {
   const start = (currentPage.value - 1) * pageSize
-  return sessions.value.slice(start, start + pageSize)
+  return filteredSessions.value.slice(start, start + pageSize)
 })
+const emptyStateText = computed(() =>
+  activeTab.value === 'ARCHIVED'
+    ? '这里还没有封存的历史对话。完成一段倾诉后，可以在详情页把它归档。'
+    : '当前还没有进行中的记录。<br>在左侧输入你此刻的想法，开启你的第一条手札。'
+)
 
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '刚刚'
@@ -65,6 +78,11 @@ function nextPage(): void {
     currentPage.value++
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+}
+
+function setActiveTab(tab: 'ACTIVE' | 'ARCHIVED'): void {
+  activeTab.value = tab
+  currentPage.value = 1
 }
 
 async function createSession(): Promise<void> {
@@ -143,7 +161,25 @@ onMounted(() => {
       <section class="editorial-stream-area">
 
         <div class="stream-toolbar">
-          <span class="toolbar-status">你的记忆抽屉：共 {{ totalSessions }} 段档案</span>
+          <div class="session-tabs" aria-label="AI 会话筛选">
+            <button
+                class="session-tab"
+                :class="{ 'is-active': activeTab === 'ACTIVE' }"
+                type="button"
+                @click="setActiveTab('ACTIVE')"
+            >
+              进行中 <span>{{ activeSessions.length }}</span>
+            </button>
+            <button
+                class="session-tab"
+                :class="{ 'is-active': activeTab === 'ARCHIVED' }"
+                type="button"
+                @click="setActiveTab('ARCHIVED')"
+            >
+              历史归档 <span>{{ archivedSessions.length }}</span>
+            </button>
+          </div>
+          <span class="toolbar-status">当前抽屉：共 {{ totalSessions }} 段档案</span>
         </div>
 
         <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
@@ -155,8 +191,8 @@ onMounted(() => {
             <p>正在同步你的过往记录...</p>
           </div>
 
-          <div v-else-if="!sessions.length" class="empty-state">
-            <p class="empty-desc">当前还没有记录。<br>在左侧输入你此刻的想法，开启你的第一条手札。</p>
+          <div v-else-if="!filteredSessions.length" class="empty-state">
+            <p class="empty-desc" v-html="emptyStateText"></p>
           </div>
 
           <div v-else class="archive-stream">
@@ -178,7 +214,7 @@ onMounted(() => {
               </div>
 
               <div class="row-right">
-                <span class="action-link">继续对话 <span class="arrow">→</span></span>
+                <span class="action-link">{{ session.status === 'ARCHIVED' ? '查看归档' : '继续对话' }} <span class="arrow">→</span></span>
               </div>
             </article>
           </div>
@@ -382,10 +418,56 @@ onMounted(() => {
 
 .stream-toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid rgba(42, 54, 46, 0.15);
+}
+
+.session-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow: 0 14px 32px rgba(92, 107, 96, 0.08);
+}
+
+.session-tab {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #7b8c80;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.65rem 1rem;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.session-tab span {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.78rem;
+  color: inherit;
+  opacity: 0.72;
+}
+
+.session-tab:hover {
+  color: #2a362e;
+  transform: translateY(-1px);
+}
+
+.session-tab.is-active {
+  background: #ffffff;
+  color: #1e2821;
+  box-shadow: 0 10px 24px rgba(42, 54, 46, 0.1);
 }
 
 .toolbar-status {
@@ -614,6 +696,11 @@ onMounted(() => {
     grid-template-columns: 1fr;
     gap: 1rem;
     padding: 2rem 0;
+  }
+
+  .stream-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .row-left {

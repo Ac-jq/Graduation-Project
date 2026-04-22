@@ -22,6 +22,8 @@ public class AiChatSessionResponse {
 
     private String status;
 
+    private LocalDateTime archivedAt;
+
     private String summaryText;
 
     private Boolean riskFlag;

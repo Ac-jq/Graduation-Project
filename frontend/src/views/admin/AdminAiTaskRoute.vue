@@ -25,13 +25,28 @@ const form = reactive({
   instruction: ''
 })
 
-const filters = reactive({
+const filterDraft = reactive({
   keyword: '',
   taskType: '',
   status: '',
   startDate: '',
   endDate: ''
 })
+
+const activeFilters = reactive({
+  keyword: '',
+  taskType: '',
+  status: '',
+  startDate: '',
+  endDate: ''
+})
+
+const examples = [
+  '禁用3个月未活跃的学生账号',
+  '新增一名咨询师，姓名为张三，工号为T009',
+  '查询学号为20220353的学生账号',
+  '下架编号为23的心理资源'
+]
 
 const taskTypeOptions = [
   { value: 'USER_CRUD', label: '用户操作' },
@@ -49,18 +64,18 @@ const statusOptions = [
 
 const filteredTasks = computed(() => {
   return tasks.value.filter((task) => {
-    const keyword = filters.keyword.trim().toLowerCase()
+    const keyword = activeFilters.keyword.trim().toLowerCase()
     const createdAt = task.createdAt ? new Date(task.createdAt) : null
-    const startDate = filters.startDate ? new Date(`${filters.startDate}T00:00:00`) : null
-    const endDate = filters.endDate ? new Date(`${filters.endDate}T23:59:59`) : null
+    const startDate = activeFilters.startDate ? new Date(`${activeFilters.startDate}T00:00:00`) : null
+    const endDate = activeFilters.endDate ? new Date(`${activeFilters.endDate}T23:59:59`) : null
 
     const matchesKeyword = !keyword
       || String(task.taskId).includes(keyword)
       || task.instructionText.toLowerCase().includes(keyword)
       || (task.summaryText ?? '').toLowerCase().includes(keyword)
 
-    const matchesType = !filters.taskType || task.taskType === filters.taskType
-    const matchesStatus = !filters.status || resolveTaskStatusKey(task) === filters.status
+    const matchesType = !activeFilters.taskType || task.taskType === activeFilters.taskType
+    const matchesStatus = !activeFilters.status || resolveTaskStatusKey(task) === activeFilters.status
     const matchesStart = !startDate || (createdAt !== null && createdAt >= startDate)
     const matchesEnd = !endDate || (createdAt !== null && createdAt <= endDate)
 
@@ -168,6 +183,21 @@ function resolveOperationLabel(item: AdminAiTaskItem): string {
   }
 }
 
+function resolveItemExecuteStatus(status: string | null | undefined): string {
+  switch (status) {
+    case 'EXECUTED':
+      return '已执行'
+    case 'CANCELED':
+      return '已取消'
+    case 'FAILED':
+      return '执行失败'
+    case 'WAITING':
+      return '等待执行'
+    default:
+      return '等待执行'
+  }
+}
+
 function formatValue(value: string | null | undefined): string {
   return value && value.trim() ? value : '空'
 }
@@ -212,16 +242,31 @@ async function loadTasks(): Promise<void> {
 }
 
 function applyFilters(): void {
+  activeFilters.keyword = filterDraft.keyword
+  activeFilters.taskType = filterDraft.taskType
+  activeFilters.status = filterDraft.status
+  activeFilters.startDate = filterDraft.startDate
+  activeFilters.endDate = filterDraft.endDate
   currentPage.value = 1
 }
 
 function resetFilters(): void {
-  filters.keyword = ''
-  filters.taskType = ''
-  filters.status = ''
-  filters.startDate = ''
-  filters.endDate = ''
+  filterDraft.keyword = ''
+  filterDraft.taskType = ''
+  filterDraft.status = ''
+  filterDraft.startDate = ''
+  filterDraft.endDate = ''
+  activeFilters.keyword = ''
+  activeFilters.taskType = ''
+  activeFilters.status = ''
+  activeFilters.startDate = ''
+  activeFilters.endDate = ''
   currentPage.value = 1
+  void loadTasks()
+}
+
+function useExample(example: string): void {
+  form.instruction = example
 }
 
 async function parseInstruction(): Promise<void> {
@@ -338,9 +383,20 @@ onMounted(() => {
           <textarea
             v-model="form.instruction"
             rows="3"
-            placeholder="例如：禁用三个月未登录的学生账号；或：查询学生账号 account: 20220353"
+            placeholder="例如：禁用三个月未登录的学生账号；或：查询学号为 20220353 的学生账号"
             @keydown.enter.ctrl.prevent="parseInstruction"
           />
+          <div class="example-list" aria-label="常用中文指令示例">
+            <button
+              v-for="example in examples"
+              :key="example"
+              class="example-btn"
+              type="button"
+              @click="useExample(example)"
+            >
+              {{ example }}
+            </button>
+          </div>
         </label>
         <button class="primary-btn" type="button" :disabled="processing" @click="parseInstruction">
           {{ processing ? '生成中...' : '生成执行清单' }}
@@ -351,7 +407,7 @@ onMounted(() => {
         <label class="filter-field filter-field--keyword">
           <span>内容关键词</span>
           <input
-            v-model="filters.keyword"
+            v-model="filterDraft.keyword"
             type="text"
             placeholder="任务编号 / 指令内容 / 摘要"
             @keyup.enter="applyFilters"
@@ -360,7 +416,7 @@ onMounted(() => {
 
         <label class="filter-field">
           <span>任务类型</span>
-          <select v-model="filters.taskType" @change="applyFilters">
+          <select v-model="filterDraft.taskType">
             <option value="">全部类型</option>
             <option v-for="option in taskTypeOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -370,7 +426,7 @@ onMounted(() => {
 
         <label class="filter-field">
           <span>执行状态</span>
-          <select v-model="filters.status" @change="applyFilters">
+          <select v-model="filterDraft.status">
             <option value="">全部状态</option>
             <option v-for="option in statusOptions" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -380,12 +436,12 @@ onMounted(() => {
 
         <label class="filter-field">
           <span>开始日期</span>
-          <input v-model="filters.startDate" type="date" @change="applyFilters">
+          <input v-model="filterDraft.startDate" type="date">
         </label>
 
         <label class="filter-field">
           <span>结束日期</span>
-          <input v-model="filters.endDate" type="date" @change="applyFilters">
+          <input v-model="filterDraft.endDate" type="date">
         </label>
 
         <div class="filter-actions">
@@ -500,7 +556,7 @@ onMounted(() => {
                   <td>{{ item.fieldName || '快照' }}</td>
                   <td>{{ formatValue(item.oldValue) }}</td>
                   <td>{{ formatValue(item.newValue) }}</td>
-                  <td>{{ item.executeStatus || 'WAITING' }}</td>
+                  <td>{{ resolveItemExecuteStatus(item.executeStatus) }}</td>
                 </tr>
               </tbody>
               <tbody v-else>
@@ -623,6 +679,29 @@ onMounted(() => {
 .command-field textarea:focus {
   border-color: #6b7f70;
   box-shadow: 0 0 0 3px rgba(107, 127, 112, 0.12);
+}
+
+.example-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.example-btn {
+  border: 1px solid rgba(47, 76, 58, 0.16);
+  border-radius: 999px;
+  background: rgba(246, 248, 246, 0.92);
+  color: #3d5143;
+  cursor: pointer;
+  font: 700 12px/1 'Manrope', sans-serif;
+  padding: 8px 10px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.example-btn:hover {
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(42, 54, 46, 0.08);
+  transform: translateY(-1px);
 }
 
 .filter-panel {

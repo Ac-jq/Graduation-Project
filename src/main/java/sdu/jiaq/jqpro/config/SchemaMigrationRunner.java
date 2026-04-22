@@ -25,6 +25,8 @@ public class SchemaMigrationRunner implements CommandLineRunner {
         ensureSysUserAvatarUrlColumn();
         ensureStudentProfileAvatarUrlColumn();
         ensureMentalScaleReportRecommendedResourceIdsColumn();
+        ensureAiChatSessionArchivedAtColumn();
+        ensureAiPersonaSettingTable();
     }
 
     private void ensureSysUserAvatarUrlColumn() {
@@ -67,5 +69,34 @@ public class SchemaMigrationRunner implements CommandLineRunner {
             return;
         }
         jdbcTemplate.execute("ALTER TABLE mental_scale_report ADD COLUMN recommended_resource_ids VARCHAR(255) NULL COMMENT '推荐资源ID快照，逗号分隔' AFTER ai_interpretation");
+    }
+
+    private void ensureAiChatSessionArchivedAtColumn() {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'ai_chat_session'
+                  AND column_name = 'archived_at'
+                """, Integer.class);
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.execute("ALTER TABLE ai_chat_session ADD COLUMN archived_at DATETIME NULL COMMENT '归档时间' AFTER status");
+    }
+
+    private void ensureAiPersonaSettingTable() {
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS ai_persona_setting (
+                    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键',
+                    student_user_id BIGINT NOT NULL COMMENT '学生用户ID',
+                    mentor_name VARCHAR(64) NOT NULL DEFAULT '青禾导师' COMMENT 'AI导师昵称',
+                    avatar_text VARCHAR(32) NOT NULL DEFAULT '青' COMMENT 'AI导师头像文本',
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+                    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+                    UNIQUE KEY uk_ai_persona_student (student_user_id),
+                    CONSTRAINT fk_ai_persona_student FOREIGN KEY (student_user_id) REFERENCES sys_user (id)
+                ) COMMENT='学生AI导师设定表'
+                """);
     }
 }

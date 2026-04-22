@@ -2,6 +2,7 @@ package sdu.jiaq.jqpro.controller.student;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,5 +54,16 @@ public class StudentAiChatController {
     public Result<SendAiChatMessageResponse> sendMessage(@PathVariable Long sessionId,
                                                          @Valid @RequestBody SendAiChatMessageRequest request) {
         return Result.success("消息发送成功", aiChatService.sendMessage(sessionId, request));
+    }
+
+    @PostMapping("/{sessionId}/archive")
+    public Result<AiChatSessionResponse> archiveSession(@PathVariable Long sessionId) {
+        return Result.success("AI会话已归档", aiChatService.archiveCurrentStudentSession(sessionId));
+    }
+
+    @DeleteMapping("/{sessionId}")
+    public Result<Void> deleteEmptySession(@PathVariable Long sessionId) {
+        aiChatService.deleteEmptyCurrentStudentSession(sessionId);
+        return Result.success();
     }
 }
