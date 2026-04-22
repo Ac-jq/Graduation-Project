@@ -8,7 +8,7 @@
 - AI 与咨询：学生 AI 会话、咨询师查看学生 AI 会话、匿名预约、通知中心、私密聊天室 HTTP + WebSocket
 - 资源与治理：资源库、收藏、管理员资源治理、管理员量表管理、统计分析、管理员 AI 助手、审计日志
 - 安全与合规：AI/聊天室消息密文存储、权限隔离、聊天室自动封存、关键动作审计
-- 验收与交付：数据导入脚本、后端启动脚本、分阶段验收脚本、全量回归脚本、完整接口文档
+- 验收与交付：数据导入脚本、分阶段验收脚本、全量回归脚本、完整接口文档
 
 ## 技术栈
 
@@ -25,7 +25,7 @@
 
 - `src/main/java`：后端业务代码
 - `src/main/resources`：配置、SQL 初始化脚本、模板与静态资源
-- `scripts`：数据导入、运行时准备、后端启动、自动化验收脚本
+- `scripts`：数据导入与自动化验收脚本
 - `spec/01_Requirements`：任务书与 PRD
 - `spec/02_Proposals`：阶段任务、测试数据、纯后端验收指南
 - `spec/03_Design/backend`：后端设计与 PRD 核对清单
@@ -43,26 +43,34 @@
 - JDK 17+，当前仓库默认使用 `E:\environment\JDK21\jdk-21.0.2\bin\java.exe`
 - MySQL 8.0
 - Redis 7+
-- Windows PowerShell 5.1+
+- Node.js 与 npm
 - 本机 `mysql.exe` 默认路径：`D:\DownLoad\mysql-8.0.33-winx64\bin\mysql.exe`
 
 ## 启动方式
 
-### 1. 导入验收数据
+### 1. IDEA 运行后端
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\import-acceptance-data.ps1
-```
+在 IDEA 右上角运行配置中选择 `JQPro Backend`，点击运行。
 
-### 2. 启动后端
+该配置已固定使用：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1 -ForceRestart
+```text
+E:\environment\JDK21\jdk-21.0.2
 ```
 
 后端基础地址：`http://127.0.0.1:8080`
 
-说明：当前仓库默认通过 `target/classes` 与 `.codex-tmp/layers2` 依赖层启动最新代码，不依赖本机 Maven 安装。
+### 2. IDEA 运行前端
+
+在 IDEA 右上角运行配置中选择 `JQPro Frontend`，点击运行。
+
+前端开发地址：`http://127.0.0.1:5173`
+
+### 3. 可选：导入验收数据
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\import-acceptance-data.ps1
+```
 
 ## 自动化验收
 

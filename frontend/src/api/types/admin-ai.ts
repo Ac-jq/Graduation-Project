@@ -2,6 +2,10 @@ export interface ParseAdminAiTaskRequest {
   instruction: string
 }
 
+export interface ConfirmAdminAiTaskRequest {
+  selectedItemIds?: number[]
+}
+
 export interface AdminAiTaskItem {
   itemId: number
   targetType: string

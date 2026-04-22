@@ -70,6 +70,8 @@ export interface AdminUserQuery {
   roleCode?: string
   status?: string
   keyword?: string
+  grade?: string
+  college?: string
 }
 
 export interface CreateCounselorRequest {

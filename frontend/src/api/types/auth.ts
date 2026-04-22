@@ -5,6 +5,17 @@ export interface LoginRequest {
   password: string
 }
 
+export interface RegisterRequest {
+  account: string
+  password: string
+  realName: string
+  displayName: string
+  studentNo: string
+  gender: string
+  grade: string
+  college: string
+}
+
 export interface ChangePasswordRequest {
   oldPassword: string
   newPassword: string

@@ -29,6 +29,7 @@ import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskItemResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskSummaryResponse;
+import sdu.jiaq.jqpro.dto.adminai.ConfirmAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskResponse;
 import sdu.jiaq.jqpro.entity.AdminAiTask;
@@ -92,6 +93,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private static final Pattern REAL_NAME_PATTERN = Pattern.compile("(?:realName|real name|真实姓名|姓名)\\s*[:：=]?\\s*[\"“”']?([\\p{L}\\p{N}_\\-·\\s]{2,40})[\"“”']?", Pattern.CASE_INSENSITIVE);
     private static final Pattern RESOURCE_ID_PATTERN = Pattern.compile("(?:resource|资源|id)\\s*[:：=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern QUOTED_VALUE_PATTERN = Pattern.compile("[\"“”']([^\"“”']+)[\"“”']");
+    private static final Pattern GRADE_PATTERN = Pattern.compile("(?:grade|\\u5e74\\u7ea7)\\s*[:：]?\\s*(20\\d{2}|\\d{2})|(?:^|\\D)(20\\d{2}|\\d{2})\\s*\\u7ea7", Pattern.CASE_INSENSITIVE);
 
     private final AdminAiTaskMapper adminAiTaskMapper;
     private final AdminAiTaskItemMapper adminAiTaskItemMapper;
@@ -199,7 +201,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public AdminAiTaskResponse confirm(Long taskId) {
+    public AdminAiTaskResponse confirm(Long taskId, ConfirmAdminAiTaskRequest request) {
         Long adminUserId = SecurityUtil.getCurrentUserId();
         AdminAiTask task = getRequiredTask(taskId);
         if (!AdminAiTaskConstants.PARSE_READY.equals(task.getParseStatus())) {
@@ -214,15 +216,25 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (items.isEmpty()) {
             throw new BusinessException("当前任务没有待执行明细");
         }
-        validateItemsBeforeExecution(items);
+        Set<Long> selectedItemIds = resolveSelectedItemIds(request);
+        List<AdminAiTaskItem> executableItems = selectedItemIds.isEmpty()
+                ? items
+                : items.stream()
+                .filter(item -> selectedItemIds.contains(item.getId()))
+                .toList();
+        if (executableItems.isEmpty()) {
+            throw new BusinessException("请选择至少一条要执行的任务明细");
+        }
+        validateSelectableCreateGroup(items, executableItems, selectedItemIds);
+        validateItemsBeforeExecution(executableItems);
 
         Set<String> handledGroups = new HashSet<>();
-        for (AdminAiTaskItem item : items) {
+        for (AdminAiTaskItem item : executableItems) {
             String op = normalizeOperation(item.getOperationType());
             if (AdminAiTaskConstants.OP_CREATE.equals(op)) {
                 String key = "CREATE:" + firstText(item.getTargetLabel(), "TASK-" + taskId);
                 if (handledGroups.add(key)) {
-                    executeCreateGroup(items, item.getTargetLabel(), adminUserId);
+                    executeCreateGroup(executableItems, item.getTargetLabel(), adminUserId);
                 }
             } else if (AdminAiTaskConstants.OP_DELETE.equals(op)) {
                 String key = "DELETE:" + item.getTargetId();
@@ -237,6 +249,9 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             }
             item.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
             adminAiTaskItemMapper.updateById(item);
+        }
+        if (!selectedItemIds.isEmpty()) {
+            markUnselectedItemsCanceled(items, selectedItemIds);
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -268,6 +283,51 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }
         auditLogService.record(adminUserId, "ADMIN_AI_CANCEL", "Admin AI cancel task", "Canceled task #" + taskId, null);
         return getTask(taskId);
+    }
+
+    private Set<Long> resolveSelectedItemIds(ConfirmAdminAiTaskRequest request) {
+        if (request == null || request.getSelectedItemIds() == null || request.getSelectedItemIds().isEmpty()) {
+            return Set.of();
+        }
+        return request.getSelectedItemIds().stream()
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    private void validateSelectableCreateGroup(List<AdminAiTaskItem> allItems,
+                                               List<AdminAiTaskItem> executableItems,
+                                               Set<Long> selectedItemIds) {
+        if (selectedItemIds.isEmpty()) {
+            return;
+        }
+        boolean selectedCreate = executableItems.stream()
+                .map(AdminAiTaskItem::getOperationType)
+                .map(this::normalizeOperation)
+                .anyMatch(AdminAiTaskConstants.OP_CREATE::equals);
+        if (!selectedCreate) {
+            return;
+        }
+        Set<String> selectedGroups = executableItems.stream()
+                .filter(item -> AdminAiTaskConstants.OP_CREATE.equals(normalizeOperation(item.getOperationType())))
+                .map(AdminAiTaskItem::getTargetLabel)
+                .collect(java.util.stream.Collectors.toSet());
+        boolean missingCreateField = allItems.stream()
+                .filter(item -> AdminAiTaskConstants.OP_CREATE.equals(normalizeOperation(item.getOperationType())))
+                .filter(item -> selectedGroups.contains(item.getTargetLabel()))
+                .anyMatch(item -> !selectedItemIds.contains(item.getId()));
+        if (missingCreateField) {
+            throw new BusinessException("创建账号任务必须完整勾选同一账号的所有字段");
+        }
+    }
+
+    private void markUnselectedItemsCanceled(List<AdminAiTaskItem> allItems, Set<Long> selectedItemIds) {
+        for (AdminAiTaskItem item : allItems) {
+            if (selectedItemIds.contains(item.getId())) {
+                continue;
+            }
+            item.setExecuteStatus(AdminAiTaskConstants.EXECUTE_CANCELED);
+            adminAiTaskItemMapper.updateById(item);
+        }
     }
 
     private AdminAiTaskResponse buildTaskResponse(AdminAiTask task, List<AdminAiTaskItemResponse> items) {
@@ -317,10 +377,26 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     }
 
     private ParsedTask parseInstruction(String instruction) {
+        ParsedTask explicitIdentifierTask = parseExplicitIdentifierQuery(instruction);
+        if (explicitIdentifierTask != null) {
+            return explicitIdentifierTask;
+        }
         if (adminOpsAiClient.isEnabled()) {
             try {
                 ParsedTask task = parseByAi(instruction);
                 if (task != null) {
+                    if (AdminAiTaskConstants.PARSE_READY.equals(task.parseStatus) && shouldPreferRuleParser(instruction)) {
+                        ParsedTask ruleTask = parseByRules(instruction);
+                        if (AdminAiTaskConstants.PARSE_READY.equals(ruleTask.parseStatus)) {
+                            return ruleTask;
+                        }
+                    }
+                    if (AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(task.parseStatus)) {
+                        ParsedTask ruleTask = parseByRules(instruction);
+                        if (AdminAiTaskConstants.PARSE_READY.equals(ruleTask.parseStatus)) {
+                            return ruleTask;
+                        }
+                    }
                     return task;
                 }
             } catch (BusinessException exception) {
@@ -330,6 +406,40 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             }
         }
         return parseByRules(instruction);
+    }
+
+    private ParsedTask parseExplicitIdentifierQuery(String instruction) {
+        String lowered = instruction.toLowerCase(Locale.ROOT);
+        if (containsAny(lowered, "create", "add", "new", "update", "change", "modify", "set", "delete", "remove",
+                "新增", "创建", "修改", "更改", "删除", "移除", "禁用", "启用")) {
+            return null;
+        }
+        SysUser user = null;
+        String account = extractAccount(instruction);
+        if (StringUtils.hasText(account)) {
+            user = findUserByAccount(account);
+        }
+        if (user == null && StringUtils.hasText(extractStudentNo(instruction))) {
+            String studentNo = extractStudentNo(instruction);
+            user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getStudentNo, studentNo).last("limit 1"));
+        }
+        if (user == null && StringUtils.hasText(extractCounselorNo(instruction))) {
+            String counselorNo = extractCounselorNo(instruction);
+            user = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getCounselorNo, counselorNo).last("limit 1"));
+        }
+        if (user == null) {
+            return null;
+        }
+        return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                "待确认查询结果，共匹配 1 名用户", List.of(buildQueryItem(user)));
+    }
+
+    private boolean shouldPreferRuleParser(String instruction) {
+        String lowered = instruction.toLowerCase(Locale.ROOT);
+        return StringUtils.hasText(extractAccount(instruction))
+                || StringUtils.hasText(extractStudentNo(instruction))
+                || StringUtils.hasText(extractCounselorNo(instruction))
+                || (containsAny(lowered, "delete", "remove", "删除", "移除") && StringUtils.hasText(extractGrade(instruction)));
     }
 
     private ParsedTask parseByAi(String instruction) {
@@ -362,6 +472,9 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             return parseCreateUserByRules(instruction);
         }
         if (containsAny(lowered, "delete", "remove", "删除", "移除")) {
+            if (containsAny(lowered, "student", "学生") && StringUtils.hasText(extractGrade(instruction))) {
+                return parseDeleteStudentsByGrade(instruction);
+            }
             return parseDeleteUserByRules(instruction);
         }
         if (containsAny(lowered, "query", "find", "list", "show", "查询", "查看", "列出")) {
@@ -444,6 +557,24 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 .toList();
         return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_ACCOUNT_STATUS,
                 firstText(summaryText, "待禁用 " + users.size() + " 名连续 " + inactiveMonths + " 个月未登录的学生"), items);
+    }
+
+    private ParsedTask parseDeleteStudentsByGrade(String instruction) {
+        String grade = extractGrade(instruction);
+        if (!StringUtils.hasText(grade)) {
+            return ParsedTask.needMoreInfo("请补充要删除的学生年级，例如 2025 级学生");
+        }
+        List<SysUser> users = findStudentsByGrade(grade);
+        if (users.isEmpty()) {
+            return ParsedTask.needMoreInfo("没有找到 " + grade + " 级学生");
+        }
+        if (users.size() > MAX_QUERY_ROWS) {
+            return ParsedTask.needMoreInfo(grade + " 级学生数量过多，请补充学院、姓名或学号缩小范围");
+        }
+        List<AdminAiTaskItem> items = users.stream()
+                .map(user -> buildUserItem(user, AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, buildUserSnapshot(user), "DELETE"))
+                .toList();
+        return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD, "待复核删除 " + grade + " 级学生 " + users.size() + " 人", items);
     }
 
     private ParsedTask parseResourceByRules(String instruction) {
@@ -789,6 +920,27 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }).sorted(Comparator.comparing(SysUser::getId)).toList();
     }
 
+    private List<SysUser> findStudentsByGrade(String grade) {
+        List<StudentProfile> profiles = studentProfileMapper.selectList(new LambdaQueryWrapper<StudentProfile>()
+                .eq(StudentProfile::getGrade, grade));
+        if (profiles.isEmpty()) {
+            return List.of();
+        }
+        List<Long> userIds = profiles.stream()
+                .map(StudentProfile::getUserId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (userIds.isEmpty()) {
+            return List.of();
+        }
+        return sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                        .in(SysUser::getId, userIds)
+                        .eq(SysUser::getRoleCode, RoleConstants.STUDENT))
+                .stream()
+                .sorted(Comparator.comparing(SysUser::getId))
+                .toList();
+    }
+
     private List<SysUser> findUsers(UserFilter filter, boolean exactName) {
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<>();
         boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
@@ -852,12 +1004,32 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private boolean isReadyParseStatus(String parseStatus) { String n = normalizeUpper(parseStatus); return AdminAiTaskConstants.PARSE_READY.equals(n) || "SUCCESS".equals(n) || "EXECUTABLE".equals(n) || "PARSED".equals(n); }
     private String extractStatus(String instruction) { String lowered = instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "启用", "恢复", "enable", "activate", "restore")) return UserStatusConstants.ACTIVE; if (containsAny(lowered, "禁用", "停用", "disable", "suspend", "ban")) return UserStatusConstants.DISABLED; return null; }
     private String extractByPattern(Pattern pattern, String text) { Matcher matcher = pattern.matcher(text); return matcher.find() ? normalizeText(matcher.group(1)) : null; }
-    private String extractAccount(String instruction) { return normalizeCreateAccount(extractByPattern(ACCOUNT_PATTERN, instruction)); }
-    private String extractStudentNo(String instruction) { return extractByPattern(STUDENT_NO_PATTERN, instruction); }
-    private String extractCounselorNo(String instruction) { return extractByPattern(COUNSELOR_NO_PATTERN, instruction); }
+    private String extractAccount(String instruction) {
+        String asciiAccount = extractByPattern(Pattern.compile("\\baccount\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction);
+        String chineseAccount = extractByPattern(Pattern.compile("(?:账号|帐号)\\s*[:：]\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction);
+        return normalizeCreateAccount(firstText(asciiAccount, chineseAccount, extractByPattern(ACCOUNT_PATTERN, instruction)));
+    }
+    private String extractStudentNo(String instruction) {
+        return firstText(extractByPattern(Pattern.compile("(?:studentNo|student no|学号)\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction), extractByPattern(STUDENT_NO_PATTERN, instruction));
+    }
+    private String extractCounselorNo(String instruction) {
+        return firstText(extractByPattern(Pattern.compile("(?:counselorNo|counselor no|工号)\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction), extractByPattern(COUNSELOR_NO_PATTERN, instruction));
+    }
     private String extractDisplayName(String instruction) { String value = extractByPattern(DISPLAY_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
     private String extractRealName(String instruction) { String value = extractByPattern(REAL_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
     private String extractQuotedValue(String instruction) { Matcher matcher = QUOTED_VALUE_PATTERN.matcher(instruction); return matcher.find() ? normalizeText(matcher.group(1)) : null; }
+    private String extractGrade(String instruction) {
+        Pattern robustGradePattern = Pattern.compile("(?:grade|年级)\\s*[:：]?\\s*(20\\d{2}|\\d{2})|(?:^|\\D)(20\\d{2}|\\d{2})\\s*级", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = robustGradePattern.matcher(instruction);
+        if (!matcher.find()) {
+            return null;
+        }
+        String value = firstText(matcher.group(1), matcher.group(2));
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.length() == 2 ? "20" + value : value;
+    }
     private String resolveRoleFromInstruction(String instruction) { String lowered = normalizeText(instruction) == null ? "" : instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "student", "学生", "学号")) return RoleConstants.STUDENT; if (containsAny(lowered, "teacher", "counselor", "老师", "咨询师", "工号")) return RoleConstants.COUNSELOR; if (containsAny(lowered, "admin", "管理员")) return RoleConstants.ADMIN; return null; }
     private String generateStudentAccount(String studentNo) { String sanitized = normalizeText(studentNo); if (!StringUtils.hasText(sanitized)) throw new BusinessException("学生学号不能为空"); return "s_" + sanitized.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", ""); }
     private String generateCounselorAccount(String counselorNo) { String sanitized = normalizeText(counselorNo); if (!StringUtils.hasText(sanitized)) throw new BusinessException("老师工号不能为空"); return "c_" + sanitized.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", ""); }

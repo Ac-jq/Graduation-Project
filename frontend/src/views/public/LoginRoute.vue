@@ -128,6 +128,9 @@ async function submitLogin(): Promise<void> {
 
           <div class="form-footer">
             <p>遇到登录问题？请联系系统管理员获取帮助。</p>
+            <button type="button" class="register-link" @click="router.push('/register')">
+              创建学生账号 <span>→</span>
+            </button>
           </div>
         </div>
       </section>
@@ -458,6 +461,32 @@ async function submitLogin(): Promise<void> {
   text-align: center;
   font-size: 0.8rem;
   color: var(--text-muted);
+}
+
+.register-link {
+  margin-top: 0.8rem;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.register-link:hover {
+  color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.register-link span {
+  display: inline-block;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.register-link:hover span {
+  transform: translateX(4px);
 }
 
 /* 响应式调整 */

@@ -11,7 +11,7 @@ import java.util.List;
  */
 public interface AdminUserService {
 
-    List<AdminUserSummaryResponse> listUsers(String roleCode, String status, String keyword);
+    List<AdminUserSummaryResponse> listUsers(String roleCode, String status, String keyword, String grade, String college);
 
     AdminUserSummaryResponse createCounselor(CreateCounselorRequest request);
 

@@ -10,11 +10,14 @@ function getRouteMeta(to: RouteLocationNormalized): AppRouteMeta {
 
 export async function applyRouteGuards(
   to: RouteLocationNormalized,
-  _from: RouteLocationNormalized,
+  from: RouteLocationNormalized,
   next: NavigationGuardNext
 ): Promise<void> {
   const authStore = useAuthStore(pinia)
   const meta = getRouteMeta(to)
+  const fromMeta = getRouteMeta(from)
+
+  to.meta.useAuthTransition = Boolean(meta.isAuthPage && fromMeta.isAuthPage)
 
   await authStore.restoreSession()
 

@@ -37,8 +37,10 @@ public class AdminUserController {
     @GetMapping
     public Result<List<AdminUserSummaryResponse>> listUsers(@RequestParam(required = false) String roleCode,
                                                             @RequestParam(required = false) String status,
-                                                            @RequestParam(required = false) String keyword) {
-        return Result.success(adminUserService.listUsers(roleCode, status, keyword));
+                                                            @RequestParam(required = false) String keyword,
+                                                            @RequestParam(required = false) String grade,
+                                                            @RequestParam(required = false) String college) {
+        return Result.success(adminUserService.listUsers(roleCode, status, keyword, grade, college));
     }
 
     @PostMapping("/counselors")

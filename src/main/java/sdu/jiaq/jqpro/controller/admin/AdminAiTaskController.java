@@ -13,6 +13,7 @@ import sdu.jiaq.jqpro.common.constant.RoleConstants;
 import sdu.jiaq.jqpro.common.result.Result;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskSummaryResponse;
+import sdu.jiaq.jqpro.dto.adminai.ConfirmAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskResponse;
 import sdu.jiaq.jqpro.service.AdminAiTaskService;
@@ -47,8 +48,9 @@ public class AdminAiTaskController {
     }
 
     @PostMapping("/{taskId}/confirm")
-    public Result<AdminAiTaskResponse> confirm(@PathVariable Long taskId) {
-        return Result.success("任务执行成功", adminAiTaskService.confirm(taskId));
+    public Result<AdminAiTaskResponse> confirm(@PathVariable Long taskId,
+                                               @RequestBody(required = false) ConfirmAdminAiTaskRequest request) {
+        return Result.success("任务执行成功", adminAiTaskService.confirm(taskId, request));
     }
 
     @PostMapping("/{taskId}/cancel")

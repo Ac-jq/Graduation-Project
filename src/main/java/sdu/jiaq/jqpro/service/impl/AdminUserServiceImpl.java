@@ -96,16 +96,19 @@ public class AdminUserServiceImpl implements AdminUserService {
     }
 
     @Override
-    public List<AdminUserSummaryResponse> listUsers(String roleCode, String status, String keyword) {
+    public List<AdminUserSummaryResponse> listUsers(String roleCode, String status, String keyword, String grade, String college) {
         String normalizedRole = normalize(roleCode);
         String normalizedStatus = normalize(status);
         String normalizedKeyword = normalize(keyword);
+        String normalizedGrade = normalize(grade);
+        String normalizedCollege = normalize(college);
         List<SysUser> users = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>().orderByDesc(SysUser::getCreatedAt, SysUser::getId));
         Map<Long, StudentProfile> profileMap = studentProfileMapper.selectList(null).stream()
                 .collect(Collectors.toMap(StudentProfile::getUserId, Function.identity(), (left, right) -> left));
         return users.stream()
                 .filter(user -> normalizedRole == null || normalizedRole.equalsIgnoreCase(user.getRoleCode()))
                 .filter(user -> normalizedStatus == null || normalizedStatus.equalsIgnoreCase(user.getStatus()))
+                .filter(user -> matchStudentProfileDimension(profileMap.get(user.getId()), normalizedGrade, normalizedCollege))
                 .filter(user -> matchKeyword(user, profileMap.get(user.getId()), normalizedKeyword))
                 .map(user -> buildUserSummary(user, profileMap.get(user.getId())))
                 .toList();
@@ -253,12 +256,32 @@ public class AdminUserServiceImpl implements AdminUserService {
                 || contains(profile == null ? null : profile.getPhone(), keyword);
     }
 
+    private boolean matchStudentProfileDimension(StudentProfile profile, String grade, String college) {
+        if (grade == null && college == null) {
+            return true;
+        }
+        if (profile == null) {
+            return false;
+        }
+        return (grade == null || grade.equalsIgnoreCase(normalizeGrade(profile.getGrade())))
+                && (college == null || college.equalsIgnoreCase(normalize(profile.getCollege())));
+    }
+
     private boolean contains(String source, String keyword) {
         return source != null && source.toLowerCase(Locale.ROOT).contains(keyword);
     }
 
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizeGrade(String value) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("20\\d{2}").matcher(normalized);
+        return matcher.find() ? matcher.group() : normalized;
     }
 
     private String blankToDefault(String value, String fallback) {

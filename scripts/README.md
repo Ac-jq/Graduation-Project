@@ -6,10 +6,6 @@
   - 公共请求、断言、鉴权头、数据库查询函数
 - `import-acceptance-data.ps1`
   - 自动读取 `application.yml` 中的 MySQL 配置并导入验收 SQL
-- `prepare-runtime.ps1`
-  - 从现有 fat jar 依赖层准备纯后端运行时
-- `start-backend.ps1`
-  - 启动后端服务
 - `phase1-auth-profile.ps1`
   - 验证登录、当前用户、学生档案、改密、登出
 - `phase1-assessment-report.ps1`
@@ -29,9 +25,10 @@
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\import-acceptance-data.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\start-backend.ps1 -ForceRestart
 powershell -ExecutionPolicy Bypass -File .\scripts\full-acceptance.ps1
 ```
+
+后端与前端请优先使用 IDEA 运行配置 `JQPro Backend` 和 `JQPro Frontend` 启动。
 
 ## WebSocket 验收说明
 

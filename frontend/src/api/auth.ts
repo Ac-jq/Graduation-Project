@@ -1,8 +1,12 @@
 import { get, post } from './http'
-import type { ChangePasswordRequest, CurrentUserResponse, LoginRequest, LoginSuccessResponse } from './types'
+import type { ChangePasswordRequest, CurrentUserResponse, LoginRequest, LoginSuccessResponse, RegisterRequest } from './types'
 
 export function loginApi(payload: LoginRequest): Promise<LoginSuccessResponse> {
   return post<LoginSuccessResponse>('/auth/login', payload)
+}
+
+export function registerApi(payload: RegisterRequest): Promise<CurrentUserResponse> {
+  return post<CurrentUserResponse>('/auth/register', payload)
 }
 
 export function logoutApi(): Promise<void> {

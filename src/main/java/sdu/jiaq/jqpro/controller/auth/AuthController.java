@@ -12,6 +12,7 @@ import sdu.jiaq.jqpro.dto.auth.ChangePasswordRequest;
 import sdu.jiaq.jqpro.dto.auth.CurrentUserResponse;
 import sdu.jiaq.jqpro.dto.auth.LoginRequest;
 import sdu.jiaq.jqpro.dto.auth.LoginResponse;
+import sdu.jiaq.jqpro.dto.auth.RegisterRequest;
 import sdu.jiaq.jqpro.service.AuthService;
 
 /**
@@ -30,6 +31,12 @@ public class AuthController {
     @PostMapping("/login")
     public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpServletRequest) {
         return Result.success("登录成功", authService.login(request, httpServletRequest));
+    }
+
+    @PostMapping("/register")
+    public Result<CurrentUserResponse> register(@Valid @RequestBody RegisterRequest request,
+                                                HttpServletRequest httpServletRequest) {
+        return Result.success("注册成功，请返回登录", authService.register(request, httpServletRequest));
     }
 
     @PostMapping("/logout")

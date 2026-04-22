@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import sdu.jiaq.jqpro.common.constant.RoleConstants;
 import sdu.jiaq.jqpro.common.constant.UserStatusConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.IpUtil;
@@ -14,7 +15,10 @@ import sdu.jiaq.jqpro.dto.auth.ChangePasswordRequest;
 import sdu.jiaq.jqpro.dto.auth.CurrentUserResponse;
 import sdu.jiaq.jqpro.dto.auth.LoginRequest;
 import sdu.jiaq.jqpro.dto.auth.LoginResponse;
+import sdu.jiaq.jqpro.dto.auth.RegisterRequest;
+import sdu.jiaq.jqpro.entity.StudentProfile;
 import sdu.jiaq.jqpro.entity.SysUser;
+import sdu.jiaq.jqpro.mapper.StudentProfileMapper;
 import sdu.jiaq.jqpro.mapper.SysUserMapper;
 import sdu.jiaq.jqpro.service.AuditLogService;
 import sdu.jiaq.jqpro.service.AuthService;
@@ -28,10 +32,14 @@ import java.util.List;
 public class AuthServiceImpl implements AuthService {
 
     private final SysUserMapper sysUserMapper;
+    private final StudentProfileMapper studentProfileMapper;
     private final AuditLogService auditLogService;
 
-    public AuthServiceImpl(SysUserMapper sysUserMapper, AuditLogService auditLogService) {
+    public AuthServiceImpl(SysUserMapper sysUserMapper,
+                           StudentProfileMapper studentProfileMapper,
+                           AuditLogService auditLogService) {
         this.sysUserMapper = sysUserMapper;
+        this.studentProfileMapper = studentProfileMapper;
         this.auditLogService = auditLogService;
     }
 
@@ -62,6 +70,57 @@ public class AuthServiceImpl implements AuthService {
                 .displayName(sysUser.getDisplayName())
                 .avatarUrl(sysUser.getAvatarUrl())
                 .roles(List.of(sysUser.getRoleCode()))
+                .build();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CurrentUserResponse register(RegisterRequest request, HttpServletRequest httpServletRequest) {
+        String account = request.getAccount().trim();
+        String studentNo = request.getStudentNo().trim();
+
+        Long accountCount = sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getAccount, account));
+        if (accountCount != null && accountCount > 0) {
+            throw new BusinessException("该账号已存在，请更换账号");
+        }
+
+        Long studentNoCount = sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>()
+                .eq(SysUser::getStudentNo, studentNo));
+        if (studentNoCount != null && studentNoCount > 0) {
+            throw new BusinessException("该学号已被注册");
+        }
+
+        String salt = PasswordCryptoUtil.generateSalt();
+        SysUser user = new SysUser();
+        user.setAccount(account);
+        user.setPasswordSalt(salt);
+        user.setPasswordHash(PasswordCryptoUtil.hashPassword(request.getPassword(), salt));
+        user.setRoleCode(RoleConstants.STUDENT);
+        user.setRealName(request.getRealName().trim());
+        user.setDisplayName(request.getDisplayName().trim());
+        user.setStudentNo(studentNo);
+        user.setStatus(UserStatusConstants.ACTIVE);
+        sysUserMapper.insert(user);
+
+        StudentProfile profile = new StudentProfile();
+        profile.setUserId(user.getId());
+        profile.setGender(normalizeGender(request.getGender()));
+        profile.setGrade(request.getGrade().trim());
+        profile.setCollege(request.getCollege().trim());
+        studentProfileMapper.insert(profile);
+
+        auditLogService.record(user.getId(), "REGISTER", "学生注册",
+                "学生账号注册成功", IpUtil.resolveClientIp(httpServletRequest));
+
+        return CurrentUserResponse.builder()
+                .userId(user.getId())
+                .account(user.getAccount())
+                .roleCode(user.getRoleCode())
+                .realName(user.getRealName())
+                .displayName(user.getDisplayName())
+                .studentNo(user.getStudentNo())
+                .roles(List.of(user.getRoleCode()))
                 .build();
     }
 
@@ -114,5 +173,13 @@ public class AuthServiceImpl implements AuthService {
             throw new BusinessException("用户不存在");
         }
         return sysUser;
+    }
+
+    private String normalizeGender(String gender) {
+        String value = gender == null ? "" : gender.trim();
+        if ("男".equals(value) || "女".equals(value)) {
+            return value;
+        }
+        throw new BusinessException("性别仅支持男或女");
     }
 }

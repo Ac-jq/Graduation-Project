@@ -41,8 +41,28 @@ const editDialogVisible = ref(false)
 const filters = reactive<AdminUserQuery>({
   roleCode: undefined,
   status: undefined,
-  keyword: ''
+  keyword: '',
+  grade: undefined,
+  college: undefined
 })
+
+const gradeOptions = ['2022', '2023', '2025', '2026']
+const collegeOptions = [
+  '计算机科学与技术学院',
+  '软件学院',
+  '人工智能学院',
+  '医学院',
+  '法学院',
+  '经济管理学院',
+  '外国语学院',
+  '文学院',
+  '理学院',
+  '工学院',
+  '艺术学院',
+  '建筑与城规学院',
+  '机械工程学院',
+  '电子信息工程学院'
+]
 
 const createForm = reactive<CreateCounselorRequest>({
   account: '',
@@ -331,6 +351,8 @@ function resetFilters(): void {
   filters.roleCode = undefined
   filters.status = undefined
   filters.keyword = ''
+  filters.grade = undefined
+  filters.college = undefined
 }
 
 function exportUsers(): void {
@@ -419,6 +441,22 @@ onMounted(() => {
               <option :value="undefined">全部</option>
               <option value="ACTIVE">正常</option>
               <option value="DISABLED">禁用</option>
+            </select>
+          </label>
+
+          <label class="toolbar-field">
+            <span>年级</span>
+            <select v-model="filters.grade">
+              <option :value="undefined">全部</option>
+              <option v-for="grade in gradeOptions" :key="grade" :value="grade">{{ grade }}</option>
+            </select>
+          </label>
+
+          <label class="toolbar-field toolbar-field--college">
+            <span>学院</span>
+            <select v-model="filters.college">
+              <option :value="undefined">全部</option>
+              <option v-for="college in collegeOptions" :key="college" :value="college">{{ college }}</option>
             </select>
           </label>
 
@@ -555,7 +593,10 @@ onMounted(() => {
                 <th class="col-index">序号</th>
                 <th>账号</th>
                 <th>姓名</th>
+                <th>真实姓名</th>
                 <th>角色</th>
+                <th>年级</th>
+                <th>学院</th>
                 <th>状态</th>
                 <th>创建时间</th>
                 <th class="col-action sticky-col">操作</th>
@@ -566,7 +607,10 @@ onMounted(() => {
                 <td class="col-index">{{ rowIndex(index) }}</td>
                 <td>{{ user.account }}</td>
                 <td>{{ user.displayName }}</td>
+                <td>{{ user.realName || '--' }}</td>
                 <td>{{ resolveRoleLabel(user.roleCode) }}</td>
+                <td>{{ user.grade || '--' }}</td>
+                <td>{{ user.college || '--' }}</td>
                 <td>
                   <span class="status-tag" :class="user.status === 'ACTIVE' ? 'is-active' : 'is-disabled'">
                     {{ resolveStatusLabel(user.status) }}
@@ -606,7 +650,7 @@ onMounted(() => {
             </tbody>
             <tbody v-else>
               <tr>
-                <td colspan="7" class="table-empty">
+                <td colspan="10" class="table-empty">
                   {{ loading ? '正在同步用户列表...' : '暂无符合条件的用户数据。' }}
                 </td>
               </tr>
@@ -710,6 +754,10 @@ onMounted(() => {
   min-width: 280px;
 }
 
+.toolbar-field--college {
+  min-width: 220px;
+}
+
 .toolbar-field span {
   font-size: 12px;
   color: #607080;
@@ -796,7 +844,7 @@ onMounted(() => {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
-  min-width: 980px;
+  min-width: 1260px;
   background: #fff;
 }
 

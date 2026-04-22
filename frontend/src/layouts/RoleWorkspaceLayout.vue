@@ -1,6 +1,6 @@
 ﻿<template>
   <div class="workspace-shell" :class="themeClass">
-    <aside class="workspace-sidebar">
+    <aside class="workspace-sidebar" ref="sidebarRef" @scroll="rememberSidebarScroll">
       <div class="sidebar-brand">
         <div class="brand-mark"></div>
         <div>
@@ -32,7 +32,7 @@
             class="nav-item"
             :class="{ 'is-active': isNavItemActive(item.path) }"
             :aria-current="isNavItemActive(item.path) ? 'page' : undefined"
-            @click="router.push(item.path)"
+            @click="navigateTo(item.path)"
         >
           <span class="nav-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { fetchStudentProfileApi } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
@@ -132,6 +132,8 @@ const navIcons: Record<NavIconName, string[]> = {
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const sidebarRef = ref<HTMLElement | null>(null)
+const sidebarScrollTop = ref(0)
 const assetOrigin = `${window.location.protocol}//${window.location.hostname}:8080`
 const studentAvatarStorageKey = 'jqpro.student-avatar-url'
 const avatarEventName = 'jqpro:student-avatar-updated'
@@ -218,6 +220,32 @@ const activeNavItemPath = computed(() => {
 function isNavItemActive(path: string): boolean {
   return activeNavItemPath.value === path
 }
+
+function rememberSidebarScroll(): void {
+  sidebarScrollTop.value = sidebarRef.value?.scrollTop ?? 0
+}
+
+async function navigateTo(path: string): Promise<void> {
+  if (activeNavItemPath.value === path || route.path === path) {
+    return
+  }
+  rememberSidebarScroll()
+  await router.push(path)
+  await nextTick()
+  if (sidebarRef.value) {
+    sidebarRef.value.scrollTop = sidebarScrollTop.value
+  }
+}
+
+watch(
+  () => route.fullPath,
+  async () => {
+    await nextTick()
+    if (sidebarRef.value) {
+      sidebarRef.value.scrollTop = sidebarScrollTop.value
+    }
+  }
+)
 
 const sidebarNote = computed(() => {
   switch (currentUser.value?.roleCode) {
