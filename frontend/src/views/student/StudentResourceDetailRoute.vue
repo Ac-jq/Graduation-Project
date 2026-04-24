@@ -31,6 +31,46 @@ const previewMode = computed<'video' | 'image' | 'audio' | 'article' | 'external
   return 'external'
 })
 
+function looksLikeHtmlContent(value: string | null | undefined): boolean {
+  if (!value) return false
+  const trimmed = value.trim()
+  return trimmed.startsWith('<')
+    || trimmed.startsWith('&lt;')
+    || trimmed.startsWith('data:text/html')
+    || /<\/(p|div|article|section|h1|h2|h3|ul|ol|li|img)>/i.test(trimmed)
+}
+
+function decodeHtmlPayload(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('data:text/html')) {
+    return trimmed
+  }
+
+  const [, payload = ''] = trimmed.split(',', 2)
+  try {
+    return decodeURIComponent(payload)
+  } catch {
+    return payload
+  }
+}
+
+const articleHtmlContent = computed(() => {
+  const detail = resourceDetail.value as (ResourceDetail & {
+    content?: string | null
+    contentHtml?: string | null
+    htmlContent?: string | null
+  }) | null
+
+  const candidate = [
+    detail?.content,
+    detail?.contentHtml,
+    detail?.htmlContent,
+    detail?.contentUrl
+  ].find((item) => looksLikeHtmlContent(item))
+
+  return candidate ? decodeHtmlPayload(candidate) : ''
+})
+
 function formatDate(value: string | null): string {
   if (!value) return '未发布'
   const date = new Date(value)
@@ -113,7 +153,7 @@ function resizeArticleFrame(): void {
     )
     articleFrame.value.style.height = `${contentHeight}px`
   } catch {
-    articleFrame.value.style.height = '72vh'
+    articleFrame.value.style.height = '1680px'
   }
 }
 
@@ -179,7 +219,13 @@ onMounted(() => void loadResourceDetail())
           </div>
         </section>
 
-        <section class="media-stage" :class="{ 'is-article-stage': previewMode === 'article' }">
+        <section
+          class="media-stage"
+          :class="{
+            'is-article-stage': previewMode === 'article',
+            'is-image-stage': previewMode === 'image'
+          }"
+        >
 
           <video
               v-if="previewMode === 'video'"
@@ -210,6 +256,12 @@ onMounted(() => void loadResourceDetail())
                 preload="metadata"
             />
           </div>
+
+          <div
+              v-else-if="previewMode === 'article' && articleHtmlContent"
+              class="rich-text-wrapper"
+              v-html="articleHtmlContent"
+          />
 
           <iframe
               v-else-if="previewMode === 'article'"
@@ -454,6 +506,16 @@ onMounted(() => void loadResourceDetail())
   overflow: visible;
   background: transparent;
   box-shadow: none;
+  min-height: 0;
+  padding: 0;
+}
+
+.media-stage.is-image-stage {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  overflow: visible;
+  padding: 0;
 }
 
 .media-player,
@@ -462,6 +524,14 @@ onMounted(() => void loadResourceDetail())
   width: 100%;
   display: block;
   border: none;
+}
+
+.media-image {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 8px;
 }
 
 .audio-stage {
@@ -488,12 +558,86 @@ onMounted(() => void loadResourceDetail())
 }
 
 .media-iframe {
-  min-height: 720px;
+  min-height: 0;
   background: transparent;
+  height: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .media-stage.is-article-stage .media-iframe {
-  min-height: 720px;
+  min-height: 1200px;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  margin: 0 auto 4rem;
+}
+
+.rich-text-wrapper {
+  max-width: 800px;
+  margin: 0 auto 4rem;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  overflow: visible;
+  color: #2a362e;
+  font-family: 'Noto Serif SC', serif;
+  line-height: 1.9;
+}
+
+.rich-text-wrapper :deep(*) {
+  max-width: 100%;
+}
+
+.rich-text-wrapper :deep(img) {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 2rem 0;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.rich-text-wrapper :deep(iframe) {
+  width: 100%;
+  border: none;
+}
+
+.rich-text-wrapper :deep(h1),
+.rich-text-wrapper :deep(h2),
+.rich-text-wrapper :deep(h3),
+.rich-text-wrapper :deep(h4) {
+  font-family: 'Noto Serif SC', serif;
+  color: #1e2821;
+  line-height: 1.35;
+  margin: 2.6rem 0 1rem;
+}
+
+.rich-text-wrapper :deep(p),
+.rich-text-wrapper :deep(li),
+.rich-text-wrapper :deep(blockquote) {
+  font-size: 1.05rem;
+  color: #3f4f45;
+  line-height: 1.9;
+}
+
+.rich-text-wrapper :deep(p) {
+  margin: 0 0 1.2rem;
+}
+
+.rich-text-wrapper :deep(ul),
+.rich-text-wrapper :deep(ol) {
+  padding-left: 1.4rem;
+  margin: 0 0 1.4rem;
+}
+
+.rich-text-wrapper :deep(blockquote) {
+  margin: 1.8rem 0;
+  padding-left: 1.2rem;
+  border-left: 2px solid rgba(92, 107, 96, 0.2);
 }
 
 .external-prompt {

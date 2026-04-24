@@ -25,6 +25,10 @@ public class AdminAiTask {
 
     private String parseStatus;
 
+    private String workflowStatus;
+
+    private String agentStatus;
+
     private String confirmStatus;
 
     private String executeStatus;
@@ -32,6 +36,10 @@ public class AdminAiTask {
     private String summaryText;
 
     private String failureReason;
+
+    private String pendingPrompt;
+
+    private String conversationLog;
 
     private LocalDateTime confirmedAt;
 

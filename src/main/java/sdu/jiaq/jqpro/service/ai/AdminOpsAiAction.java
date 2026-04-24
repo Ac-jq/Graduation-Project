@@ -14,6 +14,8 @@ public record AdminOpsAiAction(
         String realName,
         String studentNo,
         String counselorNo,
+        String college,
+        String grade,
         String status,
         String resourceTitle,
         Long resourceId,

@@ -20,6 +20,12 @@ interface AiPersonaConfig {
   avatar: string
 }
 
+type AvatarOption = {
+  value: string
+  src: string
+  alt: string
+}
+
 type AiChatMessageView = AiChatMessage & {
   optimistic?: boolean
   typing?: boolean
@@ -28,11 +34,68 @@ type AiChatMessageView = AiChatMessage & {
 const route = useRoute()
 const router = useRouter()
 
+function toSvgDataUri(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+function createAvatarSvg(startColor: string, endColor: string, accentColor: string, shape: string): string {
+  return toSvgDataUri(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+      <defs>
+        <linearGradient id="g" x1="18" y1="12" x2="82" y2="86" gradientUnits="userSpaceOnUse">
+          <stop stop-color="${startColor}"/>
+          <stop offset="1" stop-color="${endColor}"/>
+        </linearGradient>
+        <filter id="s" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#243127" flood-opacity=".12"/>
+        </filter>
+      </defs>
+      <rect width="96" height="96" rx="30" fill="url(#g)"/>
+      <circle cx="25" cy="24" r="18" fill="#fff" opacity=".32"/>
+      <circle cx="75" cy="76" r="22" fill="#fff" opacity=".24"/>
+      ${shape}
+      <circle cx="72" cy="22" r="5" fill="${accentColor}" opacity=".72"/>
+    </svg>
+  `)
+}
+
+const avatarOptions: AvatarOption[] = [
+  {
+    value: 'little-sun',
+    alt: '小太阳头像',
+    src: createAvatarSvg('#fff8d9', '#ead7a0', '#f2b84b', '<circle cx="48" cy="50" r="14" fill="#f2b84b" filter="url(#s)"/><path d="M48 22v9M48 69v9M20 50h9M67 50h9M29 31l6 6M61 63l6 6M67 31l-6 6M35 63l-6 6" stroke="#f2b84b" stroke-width="4" stroke-linecap="round" opacity=".92"/>')
+  },
+  {
+    value: 'little-cloud',
+    alt: '小云朵头像',
+    src: createAvatarSvg('#f4f8ff', '#d7e4f2', '#8fb4d6', '<path d="M33 61h28a11 11 0 0 0 2-21 15 15 0 0 0-28-3 10 10 0 0 0-2 24Z" fill="#ffffff" opacity=".96" filter="url(#s)"/><path d="M31 61h32" stroke="#8fb4d6" stroke-width="4" stroke-linecap="round" opacity=".75"/>')
+  },
+  {
+    value: 'little-grass',
+    alt: '小草头像',
+    src: createAvatarSvg('#eef8ef', '#cadeca', '#79a86f', '<path d="M48 68V34" stroke="#79a86f" stroke-width="5" stroke-linecap="round"/><path d="M48 58c-7-10-9-18-6-28 9 6 12 14 10 24M48 54c7-10 9-18 6-28-9 6-12 14-10 24M48 49c-1-9 1-17 7-24 4 9 2 18-5 25" fill="none" stroke="#79a86f" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#s)"/>')
+  },
+  {
+    value: 'little-leaf',
+    alt: '小叶片头像',
+    src: createAvatarSvg('#edf8f0', '#caddcb', '#7aa77c', '<path d="M32 59c18-26 36-25 34-25 2 19-10 33-34 25Z" fill="#6ea176" filter="url(#s)"/><path d="M39 55c8-5 15-10 22-17" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".72"/>')
+  },
+  {
+    value: 'little-moon',
+    alt: '小月亮头像',
+    src: createAvatarSvg('#f7f4ff', '#ddd6ef', '#a28bbf', '<path d="M58 26a23 23 0 1 0 14 38 20 20 0 1 1-14-38Z" fill="#8f79aa" filter="url(#s)"/><circle cx="63" cy="34" r="3.5" fill="#ffffff" opacity=".8"/>')
+  },
+  {
+    value: 'little-breeze',
+    alt: '小微风头像',
+    src: createAvatarSvg('#eef8fb', '#d0e1e6', '#7ea4af', '<path d="M26 44c9-8 18-8 29 0 5 4 10 4 15 0" fill="none" stroke="#7ea4af" stroke-width="5" stroke-linecap="round" filter="url(#s)"/><path d="M28 58c8-6 16-6 25 0 5 3 10 3 14 0" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" opacity=".78"/>')
+  }
+]
+
 const DEFAULT_PERSONA: AiPersonaConfig = {
   name: '青禾导师',
-  avatar: '青'
+  avatar: avatarOptions[0].value
 }
-const avatarOptions = ['青', '灯', '云', '叶', '月', '澈']
 
 const loading = ref(false)
 const sending = ref(false)
@@ -51,6 +114,14 @@ const sessionId = computed(() => toNumberParam(route.params.sessionId))
 const activeSession = computed(() => sessions.value.find((item) => item.sessionId === sessionId.value) ?? null)
 const isArchivedSession = computed(() => activeSession.value?.status === 'ARCHIVED')
 const aiPersonaInitial = computed(() => aiPersona.value.name.trim().slice(0, 1) || '青')
+
+function resolvePersonaAvatarSrc(value: string | null | undefined): string {
+  return avatarOptions.find((option) => option.value === value)?.src ?? avatarOptions[0].src
+}
+
+function resolvePersonaAvatarAlt(value: string | null | undefined): string {
+  return avatarOptions.find((option) => option.value === value)?.alt ?? avatarOptions[0].alt
+}
 
 function resolveSessionStatusText(status: string | null | undefined): string {
   switch (status) {
@@ -387,7 +458,11 @@ onMounted(() => {
             <span class="status-text">你的专属导师在线</span>
           </div>
           <button class="persona-edit-btn" type="button" aria-label="设置 AI 导师形象" @click="openPersonaDialog">
-            <span>{{ aiPersona.avatar }}</span>
+            <img
+              class="persona-avatar-img"
+              :src="resolvePersonaAvatarSrc(aiPersona.avatar)"
+              :alt="resolvePersonaAvatarAlt(aiPersona.avatar)"
+            >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M15.7 5.3 18.7 8.3 8.6 18.4 5 19l.6-3.6L15.7 5.3Zm1.4-1.4a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5l-.5.5-3-3 .5-.5Z" />
             </svg>
@@ -416,7 +491,13 @@ onMounted(() => {
             >
               <div class="row-actor">
                 <span class="actor-avatar" :class="message.senderType === 'STUDENT' ? 'is-you' : 'is-mentor'">
-                  {{ message.senderType === 'STUDENT' ? '你' : aiPersona.avatar }}
+                  <template v-if="message.senderType === 'STUDENT'">你</template>
+                  <img
+                    v-else
+                    class="persona-avatar-img"
+                    :src="resolvePersonaAvatarSrc(aiPersona.avatar)"
+                    :alt="resolvePersonaAvatarAlt(aiPersona.avatar)"
+                  >
                 </span>
                 <span class="actor-name">{{ message.senderType === 'STUDENT' ? '我' : aiPersona.name }}</span>
                 <span class="actor-time">{{ formatMessageTime(message.createdAt) }}</span>
@@ -470,7 +551,13 @@ onMounted(() => {
     >
       <div class="persona-dialog-body">
         <div class="persona-preview">
-          <div class="preview-avatar">{{ personaForm.avatar || aiPersonaInitial }}</div>
+          <div class="preview-avatar">
+            <img
+              class="persona-avatar-img"
+              :src="resolvePersonaAvatarSrc(personaForm.avatar)"
+              :alt="resolvePersonaAvatarAlt(personaForm.avatar)"
+            >
+          </div>
           <div>
             <p class="preview-kicker">你的倾听伙伴</p>
             <h2>{{ personaForm.name || DEFAULT_PERSONA.name }}</h2>
@@ -487,13 +574,13 @@ onMounted(() => {
           <div class="avatar-picker">
             <button
               v-for="avatar in avatarOptions"
-              :key="avatar"
+              :key="avatar.value"
               class="avatar-option"
-              :class="{ 'is-selected': personaForm.avatar === avatar }"
+              :class="{ 'is-selected': personaForm.avatar === avatar.value }"
               type="button"
-              @click="personaForm.avatar = avatar"
+              @click="personaForm.avatar = avatar.value"
             >
-              {{ avatar }}
+              <img class="persona-avatar-img" :src="avatar.src" :alt="avatar.alt">
             </button>
           </div>
         </div>
@@ -779,6 +866,14 @@ onMounted(() => {
   transform: translateY(-2px);
   background: #ffffff;
   box-shadow: 0 14px 30px rgba(42, 54, 46, 0.08);
+}
+
+.persona-avatar-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 /* 无框聊天流 */
@@ -1136,7 +1231,6 @@ onMounted(() => {
   justify-content: center;
   background: #ffffff;
   box-shadow: 0 18px 40px rgba(42, 54, 46, 0.08);
-  font-size: 1.8rem;
 }
 
 .preview-kicker {
@@ -1201,10 +1295,10 @@ onMounted(() => {
   aspect-ratio: 1;
   border-radius: 18px;
   background: #f8faf9;
-  font-size: 1.35rem;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px rgba(42, 54, 46, 0.045);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 .avatar-option:hover {

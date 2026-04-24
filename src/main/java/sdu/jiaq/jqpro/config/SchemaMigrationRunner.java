@@ -27,6 +27,7 @@ public class SchemaMigrationRunner implements CommandLineRunner {
         ensureMentalScaleReportRecommendedResourceIdsColumn();
         ensureAiChatSessionArchivedAtColumn();
         ensureAiPersonaSettingTable();
+        ensureAdminAiTaskAgentColumns();
     }
 
     private void ensureSysUserAvatarUrlColumn() {
@@ -98,5 +99,29 @@ public class SchemaMigrationRunner implements CommandLineRunner {
                     CONSTRAINT fk_ai_persona_student FOREIGN KEY (student_user_id) REFERENCES sys_user (id)
                 ) COMMENT='学生AI导师设定表'
                 """);
+    }
+    private void ensureAdminAiTaskAgentColumns() {
+        ensureColumnExists("admin_ai_task", "workflow_status",
+                "ALTER TABLE admin_ai_task ADD COLUMN workflow_status VARCHAR(32) NOT NULL DEFAULT 'NEED_CLARIFICATION' COMMENT '工作流状态' AFTER parse_status");
+        ensureColumnExists("admin_ai_task", "agent_status",
+                "ALTER TABLE admin_ai_task ADD COLUMN agent_status VARCHAR(32) NOT NULL DEFAULT 'CLARIFYING' COMMENT '智能体会话状态' AFTER execute_status");
+        ensureColumnExists("admin_ai_task", "pending_prompt",
+                "ALTER TABLE admin_ai_task ADD COLUMN pending_prompt VARCHAR(500) NULL COMMENT '待补充追问' AFTER failure_reason");
+        ensureColumnExists("admin_ai_task", "conversation_log",
+                "ALTER TABLE admin_ai_task ADD COLUMN conversation_log TEXT NULL COMMENT '多轮对话日志' AFTER pending_prompt");
+    }
+
+    private void ensureColumnExists(String tableName, String columnName, String ddl) {
+        Integer count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND column_name = ?
+                """, Integer.class, tableName, columnName);
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.execute(ddl);
     }
 }

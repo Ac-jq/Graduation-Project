@@ -18,6 +18,20 @@ public class AdminAiTaskItemResponse {
 
     private String targetLabel;
 
+    private String account;
+
+    private String displayName;
+
+    private String realName;
+
+    private String studentNo;
+
+    private String counselorNo;
+
+    private String college;
+
+    private String grade;
+
     private String operationType;
 
     private String fieldName;

@@ -11,4 +11,6 @@ public class ParseAdminAiTaskRequest {
 
     @NotBlank(message = "指令不能为空")
     private String instruction;
+
+    private Long taskId;
 }

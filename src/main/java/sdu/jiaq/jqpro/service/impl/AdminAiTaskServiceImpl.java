@@ -1,8 +1,12 @@
 package sdu.jiaq.jqpro.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -26,6 +30,7 @@ import sdu.jiaq.jqpro.common.constant.UserStatusConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.PasswordCryptoUtil;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
+import sdu.jiaq.jqpro.dto.adminai.AdminAiConversationMessageResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskItemResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskResponse;
 import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskSummaryResponse;
@@ -68,6 +73,7 @@ import sdu.jiaq.jqpro.service.AdminAiTaskService;
 import sdu.jiaq.jqpro.service.AuditLogService;
 import sdu.jiaq.jqpro.service.ai.AdminOpsAiAction;
 import sdu.jiaq.jqpro.service.ai.AdminOpsAiClient;
+import sdu.jiaq.jqpro.service.ai.AdminOpsAiConversationMessage;
 import sdu.jiaq.jqpro.service.ai.AdminOpsAiPlan;
 
 @Slf4j
@@ -79,11 +85,19 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private static final String FIELD_REAL_NAME = "realName";
     private static final String FIELD_STUDENT_NO = "studentNo";
     private static final String FIELD_COUNSELOR_NO = "counselorNo";
+    private static final String FIELD_COLLEGE = "college";
+    private static final String FIELD_GRADE = "grade";
     private static final String FIELD_ROLE_CODE = "roleCode";
     private static final String FIELD_STATUS = "status";
     private static final String FIELD_SNAPSHOT = "snapshot";
     private static final String DEFAULT_PASSWORD = "Jqpro@123";
     private static final int MAX_QUERY_ROWS = 20;
+    private static final int MAX_BATCH_PREVIEW_ROWS = 100;
+    private static final List<String> KNOWN_COLLEGES = Arrays.asList(
+            "计算机科学与技术学院", "软件学院", "人工智能学院", "医学院", "法学院",
+            "经济管理学院", "外国语学院", "文学院", "理学院", "工学院",
+            "艺术学院", "建筑与城规学院", "机械工程学院", "电子信息工程学院"
+    );
 
     private static final Pattern MONTH_PATTERN = Pattern.compile("(\\d+)\\s*(?:个月|月|month|months)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ACCOUNT_PATTERN = Pattern.compile("(?:account|账号|帐号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
@@ -113,6 +127,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private final SysAuditLogMapper sysAuditLogMapper;
     private final AuditLogService auditLogService;
     private final AdminOpsAiClient adminOpsAiClient;
+    private final ObjectMapper objectMapper;
 
     public AdminAiTaskServiceImpl(AdminAiTaskMapper adminAiTaskMapper, AdminAiTaskItemMapper adminAiTaskItemMapper,
                                   SysUserMapper sysUserMapper, StudentProfileMapper studentProfileMapper,
@@ -122,7 +137,8 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                                   ConsultChatSessionMapper consultChatSessionMapper, SiteNotificationMapper siteNotificationMapper,
                                   ResourceFavoriteMapper resourceFavoriteMapper, ResourceViewLogMapper resourceViewLogMapper,
                                   MentalResourceMapper mentalResourceMapper, SysAuditLogMapper sysAuditLogMapper,
-                                  AuditLogService auditLogService, AdminOpsAiClient adminOpsAiClient) {
+                                  AuditLogService auditLogService, AdminOpsAiClient adminOpsAiClient,
+                                  ObjectMapper objectMapper) {
         this.adminAiTaskMapper = adminAiTaskMapper;
         this.adminAiTaskItemMapper = adminAiTaskItemMapper;
         this.sysUserMapper = sysUserMapper;
@@ -141,6 +157,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         this.sysAuditLogMapper = sysAuditLogMapper;
         this.auditLogService = auditLogService;
         this.adminOpsAiClient = adminOpsAiClient;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -148,32 +165,54 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     public ParseAdminAiTaskResponse parse(ParseAdminAiTaskRequest request) {
         Long adminUserId = SecurityUtil.getCurrentUserId();
         String instruction = request.getInstruction().trim();
-        ParsedTask parsedTask = parseInstruction(instruction);
+        AdminAiTask task = request.getTaskId() == null ? null : getRequiredTask(request.getTaskId());
+        if (task != null && !AdminAiTaskConstants.CONFIRM_PENDING.equals(task.getConfirmStatus())) {
+            throw new BusinessException("当前任务已经结束，不能继续补充对话");
+        }
 
-        AdminAiTask task = new AdminAiTask();
-        task.setAdminUserId(adminUserId);
-        task.setInstructionText(instruction);
-        task.setTaskType(parsedTask.taskType);
-        task.setParseStatus(parsedTask.parseStatus);
-        task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
-        task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
-        task.setSummaryText(parsedTask.summaryText);
-        task.setFailureReason(parsedTask.failureReason);
-        adminAiTaskMapper.insert(task);
+        List<TaskConversationMessage> conversation = task == null
+                ? new ArrayList<>()
+                : new ArrayList<>(readConversation(task.getConversationLog()));
+        conversation.add(new TaskConversationMessage("user", instruction, LocalDateTime.now()));
 
-        int sortNo = 1;
-        for (AdminAiTaskItem item : parsedTask.items) {
-            item.setTaskId(task.getId());
-            item.setSortNo(sortNo++);
-            item.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
-            adminAiTaskItemMapper.insert(item);
+        String mergedInstruction = buildConversationInstruction(conversation);
+        ParsedConversation parsedConversation = parseConversation(conversation);
+        if (!parsedConversation.traceMessages().isEmpty()) {
+            conversation.addAll(parsedConversation.traceMessages());
+        }
+        ParsedTask parsedTask = parsedConversation.parsedTask();
+        String assistantReply = buildAssistantReply(parsedTask);
+        if (task == null) {
+            task = new AdminAiTask();
+            task.setAdminUserId(adminUserId);
+            task.setInstructionText(mergedInstruction);
+            task.setParseStatus(AdminAiTaskConstants.PARSE_NEED_MORE_INFO);
+            task.setWorkflowStatus(AdminAiTaskConstants.WORKFLOW_NEED_CLARIFICATION);
+            task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
+            task.setAgentStatus(AdminAiTaskConstants.AGENT_CLARIFYING);
+            task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
+            adminAiTaskMapper.insert(task);
+        }
+
+        if (parsedTask.autoExecute) {
+            applyParsedTask(task, mergedInstruction, parsedTask, conversation);
+            refreshTaskItems(task.getId(), parsedTask.items);
+            assistantReply = executeAutoTask(task, parsedTask, adminUserId);
+            conversation.add(new TaskConversationMessage("assistant", assistantReply, LocalDateTime.now()));
+            task.setConversationLog(writeConversation(conversation));
+            adminAiTaskMapper.updateById(task);
+        } else {
+            conversation.add(new TaskConversationMessage("assistant", assistantReply, LocalDateTime.now()));
+            applyParsedTask(task, mergedInstruction, parsedTask, conversation);
+            refreshTaskItems(task.getId(), parsedTask.items);
         }
 
         auditLogService.record(adminUserId, "ADMIN_AI_PARSE", "Admin AI parse task",
-                "Parsed admin AI instruction: " + instruction, null);
+                "Parsed admin AI instruction: " + mergedInstruction, null);
         return ParseAdminAiTaskResponse.builder()
                 .ready(AdminAiTaskConstants.PARSE_READY.equals(parsedTask.parseStatus))
                 .message(AdminAiTaskConstants.PARSE_READY.equals(parsedTask.parseStatus) ? "已生成待确认执行计划" : parsedTask.failureReason)
+                .message(assistantReply)
                 .task(getTask(task.getId()))
                 .build();
     }
@@ -209,6 +248,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }
         if (!AdminAiTaskConstants.CONFIRM_PENDING.equals(task.getConfirmStatus())) {
             throw new BusinessException("当前任务已经处理过，不能重复确认");
+        }
+        if (!AdminAiTaskConstants.AGENT_REVIEWING.equals(task.getAgentStatus())
+                && !AdminAiTaskConstants.AGENT_RESULT.equals(task.getAgentStatus())) {
+            throw new BusinessException("当前任务还处于补充信息阶段，不能直接执行");
         }
         List<AdminAiTaskItem> items = adminAiTaskItemMapper.selectList(new LambdaQueryWrapper<AdminAiTaskItem>()
                 .eq(AdminAiTaskItem::getTaskId, taskId)
@@ -255,8 +298,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }
 
         LocalDateTime now = LocalDateTime.now();
+        task.setAgentStatus(AdminAiTaskConstants.AGENT_RESULT);
         task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_CONFIRMED);
         task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
+        task.setPendingPrompt(null);
         task.setConfirmedAt(now);
         task.setExecutedAt(now);
         adminAiTaskMapper.updateById(task);
@@ -272,8 +317,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (!AdminAiTaskConstants.CONFIRM_PENDING.equals(task.getConfirmStatus())) {
             throw new BusinessException("当前任务不能取消");
         }
+        task.setAgentStatus(AdminAiTaskConstants.AGENT_CANCELED);
         task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_CANCELED);
         task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_CANCELED);
+        task.setPendingPrompt(null);
         adminAiTaskMapper.updateById(task);
         List<AdminAiTaskItem> items = adminAiTaskItemMapper.selectList(new LambdaQueryWrapper<AdminAiTaskItem>()
                 .eq(AdminAiTaskItem::getTaskId, taskId));
@@ -330,24 +377,239 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }
     }
 
+    private void applyParsedTask(AdminAiTask task, String mergedInstruction, ParsedTask parsedTask,
+                                 List<TaskConversationMessage> conversation) {
+        task.setInstructionText(mergedInstruction);
+        task.setTaskType(parsedTask.taskType);
+        task.setParseStatus(parsedTask.parseStatus);
+        task.setWorkflowStatus(parsedTask.workflowStatus);
+        task.setSummaryText(parsedTask.summaryText);
+        task.setFailureReason(parsedTask.failureReason);
+        task.setPendingPrompt(AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(parsedTask.parseStatus) ? parsedTask.failureReason : null);
+        task.setAgentStatus(resolveAgentStatus(parsedTask));
+        task.setConversationLog(writeConversation(conversation));
+        if (AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(parsedTask.parseStatus)) {
+            task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
+            task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
+            task.setConfirmedAt(null);
+            task.setExecutedAt(null);
+        } else if (AdminAiTaskConstants.WORKFLOW_QUERY_RESULT.equals(parsedTask.workflowStatus)
+                || AdminAiTaskConstants.WORKFLOW_SUCCESS.equals(parsedTask.workflowStatus)) {
+            LocalDateTime now = LocalDateTime.now();
+            task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_CONFIRMED);
+            task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
+            task.setConfirmedAt(now);
+            task.setExecutedAt(now);
+        } else {
+            task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
+            task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
+            task.setConfirmedAt(null);
+            task.setExecutedAt(null);
+        }
+        adminAiTaskMapper.update(null, new LambdaUpdateWrapper<AdminAiTask>()
+                .eq(AdminAiTask::getId, task.getId())
+                .set(AdminAiTask::getInstructionText, task.getInstructionText())
+                .set(AdminAiTask::getTaskType, task.getTaskType())
+                .set(AdminAiTask::getParseStatus, task.getParseStatus())
+                .set(AdminAiTask::getWorkflowStatus, task.getWorkflowStatus())
+                .set(AdminAiTask::getSummaryText, task.getSummaryText())
+                .set(AdminAiTask::getFailureReason, task.getFailureReason())
+                .set(AdminAiTask::getPendingPrompt, task.getPendingPrompt())
+                .set(AdminAiTask::getAgentStatus, task.getAgentStatus())
+                .set(AdminAiTask::getConversationLog, task.getConversationLog())
+                .set(AdminAiTask::getConfirmStatus, task.getConfirmStatus())
+                .set(AdminAiTask::getExecuteStatus, task.getExecuteStatus())
+                .set(AdminAiTask::getConfirmedAt, task.getConfirmedAt())
+                .set(AdminAiTask::getExecutedAt, task.getExecutedAt()));
+    }
+
+    private void refreshTaskItems(Long taskId, List<AdminAiTaskItem> items) {
+        adminAiTaskItemMapper.delete(new LambdaQueryWrapper<AdminAiTaskItem>()
+                .eq(AdminAiTaskItem::getTaskId, taskId));
+        int sortNo = 1;
+        for (AdminAiTaskItem item : items) {
+            item.setTaskId(taskId);
+            item.setSortNo(sortNo++);
+            item.setExecuteStatus(resolveInitialItemExecuteStatus(item));
+            adminAiTaskItemMapper.insert(item);
+        }
+    }
+
+    private String resolveInitialItemExecuteStatus(AdminAiTaskItem item) {
+        return AdminAiTaskConstants.OP_QUERY.equals(normalizeOperation(item.getOperationType()))
+                ? AdminAiTaskConstants.EXECUTE_EXECUTED
+                : AdminAiTaskConstants.EXECUTE_WAITING;
+    }
+
+    private String resolveAgentStatus(ParsedTask parsedTask) {
+        if (AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(parsedTask.parseStatus)) {
+            return AdminAiTaskConstants.AGENT_CLARIFYING;
+        }
+        return switch (parsedTask.workflowStatus) {
+            case AdminAiTaskConstants.WORKFLOW_QUERY_RESULT, AdminAiTaskConstants.WORKFLOW_SUCCESS -> AdminAiTaskConstants.AGENT_RESULT;
+            default -> AdminAiTaskConstants.AGENT_REVIEWING;
+        };
+    }
+
+    private boolean isQueryOnlyTask(List<AdminAiTaskItem> items) {
+        return !items.isEmpty()
+                && items.stream().allMatch(item -> AdminAiTaskConstants.OP_QUERY.equals(normalizeOperation(item.getOperationType())));
+    }
+
+    private String buildAssistantReply(ParsedTask parsedTask) {
+        if (AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(parsedTask.parseStatus)) {
+            return firstText(parsedTask.failureReason, "请继续补充任务信息");
+        }
+        if (AdminAiTaskConstants.WORKFLOW_SUCCESS.equals(parsedTask.workflowStatus)) {
+            return firstText(parsedTask.summaryText, "已自动完成操作");
+        }
+        if (AdminAiTaskConstants.WORKFLOW_QUERY_RESULT.equals(parsedTask.workflowStatus)) {
+            return firstText(parsedTask.summaryText, "已整理查询结果，可直接查看明细。");
+        }
+        return firstText(parsedTask.summaryText, "已生成待确认执行清单，请勾选后再执行。");
+    }
+
+    private String executeAutoTask(AdminAiTask task, ParsedTask parsedTask, Long adminUserId) {
+        List<AdminAiTaskItem> items = adminAiTaskItemMapper.selectList(new LambdaQueryWrapper<AdminAiTaskItem>()
+                .eq(AdminAiTaskItem::getTaskId, task.getId())
+                .orderByAsc(AdminAiTaskItem::getSortNo, AdminAiTaskItem::getId));
+        if (items.isEmpty()) {
+            throw new BusinessException("当前没有可执行的自动任务");
+        }
+        validateItemsBeforeExecution(items);
+        Set<String> handledGroups = new HashSet<>();
+        for (AdminAiTaskItem item : items) {
+            String operationType = normalizeOperation(item.getOperationType());
+            if (AdminAiTaskConstants.OP_CREATE.equals(operationType)) {
+                String groupKey = firstText(item.getTargetLabel(), "TASK-" + task.getId());
+                if (handledGroups.add(groupKey)) {
+                    executeCreateGroup(items, item.getTargetLabel(), adminUserId);
+                }
+            } else if (AdminAiTaskConstants.OP_DELETE.equals(operationType)) {
+                executeDelete(item, adminUserId);
+            } else if (!AdminAiTaskConstants.OP_QUERY.equals(operationType)) {
+                executeItem(item, adminUserId);
+            }
+            item.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
+            adminAiTaskItemMapper.updateById(item);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        task.setParseStatus(AdminAiTaskConstants.PARSE_READY);
+        task.setWorkflowStatus(AdminAiTaskConstants.WORKFLOW_SUCCESS);
+        task.setAgentStatus(AdminAiTaskConstants.AGENT_RESULT);
+        task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_CONFIRMED);
+        task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
+        task.setPendingPrompt(null);
+        task.setFailureReason(null);
+        task.setSummaryText(firstText(parsedTask.summaryText, "已自动完成操作"));
+        task.setConfirmedAt(now);
+        task.setExecutedAt(now);
+        adminAiTaskMapper.update(null, new LambdaUpdateWrapper<AdminAiTask>()
+                .eq(AdminAiTask::getId, task.getId())
+                .set(AdminAiTask::getParseStatus, task.getParseStatus())
+                .set(AdminAiTask::getWorkflowStatus, task.getWorkflowStatus())
+                .set(AdminAiTask::getAgentStatus, task.getAgentStatus())
+                .set(AdminAiTask::getConfirmStatus, task.getConfirmStatus())
+                .set(AdminAiTask::getExecuteStatus, task.getExecuteStatus())
+                .set(AdminAiTask::getPendingPrompt, task.getPendingPrompt())
+                .set(AdminAiTask::getFailureReason, task.getFailureReason())
+                .set(AdminAiTask::getSummaryText, task.getSummaryText())
+                .set(AdminAiTask::getConfirmedAt, task.getConfirmedAt())
+                .set(AdminAiTask::getExecutedAt, task.getExecutedAt()));
+        return firstText(task.getSummaryText(), "已自动完成操作");
+    }
+
+    private String buildConversationInstruction(List<TaskConversationMessage> conversation) {
+        return conversation.stream()
+                .filter(message -> "user".equals(message.role()))
+                .map(TaskConversationMessage::content)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private List<TaskConversationMessage> convertTraceMessages(List<AdminOpsAiConversationMessage> traceMessages) {
+        if (traceMessages == null || traceMessages.isEmpty()) {
+            return List.of();
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return traceMessages.stream()
+                .filter(Objects::nonNull)
+                .map(message -> new TaskConversationMessage(
+                        message.role(),
+                        message.content(),
+                        now,
+                        message.kind(),
+                        message.toolCallId(),
+                        message.toolName(),
+                        message.argumentsJson(),
+                        message.responseData()))
+                .toList();
+    }
+
+    private String writeConversation(List<TaskConversationMessage> conversation) {
+        try {
+            return objectMapper.writeValueAsString(conversation);
+        } catch (Exception exception) {
+            throw new BusinessException("AI 运维对话日志保存失败");
+        }
+    }
+
+    private List<TaskConversationMessage> readConversation(String conversationLog) {
+        if (!StringUtils.hasText(conversationLog)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(conversationLog, new TypeReference<List<TaskConversationMessage>>() {
+            });
+        } catch (Exception exception) {
+            log.warn("Failed to read admin ai task conversation", exception);
+            return List.of();
+        }
+    }
+
+    private List<AdminAiConversationMessageResponse> buildConversationResponse(AdminAiTask task) {
+        return readConversation(task.getConversationLog()).stream()
+                .filter(message -> !"tool_call".equals(message.kind()) && !"tool_response".equals(message.kind()) && StringUtils.hasText(message.content()))
+                .map(message -> AdminAiConversationMessageResponse.builder()
+                        .role(message.role())
+                        .content(message.content())
+                        .createdAt(message.createdAt())
+                        .build())
+                .toList();
+    }
+
     private AdminAiTaskResponse buildTaskResponse(AdminAiTask task, List<AdminAiTaskItemResponse> items) {
         return AdminAiTaskResponse.builder()
                 .taskId(task.getId()).adminUserId(task.getAdminUserId()).instructionText(task.getInstructionText())
-                .taskType(task.getTaskType()).parseStatus(task.getParseStatus()).confirmStatus(task.getConfirmStatus())
-                .executeStatus(task.getExecuteStatus()).summaryText(task.getSummaryText()).failureReason(task.getFailureReason())
-                .createdAt(task.getCreatedAt()).confirmedAt(task.getConfirmedAt()).executedAt(task.getExecutedAt()).items(items).build();
+                .taskType(task.getTaskType()).parseStatus(task.getParseStatus()).workflowStatus(task.getWorkflowStatus()).agentStatus(task.getAgentStatus())
+                .confirmStatus(task.getConfirmStatus()).executeStatus(task.getExecuteStatus()).summaryText(task.getSummaryText())
+                .failureReason(task.getFailureReason()).pendingPrompt(task.getPendingPrompt())
+                .createdAt(task.getCreatedAt()).confirmedAt(task.getConfirmedAt()).executedAt(task.getExecutedAt())
+                .conversation(buildConversationResponse(task)).items(items).build();
     }
 
     private AdminAiTaskSummaryResponse buildTaskSummaryResponse(AdminAiTask task) {
         return AdminAiTaskSummaryResponse.builder()
                 .taskId(task.getId()).instructionText(task.getInstructionText()).taskType(task.getTaskType())
-                .parseStatus(task.getParseStatus()).confirmStatus(task.getConfirmStatus()).executeStatus(task.getExecuteStatus())
-                .summaryText(task.getSummaryText()).createdAt(task.getCreatedAt()).build();
+                .parseStatus(task.getParseStatus()).workflowStatus(task.getWorkflowStatus()).agentStatus(task.getAgentStatus()).confirmStatus(task.getConfirmStatus())
+                .executeStatus(task.getExecuteStatus()).summaryText(task.getSummaryText()).pendingPrompt(task.getPendingPrompt())
+                .createdAt(task.getCreatedAt()).build();
     }
 
     private AdminAiTaskItemResponse buildTaskItemResponse(AdminAiTaskItem item) {
+        SysUser user = item.getTargetId() == null ? null : sysUserMapper.selectById(item.getTargetId());
+        StudentProfile profile = user == null || !RoleConstants.STUDENT.equals(user.getRoleCode())
+                ? null
+                : studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+                .eq(StudentProfile::getUserId, user.getId()).last("limit 1"));
         return AdminAiTaskItemResponse.builder()
                 .itemId(item.getId()).targetType(item.getTargetType()).targetId(item.getTargetId()).targetLabel(item.getTargetLabel())
+                .account(user == null ? null : user.getAccount()).displayName(user == null ? null : user.getDisplayName())
+                .realName(user == null ? null : user.getRealName()).studentNo(user == null ? null : user.getStudentNo())
+                .counselorNo(user == null ? null : user.getCounselorNo()).college(profile == null ? null : profile.getCollege())
+                .grade(profile == null ? null : profile.getGrade())
                 .operationType(item.getOperationType()).fieldName(item.getFieldName()).oldValue(item.getOldValue())
                 .newValue(item.getNewValue()).sortNo(item.getSortNo()).executeStatus(item.getExecuteStatus()).build();
     }
@@ -356,6 +618,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         AdminAiTask task = adminAiTaskMapper.selectById(taskId);
         if (task == null) {
             throw new BusinessException("任务不存在");
+        }
+        Long currentUserId = SecurityUtil.getCurrentUserId();
+        if (currentUserId != null && !Objects.equals(task.getAdminUserId(), currentUserId)) {
+            throw new BusinessException("无权访问该 AI 运维任务");
         }
         return task;
     }
@@ -374,6 +640,34 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             throw new BusinessException("目标资源不存在");
         }
         return resource;
+    }
+
+    private ParsedConversation parseConversation(List<TaskConversationMessage> conversation) {
+        String mergedInstruction = buildConversationInstruction(conversation);
+        if (adminOpsAiClient.isEnabled()) {
+            try {
+                List<AdminOpsAiConversationMessage> messages = conversation.stream()
+                        .map(message -> new AdminOpsAiConversationMessage(
+                                message.role(),
+                                message.content(),
+                                message.kind(),
+                                message.toolCallId(),
+                                message.toolName(),
+                                message.argumentsJson(),
+                                message.responseData()))
+                        .toList();
+                AdminOpsAiPlan plan = adminOpsAiClient.parseConversation(messages);
+                ParsedTask routedTask = routeConversationPlan(plan, mergedInstruction);
+                if (routedTask != null) {
+                    return new ParsedConversation(routedTask, convertTraceMessages(plan.traceMessages()));
+                }
+            } catch (BusinessException exception) {
+                log.warn("Admin AI conversation fallback: {}", exception.getMessage());
+            } catch (Exception exception) {
+                log.warn("Admin AI conversation fallback", exception);
+            }
+        }
+        return new ParsedConversation(parseInstruction(mergedInstruction), List.of());
     }
 
     private ParsedTask parseInstruction(String instruction) {
@@ -408,8 +702,66 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         return parseByRules(instruction);
     }
 
+    private ParsedTask routeConversationPlan(AdminOpsAiPlan plan, String instruction) {
+        if (plan == null) {
+            return null;
+        }
+        String expectedOperation = detectOperationFromInstruction(instruction);
+        if (!isReadyParseStatus(plan.parseStatus())) {
+            return ParsedTask.needMoreInfo(firstText(plan.failureReason(), "请继续补充缺失信息"));
+        }
+        if (plan.actions() == null || plan.actions().isEmpty()) {
+            return ParsedTask.needMoreInfo(firstText(plan.failureReason(), plan.summaryText(), "请继续补充缺失信息"));
+        }
+        boolean isResourceTask = plan.actions().stream()
+                .map(AdminOpsAiAction::targetType)
+                .map(this::normalizeUpper)
+                .anyMatch(AdminAiTaskConstants.TARGET_RESOURCE::equals);
+        if (isResourceTask || AdminAiTaskConstants.TASK_TYPE_RESOURCE_STATUS.equals(normalizeTaskType(plan.taskType()))) {
+            return parseResourceActions(plan.actions(), plan.summaryText(), instruction);
+        }
+        boolean allQueryActions = plan.actions().stream()
+                .allMatch(action -> AdminAiTaskConstants.OP_QUERY.equals(normalizeOperation(action.operationType())));
+        if (allQueryActions) {
+            if (AdminAiTaskConstants.OP_UPDATE.equals(expectedOperation)) {
+                return parseUpdateUserByRules(instruction);
+            }
+            if (AdminAiTaskConstants.OP_DELETE.equals(expectedOperation)) {
+                return parseDeleteUserByRules(instruction);
+            }
+            if (AdminAiTaskConstants.OP_CREATE.equals(expectedOperation)) {
+                return parseCreateUserByRules(instruction);
+            }
+        }
+        return parseUserActions(plan.actions(), plan.summaryText(), instruction);
+    }
+
+    private String detectOperationFromInstruction(String instruction) {
+        String lowered = instruction == null ? "" : instruction.toLowerCase(Locale.ROOT);
+        if (containsAny(lowered, "delete", "remove", "删除", "删掉", "移除")) {
+            return AdminAiTaskConstants.OP_DELETE;
+        }
+        if (containsAny(lowered, "update", "change", "modify", "set", "修改", "更改", "改成", "改为", "变更", "启用", "禁用")) {
+            return AdminAiTaskConstants.OP_UPDATE;
+        }
+        if (containsAny(lowered, "create", "add", "new", "新增", "创建", "添加")) {
+            return AdminAiTaskConstants.OP_CREATE;
+        }
+        if (containsAny(lowered, "query", "find", "list", "show", "查询", "查看", "列出")) {
+            return AdminAiTaskConstants.OP_QUERY;
+        }
+        return null;
+    }
+
     private ParsedTask parseExplicitIdentifierQuery(String instruction) {
         String lowered = instruction.toLowerCase(Locale.ROOT);
+        if (containsAny(lowered, "delete", "remove")
+                && (StringUtils.hasText(extractCollege(instruction)) || StringUtils.hasText(extractGrade(instruction)))) {
+            return parseDeleteUserByRules(instruction);
+        }
+        if (containsAny(lowered, "enable", "disable", "activate", "restore", "suspend")) {
+            return parseUpdateUserByRules(instruction);
+        }
         if (containsAny(lowered, "create", "add", "new", "update", "change", "modify", "set", "delete", "remove",
                 "新增", "创建", "修改", "更改", "删除", "移除", "禁用", "启用")) {
             return null;
@@ -444,11 +796,14 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
 
     private ParsedTask parseByAi(String instruction) {
         AdminOpsAiPlan plan = adminOpsAiClient.parseInstruction(instruction);
-        if (plan == null || plan.actions() == null || plan.actions().isEmpty()) {
+        if (plan == null) {
             return null;
         }
         if (!isReadyParseStatus(plan.parseStatus())) {
             return ParsedTask.needMoreInfo(firstText(plan.failureReason(), "AI 未能形成可执行计划"));
+        }
+        if (plan.actions() == null || plan.actions().isEmpty()) {
+            return null;
         }
         boolean isResourceTask = plan.actions().stream()
                 .map(AdminOpsAiAction::targetType)
@@ -499,9 +854,9 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         }
         return switch (operationType) {
             case AdminAiTaskConstants.OP_CREATE -> parseCreateUserFromActions(actions, summaryText, instruction);
-            case AdminAiTaskConstants.OP_QUERY -> parseQueryUserFromActions(actions, summaryText, instruction);
-            case AdminAiTaskConstants.OP_DELETE -> parseDeleteUserFromActions(actions, summaryText, instruction);
-            default -> parseUpdateUserFromActions(actions, summaryText, instruction);
+            case AdminAiTaskConstants.OP_QUERY -> parseQueryUserAgent(actions, summaryText, instruction);
+            case AdminAiTaskConstants.OP_DELETE -> parseDeleteUserAgent(actions, summaryText, instruction);
+            default -> parseUpdateUserAgent(actions, summaryText, instruction);
         };
     }
 
@@ -514,13 +869,13 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private ParsedTask parseQueryUserByRules(String instruction) {
         UserFilter filter = new UserFilter();
         filter.fillMissingFromInstruction(instruction);
-        return parseQueryUserFromActions(List.of(filter.toAction(AdminAiTaskConstants.OP_QUERY, FIELD_SNAPSHOT, null)), null, instruction);
+        return parseQueryUserAgent(List.of(filter.toAction(AdminAiTaskConstants.OP_QUERY, FIELD_SNAPSHOT, null)), null, instruction);
     }
 
     private ParsedTask parseDeleteUserByRules(String instruction) {
         UserFilter filter = new UserFilter();
         filter.fillMissingFromInstruction(instruction);
-        return parseDeleteUserFromActions(List.of(filter.toAction(AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, "DELETE")), null, instruction);
+        return parseDeleteUserAgent(List.of(filter.toAction(AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, "DELETE")), null, instruction);
     }
 
     private ParsedTask parseUpdateUserByRules(String instruction) {
@@ -536,7 +891,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 actions.add(filter.toAction(AdminAiTaskConstants.OP_UPDATE, entry.getKey(), entry.getValue()));
             }
         }
-        return parseUpdateUserFromActions(actions, null, instruction);
+        return parseUpdateUserAgent(actions, null, instruction);
     }
 
     private ParsedTask parseInactiveStudentTask(String instruction) {
@@ -586,7 +941,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 ? ResourceConstants.RESOURCE_PUBLISHED : ResourceConstants.RESOURCE_OFFLINE;
         AdminOpsAiAction action = new AdminOpsAiAction(AdminAiTaskConstants.TARGET_RESOURCE,
                 ResourceConstants.RESOURCE_PUBLISHED.equals(nextStatus) ? AdminAiTaskConstants.OP_PUBLISH : AdminAiTaskConstants.OP_OFFLINE,
-                null, FIELD_STATUS, nextStatus, null, null, null, null, null, null, resource.getTitle(), resource.getId(), null, null);
+                null, FIELD_STATUS, nextStatus, null, null, null, null, null, null, null, null, resource.getTitle(), resource.getId(), null, null);
         return parseResourceActions(List.of(action), null, instruction);
     }
 
@@ -631,6 +986,12 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         items.add(buildCreateItem(account, FIELD_STATUS, firstText(normalizeUserStatus(draft.status), UserStatusConstants.ACTIVE)));
         if (RoleConstants.STUDENT.equals(roleCode)) {
             items.add(buildCreateItem(account, FIELD_STUDENT_NO, draft.studentNo));
+            if (StringUtils.hasText(draft.college)) {
+                items.add(buildCreateItem(account, FIELD_COLLEGE, draft.college));
+            }
+            if (StringUtils.hasText(draft.grade)) {
+                items.add(buildCreateItem(account, FIELD_GRADE, draft.grade));
+            }
         } else {
             items.add(buildCreateItem(account, FIELD_COUNSELOR_NO, draft.counselorNo));
         }
@@ -679,14 +1040,19 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             mergeFieldUpdate(fieldUpdates, action.fieldName(), action.newValue());
             mergeFieldUpdate(fieldUpdates, FIELD_STATUS, action.status());
         }
+        Set<String> explicitTargetFields = collectTargetFields(filter);
         filter.fillMissingFromInstruction(instruction);
+        clearSupplementalUpdateTargetConflicts(filter, fieldUpdates, explicitTargetFields);
         filter.roleCode = normalizeUserRole(filter.roleCode);
         filter.status = null;
+        if (fieldUpdates.isEmpty()) {
+            inferDirectFieldUpdates(instruction, fieldUpdates);
+        }
         if (fieldUpdates.isEmpty()) {
             inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
         }
         if (fieldUpdates.isEmpty()) {
-            return ParsedTask.needMoreInfo("请明确要修改的字段和值");
+            return ParsedTask.needMoreInfo(firstText(summaryText, "请继续补充要修改的字段和新值"));
         }
         SysUser user = resolveSingleUser(filter, true);
         List<AdminAiTaskItem> items = new ArrayList<>();
@@ -703,10 +1069,102 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             items.add(buildUserItem(user, AdminAiTaskConstants.OP_UPDATE, fieldName, oldValue, newValue));
         }
         if (items.isEmpty()) {
-            return ParsedTask.needMoreInfo("没有识别出实际需要更新的字段，或新旧值一致");
+            return ParsedTask.needMoreInfo(firstText(summaryText, "当前修改内容还不够明确，请继续补充想改成的新值"));
         }
         return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
                 firstText(summaryText, "待更新用户 " + buildUserLabel(user) + " 的 " + items.size() + " 个字段"), items);
+    }
+
+    private ParsedTask parseQueryUserAgent(List<AdminOpsAiAction> actions, String summaryText, String instruction) {
+        UserFilter filter = new UserFilter();
+        for (AdminOpsAiAction action : actions) {
+            filter.merge(action);
+        }
+        filter.fillMissingFromInstruction(instruction);
+        filter.roleCode = normalizeUserRole(filter.roleCode);
+        List<SysUser> users = findUsersByScope(filter, false);
+        if (users.isEmpty()) {
+            return ParsedTask.needMoreInfo("没有找到匹配的用户，请补充账号、姓名、学号、工号、学院或年级");
+        }
+        if (users.size() > MAX_QUERY_ROWS) {
+            return ParsedTask.needMoreInfo("匹配结果过多，请继续补充账号、学号、工号、学院、年级或更精确的姓名");
+        }
+        List<AdminAiTaskItem> items = users.stream().map(this::buildQueryItem).toList();
+        return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                firstText(summaryText, "已整理查询结果，共匹配 " + users.size() + " 名用户"), items);
+    }
+
+    private ParsedTask parseDeleteUserAgent(List<AdminOpsAiAction> actions, String summaryText, String instruction) {
+        UserFilter filter = new UserFilter();
+        for (AdminOpsAiAction action : actions) {
+            filter.merge(action);
+        }
+        filter.fillMissingFromInstruction(instruction);
+        filter.roleCode = normalizeUserRole(filter.roleCode);
+        filter.status = normalizeUserStatus(filter.status);
+        List<SysUser> users = findUsersByScope(filter, false);
+        if (users.isEmpty()) {
+            return ParsedTask.needMoreInfo("没有找到可删除的目标，请补充账号、学号、工号、姓名、学院或年级");
+        }
+        if (users.size() > MAX_BATCH_PREVIEW_ROWS) {
+            return ParsedTask.needMoreInfo("匹配到的删除目标过多，请先缩小范围后再执行");
+        }
+        List<AdminAiTaskItem> items = users.stream()
+                .map(user -> buildUserItem(user, AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, buildUserSnapshot(user), "DELETE"))
+                .toList();
+        return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                firstText(summaryText, "已生成删除预览，共影响 " + users.size() + " 名用户"), items);
+    }
+
+    private ParsedTask parseUpdateUserAgent(List<AdminOpsAiAction> actions, String summaryText, String instruction) {
+        UserFilter filter = new UserFilter();
+        Map<String, String> fieldUpdates = new LinkedHashMap<>();
+        for (AdminOpsAiAction action : actions) {
+            filter.merge(action);
+            mergeFieldUpdate(fieldUpdates, action.fieldName(), action.newValue());
+            mergeFieldUpdate(fieldUpdates, FIELD_STATUS, action.status());
+        }
+        Set<String> explicitTargetFields = collectTargetFields(filter);
+        filter.fillMissingFromInstruction(instruction);
+        clearSupplementalUpdateTargetConflicts(filter, fieldUpdates, explicitTargetFields);
+        filter.roleCode = normalizeUserRole(filter.roleCode);
+        filter.status = null;
+        if (fieldUpdates.isEmpty()) {
+            inferDirectFieldUpdates(instruction, fieldUpdates);
+        }
+        if (fieldUpdates.isEmpty()) {
+            inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
+        }
+        if (fieldUpdates.isEmpty()) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "请继续补充要修改的字段和新值"));
+        }
+        List<SysUser> users = findUsersByScope(filter, false);
+        if (users.isEmpty()) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "我还不能唯一定位要修改的对象，请继续补充账号、姓名、学号、工号、学院或年级"));
+        }
+        if (users.size() > MAX_BATCH_PREVIEW_ROWS) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "当前匹配到的目标过多，请继续缩小筛选范围"));
+        }
+        List<AdminAiTaskItem> items = new ArrayList<>();
+        for (SysUser user : users) {
+            for (Map.Entry<String, String> entry : fieldUpdates.entrySet()) {
+                String fieldName = normalizeFieldName(entry.getKey());
+                if (!isMutableUserField(fieldName)) {
+                    continue;
+                }
+                String oldValue = getUserFieldValue(user, fieldName);
+                String newValue = normalizeNewFieldValue(fieldName, entry.getValue());
+                if (!StringUtils.hasText(newValue) || Objects.equals(oldValue, newValue)) {
+                    continue;
+                }
+                items.add(buildUserItem(user, AdminAiTaskConstants.OP_UPDATE, fieldName, oldValue, newValue));
+            }
+        }
+        if (items.isEmpty()) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "目前还没有形成实际变更，请继续补充新的字段值"));
+        }
+        return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                firstText(summaryText, "已生成修改预览，共影响 " + users.size() + " 名用户，涉及 " + items.size() + " 项字段变更"), items);
     }
 
     private ParsedTask parseResourceActions(List<AdminOpsAiAction> actions, String summaryText, String instruction) {
@@ -796,6 +1254,8 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         String status = firstText(normalizeUserStatus(getOptionalItemValue(groupItems, FIELD_STATUS)), UserStatusConstants.ACTIVE);
         String studentNo = getOptionalItemValue(groupItems, FIELD_STUDENT_NO);
         String counselorNo = getOptionalItemValue(groupItems, FIELD_COUNSELOR_NO);
+        String college = getOptionalItemValue(groupItems, FIELD_COLLEGE);
+        String grade = getOptionalItemValue(groupItems, FIELD_GRADE);
 
         String salt = PasswordCryptoUtil.generateSalt();
         SysUser user = new SysUser();
@@ -824,7 +1284,17 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             if (existingProfileCount == 0) {
                 StudentProfile profile = new StudentProfile();
                 profile.setUserId(user.getId());
+                profile.setCollege(college);
+                profile.setGrade(grade);
                 studentProfileMapper.insert(profile);
+            } else if (StringUtils.hasText(college) || StringUtils.hasText(grade)) {
+                StudentProfile profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+                        .eq(StudentProfile::getUserId, user.getId()).last("limit 1"));
+                if (profile != null) {
+                    profile.setCollege(firstText(college, profile.getCollege()));
+                    profile.setGrade(firstText(grade, profile.getGrade()));
+                    studentProfileMapper.updateById(profile);
+                }
             }
         }
         for (AdminAiTaskItem item : groupItems) {
@@ -866,7 +1336,26 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             return;
         }
         SysUser user = getRequiredUser(item.getTargetId());
-        switch (normalizeFieldName(item.getFieldName())) {
+        String normalizedFieldName = normalizeFieldName(item.getFieldName());
+        if (FIELD_COLLEGE.equals(normalizedFieldName) || FIELD_GRADE.equals(normalizedFieldName)) {
+            StudentProfile profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+                    .eq(StudentProfile::getUserId, user.getId()).last("limit 1"));
+            if (profile == null) {
+                profile = new StudentProfile();
+                profile.setUserId(user.getId());
+                studentProfileMapper.insert(profile);
+            }
+            if (FIELD_COLLEGE.equals(normalizedFieldName)) {
+                profile.setCollege(item.getNewValue());
+            } else {
+                profile.setGrade(item.getNewValue());
+            }
+            studentProfileMapper.updateById(profile);
+            auditLogService.record(adminUserId, "ADMIN_AI_USER_UPDATE", "Admin AI update user",
+                    "Updated " + user.getAccount() + " field " + item.getFieldName(), null);
+            return;
+        }
+        switch (normalizedFieldName) {
             case FIELD_ACCOUNT -> user.setAccount(item.getNewValue());
             case FIELD_DISPLAY_NAME -> user.setDisplayName(item.getNewValue());
             case FIELD_REAL_NAME -> user.setRealName(item.getNewValue());
@@ -941,6 +1430,31 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 .toList();
     }
 
+    private List<SysUser> findUsersByScope(UserFilter filter, boolean exactName) {
+        List<SysUser> users = findUsers(filter, exactName);
+        if (!StringUtils.hasText(filter.college) && !StringUtils.hasText(filter.grade)) {
+            return users;
+        }
+        List<StudentProfile> profiles = studentProfileMapper.selectList(new LambdaQueryWrapper<StudentProfile>()
+                .like(StringUtils.hasText(filter.college), StudentProfile::getCollege, filter.college)
+                .eq(StringUtils.hasText(filter.grade), StudentProfile::getGrade, filter.grade));
+        if (profiles.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> profileUserIds = profiles.stream()
+                .map(StudentProfile::getUserId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (profileUserIds.isEmpty()) {
+            return List.of();
+        }
+        return users.stream()
+                .filter(user -> RoleConstants.STUDENT.equals(user.getRoleCode()))
+                .filter(user -> profileUserIds.contains(user.getId()))
+                .sorted(Comparator.comparing(SysUser::getId))
+                .toList();
+    }
+
     private List<SysUser> findUsers(UserFilter filter, boolean exactName) {
         LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<>();
         boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
@@ -949,6 +1463,9 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (StringUtils.hasText(filter.account)) wrapper.eq(SysUser::getAccount, filter.account);
         if (StringUtils.hasText(filter.studentNo)) wrapper.eq(SysUser::getStudentNo, filter.studentNo);
         if (StringUtils.hasText(filter.counselorNo)) wrapper.eq(SysUser::getCounselorNo, filter.counselorNo);
+        if ((StringUtils.hasText(filter.college) || StringUtils.hasText(filter.grade)) && !StringUtils.hasText(filter.roleCode)) {
+            filter.roleCode = RoleConstants.STUDENT;
+        }
         if (StringUtils.hasText(filter.roleCode)) wrapper.eq(SysUser::getRoleCode, filter.roleCode);
         if (StringUtils.hasText(filter.status)) wrapper.eq(SysUser::getStatus, filter.status);
         if (!hasStrongIdentifier && StringUtils.hasText(filter.displayName)) {
@@ -981,7 +1498,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
 
     private AdminAiTaskItem buildQueryItem(SysUser user) { return buildUserItem(user, AdminAiTaskConstants.OP_QUERY, FIELD_SNAPSHOT, null, buildUserSnapshot(user)); }
     private String buildUserLabel(SysUser user) { return user.getAccount() + " / " + firstText(user.getDisplayName(), user.getRealName(), user.getAccount()); }
-    private String buildUserSnapshot(SysUser user) { return "account=" + user.getAccount() + ", role=" + user.getRoleCode() + ", displayName=" + firstText(user.getDisplayName(), "NULL") + ", realName=" + firstText(user.getRealName(), "NULL") + ", studentNo=" + firstText(user.getStudentNo(), "NULL") + ", counselorNo=" + firstText(user.getCounselorNo(), "NULL") + ", status=" + firstText(user.getStatus(), "NULL"); }
+    private String buildUserSnapshot(SysUser user) { StudentProfile profile = RoleConstants.STUDENT.equals(user.getRoleCode()) ? studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>().eq(StudentProfile::getUserId, user.getId()).last("limit 1")) : null; return "account=" + user.getAccount() + ", role=" + user.getRoleCode() + ", displayName=" + firstText(user.getDisplayName(), "NULL") + ", realName=" + firstText(user.getRealName(), "NULL") + ", studentNo=" + firstText(user.getStudentNo(), "NULL") + ", counselorNo=" + firstText(user.getCounselorNo(), "NULL") + ", college=" + firstText(profile == null ? null : profile.getCollege(), "NULL") + ", grade=" + firstText(profile == null ? null : profile.getGrade(), "NULL") + ", status=" + firstText(user.getStatus(), "NULL"); }
     private String buildResourceLabel(MentalResource resource) { return "#" + resource.getId() + " / " + resource.getTitle(); }
     private SysUser findUserByAccount(String account) { return StringUtils.hasText(account) ? sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getAccount, account).last("limit 1")) : null; }
     private boolean existsStudentNo(String studentNo) { return StringUtils.hasText(studentNo) && sysUserMapper.selectCount(new LambdaQueryWrapper<SysUser>().eq(SysUser::getStudentNo, studentNo).last("limit 1")) > 0; }
@@ -996,7 +1513,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private String normalizeCreateDisplayName(String displayName, String realName) { String normalized = normalizeText(displayName); if (!StringUtils.hasText(normalized)) return normalizeText(realName); String lowered = normalized.toLowerCase(Locale.ROOT); if (containsAny(lowered, "with studentno", "with counselorno", "studentno", "counselorno", " account", "账号", "学号", "工号")) return normalizeText(realName); return normalized; }
     private String normalizeTaskType(String taskType) { String n = normalizeUpper(taskType); if (!StringUtils.hasText(n)) return null; if (n.contains("USER")) return AdminAiTaskConstants.TASK_TYPE_USER_CRUD; if (n.contains("ACCOUNT")) return AdminAiTaskConstants.TASK_TYPE_ACCOUNT_STATUS; if (n.contains("COUNSELOR")) return AdminAiTaskConstants.TASK_TYPE_COUNSELOR_CREATE; if (n.contains("RESOURCE")) return AdminAiTaskConstants.TASK_TYPE_RESOURCE_STATUS; return n; }
     private String normalizeOperation(String op) { String n = normalizeUpper(op); if (!StringUtils.hasText(n)) return null; if (n.contains("CREATE")) return AdminAiTaskConstants.OP_CREATE; if (n.contains("DELETE") || n.contains("REMOVE")) return AdminAiTaskConstants.OP_DELETE; if (n.contains("QUERY") || n.contains("LIST") || n.contains("SEARCH") || n.contains("FIND")) return AdminAiTaskConstants.OP_QUERY; if (n.contains("PUBLISH") || n.contains("ONLINE")) return AdminAiTaskConstants.OP_PUBLISH; if (n.contains("OFFLINE") || n.contains("UNPUBLISH")) return AdminAiTaskConstants.OP_OFFLINE; return AdminAiTaskConstants.OP_UPDATE; }
-    private String normalizeFieldName(String field) { String n = normalizeText(field); if (!StringUtils.hasText(n)) return null; String l = n.toLowerCase(Locale.ROOT); if (l.contains("display") || "显示名".equals(n) || "名字".equals(n)) return FIELD_DISPLAY_NAME; if (l.contains("real") || "真实姓名".equals(n) || "姓名".equals(n)) return FIELD_REAL_NAME; if (l.contains("student") || "学号".equals(n)) return FIELD_STUDENT_NO; if (l.contains("counselor") || "工号".equals(n)) return FIELD_COUNSELOR_NO; if (l.contains("role")) return FIELD_ROLE_CODE; if (l.contains("status") || "状态".equals(n)) return FIELD_STATUS; if (l.contains("snapshot")) return FIELD_SNAPSHOT; if (l.contains("account") || "账号".equals(n) || "帐号".equals(n)) return FIELD_ACCOUNT; return n; }
+    private String normalizeFieldName(String field) { String n = normalizeText(field); if (!StringUtils.hasText(n)) return null; String l = n.toLowerCase(Locale.ROOT); if (l.contains("display") || "显示名".equals(n) || "名字".equals(n)) return FIELD_DISPLAY_NAME; if (l.contains("real") || "真实姓名".equals(n) || "姓名".equals(n)) return FIELD_REAL_NAME; if (l.contains("student") || "学号".equals(n)) return FIELD_STUDENT_NO; if (l.contains("counselor") || "工号".equals(n)) return FIELD_COUNSELOR_NO; if (l.contains("college") || "学院".equals(n)) return FIELD_COLLEGE; if (l.contains("grade") || "年级".equals(n)) return FIELD_GRADE; if (l.contains("role")) return FIELD_ROLE_CODE; if (l.contains("status") || "状态".equals(n)) return FIELD_STATUS; if (l.contains("snapshot")) return FIELD_SNAPSHOT; if (l.contains("account") || "账号".equals(n) || "帐号".equals(n)) return FIELD_ACCOUNT; return n; }
     private String normalizeUserRole(String role) { String n = normalizeUpper(role); if (!StringUtils.hasText(n)) return null; if (n.contains("STUDENT") || n.contains("学生")) return RoleConstants.STUDENT; if (n.contains("COUNSELOR") || n.contains("TEACHER") || n.contains("老师") || n.contains("咨询师")) return RoleConstants.COUNSELOR; if (n.contains("ADMIN")) return RoleConstants.ADMIN; return null; }
     private boolean isSupportedUserRole(String role) { return RoleConstants.STUDENT.equals(role) || RoleConstants.COUNSELOR.equals(role); }
     private String normalizeUserStatus(String value) { String n = normalizeUpper(value); if (!StringUtils.hasText(n)) return null; if ("ENABLE".equals(n) || "ENABLED".equals(n) || "ACTIVE".equals(n) || "启用".equals(value) || "恢复".equals(value)) return UserStatusConstants.ACTIVE; if ("DISABLE".equals(n) || "DISABLED".equals(n) || "INACTIVE".equals(n) || "禁用".equals(value) || "停用".equals(value)) return UserStatusConstants.DISABLED; return null; }
@@ -1018,6 +1535,17 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private String extractDisplayName(String instruction) { String value = extractByPattern(DISPLAY_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
     private String extractRealName(String instruction) { String value = extractByPattern(REAL_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
     private String extractQuotedValue(String instruction) { Matcher matcher = QUOTED_VALUE_PATTERN.matcher(instruction); return matcher.find() ? normalizeText(matcher.group(1)) : null; }
+    private String extractCollege(String instruction) {
+        String normalized = normalizeText(instruction);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        return KNOWN_COLLEGES.stream()
+                .filter(normalized::contains)
+                .findFirst()
+                .orElse(null);
+    }
+
     private String extractGrade(String instruction) {
         Pattern robustGradePattern = Pattern.compile("(?:grade|年级)\\s*[:：]?\\s*(20\\d{2}|\\d{2})|(?:^|\\D)(20\\d{2}|\\d{2})\\s*级", Pattern.CASE_INSENSITIVE);
         Matcher matcher = robustGradePattern.matcher(instruction);
@@ -1033,26 +1561,163 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private String resolveRoleFromInstruction(String instruction) { String lowered = normalizeText(instruction) == null ? "" : instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "student", "学生", "学号")) return RoleConstants.STUDENT; if (containsAny(lowered, "teacher", "counselor", "老师", "咨询师", "工号")) return RoleConstants.COUNSELOR; if (containsAny(lowered, "admin", "管理员")) return RoleConstants.ADMIN; return null; }
     private String generateStudentAccount(String studentNo) { String sanitized = normalizeText(studentNo); if (!StringUtils.hasText(sanitized)) throw new BusinessException("学生学号不能为空"); return "s_" + sanitized.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", ""); }
     private String generateCounselorAccount(String counselorNo) { String sanitized = normalizeText(counselorNo); if (!StringUtils.hasText(sanitized)) throw new BusinessException("老师工号不能为空"); return "c_" + sanitized.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", ""); }
-    private String getUserFieldValue(SysUser user, String fieldName) { return switch (normalizeFieldName(fieldName)) { case FIELD_ACCOUNT -> user.getAccount(); case FIELD_DISPLAY_NAME -> user.getDisplayName(); case FIELD_REAL_NAME -> user.getRealName(); case FIELD_STUDENT_NO -> user.getStudentNo(); case FIELD_COUNSELOR_NO -> user.getCounselorNo(); case FIELD_ROLE_CODE -> user.getRoleCode(); case FIELD_STATUS -> user.getStatus(); default -> null; }; }
-    private boolean isMutableUserField(String fieldName) { String f = normalizeFieldName(fieldName); return FIELD_ACCOUNT.equals(f) || FIELD_DISPLAY_NAME.equals(f) || FIELD_REAL_NAME.equals(f) || FIELD_STUDENT_NO.equals(f) || FIELD_COUNSELOR_NO.equals(f) || FIELD_STATUS.equals(f); }
+    private String getUserFieldValue(SysUser user, String fieldName) { String normalizedFieldName = normalizeFieldName(fieldName); if (FIELD_COLLEGE.equals(normalizedFieldName) || FIELD_GRADE.equals(normalizedFieldName)) { StudentProfile profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>().eq(StudentProfile::getUserId, user.getId()).last("limit 1")); if (profile == null) return null; return FIELD_COLLEGE.equals(normalizedFieldName) ? profile.getCollege() : profile.getGrade(); } return switch (normalizedFieldName) { case FIELD_ACCOUNT -> user.getAccount(); case FIELD_DISPLAY_NAME -> user.getDisplayName(); case FIELD_REAL_NAME -> user.getRealName(); case FIELD_STUDENT_NO -> user.getStudentNo(); case FIELD_COUNSELOR_NO -> user.getCounselorNo(); case FIELD_ROLE_CODE -> user.getRoleCode(); case FIELD_STATUS -> user.getStatus(); default -> null; }; }
+    private boolean isMutableUserField(String fieldName) { String f = normalizeFieldName(fieldName); return FIELD_ACCOUNT.equals(f) || FIELD_DISPLAY_NAME.equals(f) || FIELD_REAL_NAME.equals(f) || FIELD_STUDENT_NO.equals(f) || FIELD_COUNSELOR_NO.equals(f) || FIELD_STATUS.equals(f) || FIELD_COLLEGE.equals(f) || FIELD_GRADE.equals(f); }
     private String normalizeNewFieldValue(String fieldName, String value) { return FIELD_STATUS.equals(normalizeFieldName(fieldName)) ? normalizeUserStatus(value) : normalizeText(value); }
-    private void validateFieldChange(String fieldName, String newValue, Long currentUserId, String roleCode) { String f = normalizeFieldName(fieldName); String v = normalizeNewFieldValue(f, newValue); if (!StringUtils.hasText(v)) throw new BusinessException("字段 " + fieldName + " 的新值不能为空"); if (FIELD_ACCOUNT.equals(f)) { SysUser existing = findUserByAccount(v); if (existing != null && !existing.getId().equals(currentUserId)) throw new BusinessException("账号已存在: " + v); } if (FIELD_STUDENT_NO.equals(f)) { if (!RoleConstants.STUDENT.equals(roleCode)) throw new BusinessException("只有学生账号支持修改学号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getStudentNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("学号已存在: " + v); } if (FIELD_COUNSELOR_NO.equals(f)) { if (!RoleConstants.COUNSELOR.equals(roleCode)) throw new BusinessException("只有老师账号支持修改工号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getCounselorNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("工号已存在: " + v); } if (FIELD_STATUS.equals(f) && !StringUtils.hasText(normalizeUserStatus(v))) throw new BusinessException("账号状态仅支持 ACTIVE 或 DISABLED"); }
+    private Set<String> collectTargetFields(UserFilter filter) {
+        Set<String> fields = new HashSet<>();
+        if (StringUtils.hasText(filter.account)) fields.add(FIELD_ACCOUNT);
+        if (StringUtils.hasText(filter.displayName)) fields.add(FIELD_DISPLAY_NAME);
+        if (StringUtils.hasText(filter.realName)) fields.add(FIELD_REAL_NAME);
+        if (StringUtils.hasText(filter.studentNo)) fields.add(FIELD_STUDENT_NO);
+        if (StringUtils.hasText(filter.counselorNo)) fields.add(FIELD_COUNSELOR_NO);
+        if (StringUtils.hasText(filter.college)) fields.add(FIELD_COLLEGE);
+        if (StringUtils.hasText(filter.grade)) fields.add(FIELD_GRADE);
+        if (StringUtils.hasText(filter.status)) fields.add(FIELD_STATUS);
+        if (StringUtils.hasText(filter.roleCode)) fields.add(FIELD_ROLE_CODE);
+        return fields;
+    }
+    private void clearSupplementalUpdateTargetConflicts(UserFilter filter, Map<String, String> fieldUpdates, Set<String> explicitTargetFields) {
+        boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
+                || StringUtils.hasText(filter.studentNo)
+                || StringUtils.hasText(filter.counselorNo)
+                || StringUtils.hasText(filter.realName)
+                || StringUtils.hasText(filter.displayName);
+        if (!hasStrongIdentifier || fieldUpdates == null || fieldUpdates.isEmpty()) {
+            return;
+        }
+        for (String fieldName : fieldUpdates.keySet()) {
+            String normalizedFieldName = normalizeFieldName(fieldName);
+            if (!StringUtils.hasText(normalizedFieldName) || explicitTargetFields.contains(normalizedFieldName)) {
+                continue;
+            }
+            switch (normalizedFieldName) {
+                case FIELD_ACCOUNT -> filter.account = null;
+                case FIELD_DISPLAY_NAME -> filter.displayName = null;
+                case FIELD_REAL_NAME -> filter.realName = null;
+                case FIELD_STUDENT_NO -> filter.studentNo = null;
+                case FIELD_COUNSELOR_NO -> filter.counselorNo = null;
+                case FIELD_COLLEGE -> filter.college = null;
+                case FIELD_GRADE -> filter.grade = null;
+                case FIELD_STATUS -> filter.status = null;
+                case FIELD_ROLE_CODE -> filter.roleCode = null;
+                default -> { }
+            }
+        }
+    }
+    private void validateFieldChange(String fieldName, String newValue, Long currentUserId, String roleCode) { String f = normalizeFieldName(fieldName); String v = normalizeNewFieldValue(f, newValue); if (!StringUtils.hasText(v)) throw new BusinessException("字段 " + fieldName + " 的新值不能为空"); if (FIELD_ACCOUNT.equals(f)) { SysUser existing = findUserByAccount(v); if (existing != null && !existing.getId().equals(currentUserId)) throw new BusinessException("账号已存在: " + v); } if (FIELD_STUDENT_NO.equals(f)) { if (!RoleConstants.STUDENT.equals(roleCode)) throw new BusinessException("只有学生账号支持修改学号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getStudentNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("学号已存在: " + v); } if (FIELD_COUNSELOR_NO.equals(f)) { if (!RoleConstants.COUNSELOR.equals(roleCode)) throw new BusinessException("只有老师账号支持修改工号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getCounselorNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("工号已存在: " + v); } if ((FIELD_COLLEGE.equals(f) || FIELD_GRADE.equals(f)) && !RoleConstants.STUDENT.equals(roleCode)) throw new BusinessException("学院和年级仅支持学生账号修改"); if (FIELD_STATUS.equals(f) && !StringUtils.hasText(normalizeUserStatus(v))) throw new BusinessException("账号状态仅支持 ACTIVE 或 DISABLED"); }
     private MentalResource findResource(Long resourceId, String resourceTitle, String instruction) { if (resourceId != null) { MentalResource resource = mentalResourceMapper.selectById(resourceId); if (resource != null) return resource; } if (StringUtils.hasText(resourceTitle)) { MentalResource resource = mentalResourceMapper.selectOne(new LambdaQueryWrapper<MentalResource>().eq(MentalResource::getTitle, resourceTitle.trim()).last("limit 1")); if (resource != null) return resource; } Matcher idMatcher = RESOURCE_ID_PATTERN.matcher(instruction); if (idMatcher.find()) return mentalResourceMapper.selectById(Long.parseLong(idMatcher.group(1))); String quotedValue = extractQuotedValue(instruction); if (StringUtils.hasText(quotedValue)) return mentalResourceMapper.selectOne(new LambdaQueryWrapper<MentalResource>().eq(MentalResource::getTitle, quotedValue).last("limit 1")); return null; }
     private void mergeFieldUpdate(Map<String, String> updates, String fieldName, String newValue) { String f = normalizeFieldName(fieldName); if (StringUtils.hasText(f) && StringUtils.hasText(newValue)) updates.put(f, newValue.trim()); }
-    private void inferFieldUpdatesFromInstruction(String instruction, Map<String, String> updates) { String lowered = instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "禁用", "停用", "disable", "suspend", "ban")) updates.put(FIELD_STATUS, UserStatusConstants.DISABLED); if (containsAny(lowered, "启用", "恢复", "enable", "activate", "restore")) updates.put(FIELD_STATUS, UserStatusConstants.ACTIVE); if (containsAny(lowered, "改学号", "studentno", "student no")) updates.put(FIELD_STUDENT_NO, extractStudentNo(instruction)); if (containsAny(lowered, "改工号", "counselorno", "counselor no")) updates.put(FIELD_COUNSELOR_NO, extractCounselorNo(instruction)); if (containsAny(lowered, "改显示名", "改名字", "displayname", "display name")) updates.put(FIELD_DISPLAY_NAME, extractDisplayName(instruction)); if (containsAny(lowered, "改真实姓名", "改姓名", "realname", "real name")) updates.put(FIELD_REAL_NAME, extractRealName(instruction)); if (containsAny(lowered, "改账号", "账号改成", "change account", "set account")) updates.put(FIELD_ACCOUNT, extractAccount(instruction)); }
+    private void inferFieldUpdatesFromInstruction(String instruction, Map<String, String> updates) { String lowered = instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "禁用", "停用", "disable", "suspend", "ban")) updates.put(FIELD_STATUS, UserStatusConstants.DISABLED); if (containsAny(lowered, "启用", "恢复", "enable", "activate", "restore")) updates.put(FIELD_STATUS, UserStatusConstants.ACTIVE); if (containsAny(lowered, "改学号", "studentno", "student no")) updates.put(FIELD_STUDENT_NO, extractStudentNo(instruction)); if (containsAny(lowered, "改工号", "counselorno", "counselor no")) updates.put(FIELD_COUNSELOR_NO, extractCounselorNo(instruction)); if (containsAny(lowered, "改显示名", "改名字", "displayname", "display name")) updates.put(FIELD_DISPLAY_NAME, extractDisplayName(instruction)); if (containsAny(lowered, "改真实姓名", "改姓名", "realname", "real name")) updates.put(FIELD_REAL_NAME, extractRealName(instruction)); if (containsAny(lowered, "改账号", "账号改成", "change account", "set account")) updates.put(FIELD_ACCOUNT, extractAccount(instruction)); if (containsAny(lowered, "学院", "college")) updates.put(FIELD_COLLEGE, extractCollege(instruction)); if (containsAny(lowered, "年级", "grade")) updates.put(FIELD_GRADE, extractGrade(instruction)); }
 
-    private record ParsedTask(String taskType, String parseStatus, String summaryText, String failureReason, List<AdminAiTaskItem> items) { private static ParsedTask ready(String taskType, String summaryText, List<AdminAiTaskItem> items) { return new ParsedTask(taskType, AdminAiTaskConstants.PARSE_READY, summaryText, null, items); } private static ParsedTask needMoreInfo(String failureReason) { return new ParsedTask(null, AdminAiTaskConstants.PARSE_NEED_MORE_INFO, null, failureReason, List.of()); } }
+    private void inferDirectFieldUpdates(String instruction, Map<String, String> updates) {
+        if (!StringUtils.hasText(instruction)) {
+            return;
+        }
+        if (instruction.contains("学院")) {
+            String college = extractCollege(instruction);
+            if (StringUtils.hasText(college)) {
+                updates.put(FIELD_COLLEGE, college);
+            }
+        }
+        if (instruction.contains("年级")) {
+            String grade = extractGrade(instruction);
+            if (!StringUtils.hasText(grade)) {
+                Matcher matcher = Pattern.compile("(20\\d{2}|\\d{2})").matcher(instruction);
+                while (matcher.find()) {
+                    String candidate = matcher.group(1);
+                    if (StringUtils.hasText(candidate) && candidate.length() <= 4) {
+                        grade = candidate.length() == 2 ? "20" + candidate : candidate;
+                    }
+                }
+            }
+            if (StringUtils.hasText(grade)) {
+                updates.put(FIELD_GRADE, grade);
+            }
+        }
+        if (instruction.contains("学号") && (instruction.contains("改") || instruction.contains("变更") || instruction.contains("更新"))) {
+            String studentNo = extractStudentNo(instruction);
+            if (StringUtils.hasText(studentNo)) {
+                updates.put(FIELD_STUDENT_NO, studentNo);
+            }
+        }
+        if (instruction.contains("工号") && (instruction.contains("改") || instruction.contains("变更") || instruction.contains("更新"))) {
+            String counselorNo = extractCounselorNo(instruction);
+            if (StringUtils.hasText(counselorNo)) {
+                updates.put(FIELD_COUNSELOR_NO, counselorNo);
+            }
+        }
+    }
+
+    private record TaskConversationMessage(
+            String role,
+            String content,
+            LocalDateTime createdAt,
+            String kind,
+            String toolCallId,
+            String toolName,
+            String argumentsJson,
+            String responseData
+    ) {
+        private TaskConversationMessage(String role, String content, LocalDateTime createdAt) {
+            this(role, content, createdAt, "text", null, null, null, null);
+        }
+    }
+
+    private record ParsedConversation(ParsedTask parsedTask, List<TaskConversationMessage> traceMessages) {
+    }
+
+    private record ParsedTask(String taskType, String parseStatus, String workflowStatus, String summaryText,
+                              String failureReason, boolean autoExecute, List<AdminAiTaskItem> items) {
+        private static ParsedTask ready(String taskType, String summaryText, List<AdminAiTaskItem> items) {
+            String workflowStatus = inferWorkflowStatus(items);
+            boolean autoExecute = AdminAiTaskConstants.WORKFLOW_SUCCESS.equals(workflowStatus);
+            return new ParsedTask(taskType, AdminAiTaskConstants.PARSE_READY, workflowStatus, summaryText, null, autoExecute, items);
+        }
+
+        private static ParsedTask ready(String taskType, String workflowStatus, String summaryText, List<AdminAiTaskItem> items) {
+            return new ParsedTask(taskType, AdminAiTaskConstants.PARSE_READY, workflowStatus, summaryText, null, false, items);
+        }
+
+        private static ParsedTask readyAndExecute(String taskType, String summaryText, List<AdminAiTaskItem> items) {
+            return new ParsedTask(taskType, AdminAiTaskConstants.PARSE_READY, AdminAiTaskConstants.WORKFLOW_SUCCESS, summaryText, null, true, items);
+        }
+
+        private static ParsedTask needMoreInfo(String failureReason) {
+            return new ParsedTask(null, AdminAiTaskConstants.PARSE_NEED_MORE_INFO,
+                    AdminAiTaskConstants.WORKFLOW_NEED_CLARIFICATION, null, failureReason, false, List.of());
+        }
+
+        private static String inferWorkflowStatus(List<AdminAiTaskItem> items) {
+            if (items == null || items.isEmpty()) {
+                return AdminAiTaskConstants.WORKFLOW_NEED_CLARIFICATION;
+            }
+            boolean allCreate = items.stream().allMatch(item -> AdminAiTaskConstants.OP_CREATE.equals(item.getOperationType()));
+            if (allCreate) {
+                return AdminAiTaskConstants.WORKFLOW_SUCCESS;
+            }
+            boolean allQuery = items.stream().allMatch(item -> AdminAiTaskConstants.OP_QUERY.equals(item.getOperationType()));
+            if (allQuery) {
+                return AdminAiTaskConstants.WORKFLOW_QUERY_RESULT;
+            }
+            boolean anyDelete = items.stream().anyMatch(item -> AdminAiTaskConstants.OP_DELETE.equals(item.getOperationType()));
+            if (anyDelete) {
+                return AdminAiTaskConstants.WORKFLOW_PENDING_DELETE;
+            }
+            return AdminAiTaskConstants.WORKFLOW_PENDING_UPDATE;
+        }
+    }
 
     private class UserFilter {
-        protected String account; protected String displayName; protected String realName; protected String studentNo; protected String counselorNo; protected String status; protected String roleCode;
-        private void merge(AdminOpsAiAction action) { account = firstText(account, action.account()); displayName = firstText(displayName, action.displayName()); realName = firstText(realName, action.realName()); studentNo = firstText(studentNo, action.studentNo()); counselorNo = firstText(counselorNo, action.counselorNo()); status = firstText(status, action.status()); roleCode = firstText(roleCode, action.roleCode()); }
-        private void fillMissingFromInstruction(String instruction) { account = firstText(account, extractAccount(instruction)); displayName = firstText(displayName, extractDisplayName(instruction)); realName = firstText(realName, extractRealName(instruction)); studentNo = firstText(studentNo, extractStudentNo(instruction)); counselorNo = firstText(counselorNo, extractCounselorNo(instruction)); status = firstText(status, extractStatus(instruction)); roleCode = firstText(roleCode, resolveRoleFromInstruction(instruction)); }
-        private AdminOpsAiAction toAction(String operationType, String fieldName, String newValue) { return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, operationType, null, fieldName, newValue, account, displayName, realName, studentNo, counselorNo, status, null, null, null, roleCode); }
+        protected String account; protected String displayName; protected String realName; protected String studentNo; protected String counselorNo; protected String college; protected String grade; protected String status; protected String roleCode;
+        private void merge(AdminOpsAiAction action) { account = firstText(account, action.account()); displayName = firstText(displayName, action.displayName()); realName = firstText(realName, action.realName()); studentNo = firstText(studentNo, action.studentNo()); counselorNo = firstText(counselorNo, action.counselorNo()); college = firstText(college, action.college()); grade = firstText(grade, action.grade()); status = firstText(status, action.status()); roleCode = firstText(roleCode, action.roleCode()); }
+        private void fillMissingFromInstruction(String instruction) { account = firstText(account, extractAccount(instruction)); displayName = firstText(displayName, extractDisplayName(instruction)); realName = firstText(realName, extractRealName(instruction)); studentNo = firstText(studentNo, extractStudentNo(instruction)); counselorNo = firstText(counselorNo, extractCounselorNo(instruction)); college = firstText(college, extractCollege(instruction)); grade = firstText(grade, extractGrade(instruction)); status = firstText(status, extractStatus(instruction)); roleCode = firstText(roleCode, resolveRoleFromInstruction(instruction)); }
+        private AdminOpsAiAction toAction(String operationType, String fieldName, String newValue) { return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, operationType, null, fieldName, newValue, account, displayName, realName, studentNo, counselorNo, college, grade, status, null, null, null, roleCode); }
     }
 
     private final class UserMutationDraft extends UserFilter {
         private void fillMissingFromInstruction(String instruction) { super.fillMissingFromInstruction(instruction); }
-        private void merge(AdminOpsAiAction action) { super.merge(action); if (StringUtils.hasText(action.fieldName()) && StringUtils.hasText(action.newValue())) { switch (normalizeFieldName(action.fieldName())) { case FIELD_ACCOUNT -> account = action.newValue().trim(); case FIELD_DISPLAY_NAME -> displayName = action.newValue().trim(); case FIELD_REAL_NAME -> realName = action.newValue().trim(); case FIELD_STUDENT_NO -> studentNo = action.newValue().trim(); case FIELD_COUNSELOR_NO -> counselorNo = action.newValue().trim(); case FIELD_STATUS -> status = action.newValue().trim(); case FIELD_ROLE_CODE -> roleCode = action.newValue().trim(); default -> { } } } }
-        private AdminOpsAiAction toCreateAction() { return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_CREATE, null, null, null, account, displayName, realName, studentNo, counselorNo, status, null, null, null, roleCode); }
+        private void merge(AdminOpsAiAction action) { super.merge(action); if (StringUtils.hasText(action.fieldName()) && StringUtils.hasText(action.newValue())) { switch (normalizeFieldName(action.fieldName())) { case FIELD_ACCOUNT -> account = action.newValue().trim(); case FIELD_DISPLAY_NAME -> displayName = action.newValue().trim(); case FIELD_REAL_NAME -> realName = action.newValue().trim(); case FIELD_STUDENT_NO -> studentNo = action.newValue().trim(); case FIELD_COUNSELOR_NO -> counselorNo = action.newValue().trim(); case FIELD_COLLEGE -> college = action.newValue().trim(); case FIELD_GRADE -> grade = action.newValue().trim(); case FIELD_STATUS -> status = action.newValue().trim(); case FIELD_ROLE_CODE -> roleCode = action.newValue().trim(); default -> { } } } }
+        private AdminOpsAiAction toCreateAction() { return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_CREATE, null, null, null, account, displayName, realName, studentNo, counselorNo, college, grade, status, null, null, null, roleCode); }
     }
 }

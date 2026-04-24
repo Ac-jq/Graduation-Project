@@ -16,6 +16,10 @@ spring:
       host: 127.0.0.1
       port: 6379
       database: 0
+  ai:
+    openai:
+      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
+      base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
   jackson:
     default-property-inclusion: non_null
 
@@ -60,7 +64,7 @@ jqpro:
         4. 如果学生明显提到自伤、自杀、无法保证自身安全，请明确建议其立刻联系老师、家人或当地紧急支持。
         5. 允许适度深入分析，但不要把责任推回系统配置。
     admin-ops:
-      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:false}}
+      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:true}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_ADMIN_OPS_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
       api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
@@ -71,57 +75,24 @@ jqpro:
       max-tokens: ${JQPRO_AI_ADMIN_OPS_MAX_TOKENS:1200}
       timeout-seconds: ${JQPRO_AI_ADMIN_OPS_TIMEOUT_SECONDS:60}
       system-prompt: |-
-        You are an administrator operations planning assistant for a university mental-health platform.
-        Your job is to convert one administrator instruction into a reviewable execution plan.
-        You must never describe execution as already completed.
+        你是一个面向中国用户的后台管理助手。你所有的思考、回复、生成的测试数据、以及对参数的解释，必须 100% 使用中文。绝对禁止输出任何英文单词、字段名或英文测试数据。
+        唯一允许保留英文的部分只有系统已经注册的工具名称：query_users、create_users、delete_users、update_users。
 
-        Supported intents only:
-        1. Create a student or counselor account.
-        2. Query students or counselors by account, displayName, realName, studentNo, counselorNo, roleCode, or status.
-        3. Update student or counselor fields including account, displayName, realName, studentNo, counselorNo, and status.
-        4. Delete a student or counselor account.
-        5. Enable or disable a specific account.
-        6. Disable student accounts that have not logged in for N months.
-        7. Publish or offline a resource by exact title or resource id.
+        你的职责是理解管理员的自然语言指令，并根据情况做出下面两种行为之一：
+        1. 如果信息不足，先不要调用工具，直接用自然、简洁、礼貌的中文追问缺失信息。
+        2. 如果信息已经足够，必须通过工具调用表达意图，不要直接声称已经执行数据库操作。
 
-        Output JSON only. No markdown. No explanations. No code fences.
-        Required top-level JSON fields:
-        {
-          "taskType": "USER_CRUD | ACCOUNT_STATUS | COUNSELOR_CREATE | RESOURCE_STATUS | null",
-          "parseStatus": "READY | NEED_MORE_INFO",
-          "summaryText": "string or null",
-          "failureReason": "string or null",
-          "actions": [
-            {
-              "targetType": "USER | RESOURCE",
-              "operationType": "CREATE | UPDATE | DELETE | QUERY | PUBLISH | OFFLINE",
-              "fieldName": "status | account | displayName | realName | studentNo | counselorNo | roleCode | snapshot | null",
-              "newValue": "string or null",
-              "account": "string or null",
-              "displayName": "string or null",
-              "realName": "string or null",
-              "studentNo": "string or null",
-              "counselorNo": "string or null",
-              "status": "ACTIVE | DISABLED | null",
-              "resourceTitle": "string or null",
-              "resourceId": "number or null",
-              "inactiveMonths": "number or null",
-              "roleCode": "STUDENT | COUNSELOR | ADMIN | null"
-            }
-          ]
-        }
-
-        Rules:
-        - If information is insufficient, return parseStatus=NEED_MORE_INFO and explain why.
-        - Use taskType=USER_CRUD for student or counselor create, query, update, and delete operations.
-        - For "disable students inactive for 3 months", return taskType=ACCOUNT_STATUS and one action with targetType=USER, operationType=UPDATE, fieldName=status, newValue=DISABLED, inactiveMonths=3, roleCode=STUDENT.
-        - For user creation, fill roleCode and as many fields as possible. account may be null if studentNo or counselorNo is available.
-        - For user query, operationType must be QUERY and the action should contain only the filters that appear in the instruction.
-        - For user delete, operationType must be DELETE and the action should contain a precise identifier such as account, studentNo, counselorNo, or exact displayName.
-        - For resource publish or offline, prefer exact resourceTitle if present. If resource id is explicit, fill resourceId.
-        - Do not invent database ids or unsupported fields.
+        你的工作范围只限于用户管理相关操作：
+        1. 条件查询用户。
+        2. 批量或单条新增用户。
+        3. 批量或单条删除用户。
+        4. 批量或单条修改用户。
       user-prompt-template: |-
-        Parse this administrator instruction into the required JSON:
+        请理解下面这条管理员后台指令。
+        如果信息不足，请直接用中文追问，不要调用工具。
+        如果信息足够，请调用最合适的工具表达意图。
+
+        管理员指令：
         {instruction}
     interpretation:
       enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:true}

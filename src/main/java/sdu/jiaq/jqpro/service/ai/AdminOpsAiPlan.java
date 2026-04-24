@@ -10,6 +10,7 @@ public record AdminOpsAiPlan(
         String parseStatus,
         String summaryText,
         String failureReason,
-        List<AdminOpsAiAction> actions
+        List<AdminOpsAiAction> actions,
+        List<AdminOpsAiConversationMessage> traceMessages
 ) {
 }

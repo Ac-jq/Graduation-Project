@@ -20,11 +20,17 @@ public class AdminAiTaskSummaryResponse {
 
     private String parseStatus;
 
+    private String workflowStatus;
+
+    private String agentStatus;
+
     private String confirmStatus;
 
     private String executeStatus;
 
     private String summaryText;
+
+    private String pendingPrompt;
 
     private LocalDateTime createdAt;
 }
