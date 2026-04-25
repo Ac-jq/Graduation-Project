@@ -37,6 +37,7 @@ import sdu.jiaq.jqpro.dto.adminai.AdminAiTaskSummaryResponse;
 import sdu.jiaq.jqpro.dto.adminai.ConfirmAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskRequest;
 import sdu.jiaq.jqpro.dto.adminai.ParseAdminAiTaskResponse;
+import sdu.jiaq.jqpro.dto.adminuser.AdminUserSummaryResponse;
 import sdu.jiaq.jqpro.entity.AdminAiTask;
 import sdu.jiaq.jqpro.entity.AdminAiTaskItem;
 import sdu.jiaq.jqpro.entity.AiChatSession;
@@ -103,8 +104,8 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private static final Pattern ACCOUNT_PATTERN = Pattern.compile("(?:account|账号|帐号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern STUDENT_NO_PATTERN = Pattern.compile("(?:studentNo|student no|学号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern COUNSELOR_NO_PATTERN = Pattern.compile("(?:counselorNo|counselor no|工号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DISPLAY_NAME_PATTERN = Pattern.compile("(?:displayName|display name|显示名|名字|名为|叫|named)\\s*[:：=]?\\s*[\"“”']?([\\p{L}\\p{N}_\\-·\\s]{2,40})[\"“”']?", Pattern.CASE_INSENSITIVE);
-    private static final Pattern REAL_NAME_PATTERN = Pattern.compile("(?:realName|real name|真实姓名|姓名)\\s*[:：=]?\\s*[\"“”']?([\\p{L}\\p{N}_\\-·\\s]{2,40})[\"“”']?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DISPLAY_NAME_PATTERN = Pattern.compile("(?:displayName|display name|\u663e\u793a\u540d|\u540d\u5b57|\u540d\u4e3a|\u53eb|named)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern REAL_NAME_PATTERN = Pattern.compile("(?:realName|real name|\u771f\u5b9e\u59d3\u540d|\u59d3\u540d)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
     private static final Pattern RESOURCE_ID_PATTERN = Pattern.compile("(?:resource|资源|id)\\s*[:：=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern QUOTED_VALUE_PATTERN = Pattern.compile("[\"“”']([^\"“”']+)[\"“”']");
     private static final Pattern GRADE_PATTERN = Pattern.compile("(?:grade|\\u5e74\\u7ea7)\\s*[:：]?\\s*(20\\d{2}|\\d{2})|(?:^|\\D)(20\\d{2}|\\d{2})\\s*\\u7ea7", Pattern.CASE_INSENSITIVE);
@@ -164,38 +165,29 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     @Transactional(rollbackFor = Exception.class)
     public ParseAdminAiTaskResponse parse(ParseAdminAiTaskRequest request) {
         Long adminUserId = SecurityUtil.getCurrentUserId();
-        String instruction = request.getInstruction().trim();
-        AdminAiTask task = request.getTaskId() == null ? null : getRequiredTask(request.getTaskId());
-        if (task != null && !AdminAiTaskConstants.CONFIRM_PENDING.equals(task.getConfirmStatus())) {
-            throw new BusinessException("当前任务已经结束，不能继续补充对话");
+        String instruction = request.getInstruction() == null ? "" : request.getInstruction().trim();
+        if (!StringUtils.hasText(instruction)) {
+            throw new BusinessException("???????");
         }
 
-        List<TaskConversationMessage> conversation = task == null
-                ? new ArrayList<>()
-                : new ArrayList<>(readConversation(task.getConversationLog()));
+        ParsedTask parsedTask = parseInstruction(instruction);
+        String assistantReply = buildAssistantReply(parsedTask);
+
+        AdminAiTask task = new AdminAiTask();
+        task.setAdminUserId(adminUserId);
+        task.setInstructionText(instruction);
+        task.setParseStatus(AdminAiTaskConstants.PARSE_NEED_MORE_INFO);
+        task.setWorkflowStatus(AdminAiTaskConstants.WORKFLOW_NEED_CLARIFICATION);
+        task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
+        task.setAgentStatus(AdminAiTaskConstants.AGENT_CLARIFYING);
+        task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
+        adminAiTaskMapper.insert(task);
+
+        List<TaskConversationMessage> conversation = new ArrayList<>();
         conversation.add(new TaskConversationMessage("user", instruction, LocalDateTime.now()));
 
-        String mergedInstruction = buildConversationInstruction(conversation);
-        ParsedConversation parsedConversation = parseConversation(conversation);
-        if (!parsedConversation.traceMessages().isEmpty()) {
-            conversation.addAll(parsedConversation.traceMessages());
-        }
-        ParsedTask parsedTask = parsedConversation.parsedTask();
-        String assistantReply = buildAssistantReply(parsedTask);
-        if (task == null) {
-            task = new AdminAiTask();
-            task.setAdminUserId(adminUserId);
-            task.setInstructionText(mergedInstruction);
-            task.setParseStatus(AdminAiTaskConstants.PARSE_NEED_MORE_INFO);
-            task.setWorkflowStatus(AdminAiTaskConstants.WORKFLOW_NEED_CLARIFICATION);
-            task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_WAITING);
-            task.setAgentStatus(AdminAiTaskConstants.AGENT_CLARIFYING);
-            task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_PENDING);
-            adminAiTaskMapper.insert(task);
-        }
-
         if (parsedTask.autoExecute) {
-            applyParsedTask(task, mergedInstruction, parsedTask, conversation);
+            applyParsedTask(task, instruction, parsedTask, conversation);
             refreshTaskItems(task.getId(), parsedTask.items);
             assistantReply = executeAutoTask(task, parsedTask, adminUserId);
             conversation.add(new TaskConversationMessage("assistant", assistantReply, LocalDateTime.now()));
@@ -203,15 +195,14 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             adminAiTaskMapper.updateById(task);
         } else {
             conversation.add(new TaskConversationMessage("assistant", assistantReply, LocalDateTime.now()));
-            applyParsedTask(task, mergedInstruction, parsedTask, conversation);
+            applyParsedTask(task, instruction, parsedTask, conversation);
             refreshTaskItems(task.getId(), parsedTask.items);
         }
 
         auditLogService.record(adminUserId, "ADMIN_AI_PARSE", "Admin AI parse task",
-                "Parsed admin AI instruction: " + mergedInstruction, null);
+                "Parsed admin AI instruction: " + instruction, null);
         return ParseAdminAiTaskResponse.builder()
                 .ready(AdminAiTaskConstants.PARSE_READY.equals(parsedTask.parseStatus))
-                .message(AdminAiTaskConstants.PARSE_READY.equals(parsedTask.parseStatus) ? "已生成待确认执行计划" : parsedTask.failureReason)
                 .message(assistantReply)
                 .task(getTask(task.getId()))
                 .build();
@@ -446,7 +437,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             return AdminAiTaskConstants.AGENT_CLARIFYING;
         }
         return switch (parsedTask.workflowStatus) {
-            case AdminAiTaskConstants.WORKFLOW_QUERY_RESULT, AdminAiTaskConstants.WORKFLOW_SUCCESS -> AdminAiTaskConstants.AGENT_RESULT;
+            case AdminAiTaskConstants.WORKFLOW_QUERY_RESULT, AdminAiTaskConstants.WORKFLOW_NOT_FOUND, AdminAiTaskConstants.WORKFLOW_SUCCESS -> AdminAiTaskConstants.AGENT_RESULT;
             default -> AdminAiTaskConstants.AGENT_REVIEWING;
         };
     }
@@ -759,11 +750,11 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 && (StringUtils.hasText(extractCollege(instruction)) || StringUtils.hasText(extractGrade(instruction)))) {
             return parseDeleteUserByRules(instruction);
         }
-        if (containsAny(lowered, "enable", "disable", "activate", "restore", "suspend")) {
+        if (containsAny(lowered, "enable", "disable", "activate", "restore", "suspend", "启用", "禁用", "恢复", "停用")) {
             return parseUpdateUserByRules(instruction);
         }
         if (containsAny(lowered, "create", "add", "new", "update", "change", "modify", "set", "delete", "remove",
-                "新增", "创建", "修改", "更改", "删除", "移除", "禁用", "启用")) {
+                "新增", "创建", "修改", "更改", "更新", "改成", "改为", "删除", "移除", "禁用", "启用")) {
             return null;
         }
         SysUser user = null;
@@ -832,13 +823,13 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             }
             return parseDeleteUserByRules(instruction);
         }
-        if (containsAny(lowered, "query", "find", "list", "show", "查询", "查看", "列出")) {
+        if (containsAny(lowered, "query", "find", "list", "show", "查询", "查找", "查", "查看", "列出")) {
             return parseQueryUserByRules(instruction);
         }
-        if (containsAny(lowered, "update", "change", "modify", "set", "修改", "更改", "改成", "启用", "禁用", "停用", "恢复")) {
+        if (containsAny(lowered, "update", "change", "modify", "set", "修改", "更改", "改成", "改为", "更新", "启用", "禁用", "停用", "恢复")) {
             return parseUpdateUserByRules(instruction);
         }
-        return ParsedTask.needMoreInfo("当前仅支持学生/老师账号的增删查改、批量禁用未登录学生，以及资源上架下架");
+        return ParsedTask.needMoreInfo("当前仅支持学生账号的新增、查询、修改、删除，以及资源上下架和批量禁用未登录学生");
     }
 
     private ParsedTask parseUserActions(List<AdminOpsAiAction> actions, String summaryText, String instruction) {
@@ -1135,12 +1126,13 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (fieldUpdates.isEmpty()) {
             inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
         }
+        clearUpdateTargetConflictsForStrongIdentifier(filter, fieldUpdates);
         if (fieldUpdates.isEmpty()) {
             return ParsedTask.needMoreInfo(firstText(summaryText, "请继续补充要修改的字段和新值"));
         }
         List<SysUser> users = findUsersByScope(filter, false);
         if (users.isEmpty()) {
-            return ParsedTask.needMoreInfo(firstText(summaryText, "我还不能唯一定位要修改的对象，请继续补充账号、姓名、学号、工号、学院或年级"));
+            return buildNotFoundTask(firstText(summaryText, "数据库中未查找到符合该条件的学生"));
         }
         if (users.size() > MAX_BATCH_PREVIEW_ROWS) {
             return ParsedTask.needMoreInfo(firstText(summaryText, "当前匹配到的目标过多，请继续缩小筛选范围"));
@@ -1431,50 +1423,123 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     }
 
     private List<SysUser> findUsersByScope(UserFilter filter, boolean exactName) {
-        List<SysUser> users = findUsers(filter, exactName);
-        if (!StringUtils.hasText(filter.college) && !StringUtils.hasText(filter.grade)) {
-            return users;
+        return findUsers(filter, exactName);
+    }
+
+    private List<SysUser> findUsers(UserFilter filter, boolean exactName) {
+        String roleCode = normalizeUserRole(filter.roleCode);
+        if (!StringUtils.hasText(roleCode)) {
+            roleCode = RoleConstants.STUDENT;
         }
-        List<StudentProfile> profiles = studentProfileMapper.selectList(new LambdaQueryWrapper<StudentProfile>()
-                .like(StringUtils.hasText(filter.college), StudentProfile::getCollege, filter.college)
-                .eq(StringUtils.hasText(filter.grade), StudentProfile::getGrade, filter.grade));
-        if (profiles.isEmpty()) {
+        String status = normalizeUserStatus(filter.status);
+        String keyword = firstText(filter.account, filter.studentNo, filter.displayName, filter.realName);
+        logUserQuerySql(roleCode, status, keyword, filter.grade, filter.college);
+
+        List<AdminUserSummaryResponse> summaries = sysUserMapper.selectAdminUserSummaries(
+                roleCode,
+                status,
+                keyword,
+                normalizeText(filter.grade),
+                normalizeText(filter.college));
+        if (summaries.isEmpty()) {
             return List.of();
         }
-        Set<Long> profileUserIds = profiles.stream()
-                .map(StudentProfile::getUserId)
+        Map<Long, AdminUserSummaryResponse> summaryMap = new LinkedHashMap<>();
+        for (AdminUserSummaryResponse summary : summaries) {
+            if (summary != null && summary.getUserId() != null) {
+                summaryMap.put(summary.getUserId(), summary);
+            }
+        }
+        if (summaryMap.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, SysUser> userMap = sysUserMapper.selectBatchIds(summaryMap.keySet()).stream()
                 .filter(Objects::nonNull)
-                .collect(java.util.stream.Collectors.toSet());
-        if (profileUserIds.isEmpty()) {
-            return List.of();
-        }
-        return users.stream()
+                .collect(java.util.stream.Collectors.toMap(SysUser::getId, user -> user));
+        return summaryMap.entrySet().stream()
+                .map(entry -> {
+                    SysUser user = userMap.get(entry.getKey());
+                    return user == null ? null : new UserCandidate(user, entry.getValue());
+                })
+                .filter(Objects::nonNull)
+                .filter(candidate -> matchesUserFilter(candidate, filter, exactName))
+                .map(UserCandidate::user)
                 .filter(user -> RoleConstants.STUDENT.equals(user.getRoleCode()))
-                .filter(user -> profileUserIds.contains(user.getId()))
                 .sorted(Comparator.comparing(SysUser::getId))
                 .toList();
     }
 
-    private List<SysUser> findUsers(UserFilter filter, boolean exactName) {
-        LambdaQueryWrapper<SysUser> wrapper = new LambdaQueryWrapper<>();
-        boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
-                || StringUtils.hasText(filter.studentNo)
-                || StringUtils.hasText(filter.counselorNo);
-        if (StringUtils.hasText(filter.account)) wrapper.eq(SysUser::getAccount, filter.account);
-        if (StringUtils.hasText(filter.studentNo)) wrapper.eq(SysUser::getStudentNo, filter.studentNo);
-        if (StringUtils.hasText(filter.counselorNo)) wrapper.eq(SysUser::getCounselorNo, filter.counselorNo);
-        if ((StringUtils.hasText(filter.college) || StringUtils.hasText(filter.grade)) && !StringUtils.hasText(filter.roleCode)) {
-            filter.roleCode = RoleConstants.STUDENT;
+    private ParsedTask buildNotFoundTask(String summaryText) {
+        return ParsedTask.ready(
+                AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                AdminAiTaskConstants.WORKFLOW_NOT_FOUND,
+                firstText(summaryText, "????????????????"),
+                List.of());
+    }
+
+    private void logUserQuerySql(String roleCode, String status, String keyword, String grade, String college) {
+        StringBuilder sql = new StringBuilder("SELECT u.id, u.account, u.real_name, u.display_name, u.student_no, u.status, sp.college, sp.grade FROM sys_user u LEFT JOIN student_profile sp ON u.id = sp.user_id WHERE 1 = 1");
+        if (StringUtils.hasText(roleCode)) {
+            sql.append(" AND u.role_code = '").append(roleCode).append("'");
         }
-        if (StringUtils.hasText(filter.roleCode)) wrapper.eq(SysUser::getRoleCode, filter.roleCode);
-        if (StringUtils.hasText(filter.status)) wrapper.eq(SysUser::getStatus, filter.status);
-        if (!hasStrongIdentifier && StringUtils.hasText(filter.displayName)) {
-            if (exactName) wrapper.eq(SysUser::getDisplayName, filter.displayName); else wrapper.like(SysUser::getDisplayName, filter.displayName);
+        if (StringUtils.hasText(status)) {
+            sql.append(" AND u.status = '").append(status).append("'");
         }
-        if (!hasStrongIdentifier && StringUtils.hasText(filter.realName)) {
-            if (exactName) wrapper.eq(SysUser::getRealName, filter.realName); else wrapper.like(SysUser::getRealName, filter.realName);
+        if (StringUtils.hasText(keyword)) {
+            String loweredKeyword = keyword.toLowerCase(Locale.ROOT);
+            sql.append(" AND (LOWER(u.account) LIKE '%").append(loweredKeyword).append("%'")
+                    .append(" OR LOWER(u.real_name) LIKE '%").append(loweredKeyword).append("%'")
+                    .append(" OR LOWER(u.display_name) LIKE '%").append(loweredKeyword).append("%'")
+                    .append(" OR LOWER(u.student_no) LIKE '%").append(loweredKeyword).append("%')");
         }
-        return sysUserMapper.selectList(wrapper).stream().filter(user -> isSupportedUserRole(user.getRoleCode())).toList();
+        if (StringUtils.hasText(grade)) {
+            sql.append(" AND LOWER(sp.grade) LIKE '%").append(grade.toLowerCase(Locale.ROOT)).append("%'");
+        }
+        if (StringUtils.hasText(college)) {
+            sql.append(" AND LOWER(sp.college) LIKE '%").append(college.toLowerCase(Locale.ROOT)).append("%'");
+        }
+        sql.append(" ORDER BY u.created_at DESC, u.id DESC");
+        log.info("Admin AI user query SQL: {}", sql);
+    }
+
+    private boolean matchesUserFilter(UserCandidate candidate, UserFilter filter, boolean exactName) {
+        SysUser user = candidate.user();
+        AdminUserSummaryResponse summary = candidate.summary();
+        if (!matchesLooseField(user.getAccount(), filter.account, false)) {
+            return false;
+        }
+        if (!matchesLooseField(user.getStudentNo(), filter.studentNo, false)) {
+            return false;
+        }
+        if (!matchesLooseField(user.getCounselorNo(), filter.counselorNo, false)) {
+            return false;
+        }
+        if (!matchesLooseField(summary.getCollege(), filter.college, false)) {
+            return false;
+        }
+        if (!matchesLooseField(summary.getGrade(), filter.grade, false)) {
+            return false;
+        }
+        if (!matchesLooseField(user.getDisplayName(), filter.displayName, exactName)) {
+            return false;
+        }
+        return matchesLooseField(user.getRealName(), filter.realName, exactName);
+    }
+
+    private boolean matchesLooseField(String source, String expected, boolean exact) {
+        String normalizedExpected = normalizeLooseValue(expected);
+        if (!StringUtils.hasText(normalizedExpected)) {
+            return true;
+        }
+        String normalizedSource = normalizeLooseValue(source);
+        if (!StringUtils.hasText(normalizedSource)) {
+            return false;
+        }
+        return exact ? normalizedSource.equals(normalizedExpected) : normalizedSource.contains(normalizedExpected);
+    }
+
+    private String normalizeLooseValue(String value) {
+        return value == null ? null : value.trim().toLowerCase(Locale.ROOT).replace(" ", "");
     }
 
     private SysUser resolveSingleUser(UserFilter filter, boolean exactName) {
@@ -1522,9 +1587,16 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private String extractStatus(String instruction) { String lowered = instruction.toLowerCase(Locale.ROOT); if (containsAny(lowered, "启用", "恢复", "enable", "activate", "restore")) return UserStatusConstants.ACTIVE; if (containsAny(lowered, "禁用", "停用", "disable", "suspend", "ban")) return UserStatusConstants.DISABLED; return null; }
     private String extractByPattern(Pattern pattern, String text) { Matcher matcher = pattern.matcher(text); return matcher.find() ? normalizeText(matcher.group(1)) : null; }
     private String extractAccount(String instruction) {
-        String asciiAccount = extractByPattern(Pattern.compile("\\baccount\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction);
-        String chineseAccount = extractByPattern(Pattern.compile("(?:账号|帐号)\\s*[:：]\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction);
-        return normalizeCreateAccount(firstText(asciiAccount, chineseAccount, extractByPattern(ACCOUNT_PATTERN, instruction)));
+        String directAccount = extractByPattern(
+                Pattern.compile("(?:account|\\u8d26\\u53f7|\\u5e10\\u53f7)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                instruction);
+        String asciiAccount = extractByPattern(
+                Pattern.compile("\\baccount\\s*(?:[:?=]|for)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                instruction);
+        String chineseAccount = extractByPattern(
+                Pattern.compile("(?:\\u8d26\\u53f7|\\u5e10\\u53f7)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                instruction);
+        return normalizeCreateAccount(firstText(directAccount, asciiAccount, chineseAccount, extractByPattern(ACCOUNT_PATTERN, instruction)));
     }
     private String extractStudentNo(String instruction) {
         return firstText(extractByPattern(Pattern.compile("(?:studentNo|student no|学号)\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction), extractByPattern(STUDENT_NO_PATTERN, instruction));
@@ -1605,6 +1677,32 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             }
         }
     }
+    private void clearUpdateTargetConflictsForStrongIdentifier(UserFilter filter, Map<String, String> fieldUpdates) {
+        boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
+                || StringUtils.hasText(filter.studentNo)
+                || StringUtils.hasText(filter.counselorNo)
+                || StringUtils.hasText(filter.realName)
+                || StringUtils.hasText(filter.displayName);
+        if (!hasStrongIdentifier || fieldUpdates == null || fieldUpdates.isEmpty()) {
+            return;
+        }
+        for (String fieldName : fieldUpdates.keySet()) {
+            String normalizedFieldName = normalizeFieldName(fieldName);
+            if (!StringUtils.hasText(normalizedFieldName)) {
+                continue;
+            }
+            switch (normalizedFieldName) {
+                case FIELD_DISPLAY_NAME -> filter.displayName = null;
+                case FIELD_REAL_NAME -> filter.realName = null;
+                case FIELD_COLLEGE -> filter.college = null;
+                case FIELD_GRADE -> filter.grade = null;
+                case FIELD_STATUS -> filter.status = null;
+                default -> {
+                }
+            }
+        }
+    }
+
     private void validateFieldChange(String fieldName, String newValue, Long currentUserId, String roleCode) { String f = normalizeFieldName(fieldName); String v = normalizeNewFieldValue(f, newValue); if (!StringUtils.hasText(v)) throw new BusinessException("字段 " + fieldName + " 的新值不能为空"); if (FIELD_ACCOUNT.equals(f)) { SysUser existing = findUserByAccount(v); if (existing != null && !existing.getId().equals(currentUserId)) throw new BusinessException("账号已存在: " + v); } if (FIELD_STUDENT_NO.equals(f)) { if (!RoleConstants.STUDENT.equals(roleCode)) throw new BusinessException("只有学生账号支持修改学号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getStudentNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("学号已存在: " + v); } if (FIELD_COUNSELOR_NO.equals(f)) { if (!RoleConstants.COUNSELOR.equals(roleCode)) throw new BusinessException("只有老师账号支持修改工号"); SysUser existing = sysUserMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getCounselorNo, v).ne(SysUser::getId, currentUserId).last("limit 1")); if (existing != null) throw new BusinessException("工号已存在: " + v); } if ((FIELD_COLLEGE.equals(f) || FIELD_GRADE.equals(f)) && !RoleConstants.STUDENT.equals(roleCode)) throw new BusinessException("学院和年级仅支持学生账号修改"); if (FIELD_STATUS.equals(f) && !StringUtils.hasText(normalizeUserStatus(v))) throw new BusinessException("账号状态仅支持 ACTIVE 或 DISABLED"); }
     private MentalResource findResource(Long resourceId, String resourceTitle, String instruction) { if (resourceId != null) { MentalResource resource = mentalResourceMapper.selectById(resourceId); if (resource != null) return resource; } if (StringUtils.hasText(resourceTitle)) { MentalResource resource = mentalResourceMapper.selectOne(new LambdaQueryWrapper<MentalResource>().eq(MentalResource::getTitle, resourceTitle.trim()).last("limit 1")); if (resource != null) return resource; } Matcher idMatcher = RESOURCE_ID_PATTERN.matcher(instruction); if (idMatcher.find()) return mentalResourceMapper.selectById(Long.parseLong(idMatcher.group(1))); String quotedValue = extractQuotedValue(instruction); if (StringUtils.hasText(quotedValue)) return mentalResourceMapper.selectOne(new LambdaQueryWrapper<MentalResource>().eq(MentalResource::getTitle, quotedValue).last("limit 1")); return null; }
     private void mergeFieldUpdate(Map<String, String> updates, String fieldName, String newValue) { String f = normalizeFieldName(fieldName); if (StringUtils.hasText(f) && StringUtils.hasText(newValue)) updates.put(f, newValue.trim()); }
@@ -1647,6 +1745,9 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 updates.put(FIELD_COUNSELOR_NO, counselorNo);
             }
         }
+    }
+
+    private record UserCandidate(SysUser user, AdminUserSummaryResponse summary) {
     }
 
     private record TaskConversationMessage(

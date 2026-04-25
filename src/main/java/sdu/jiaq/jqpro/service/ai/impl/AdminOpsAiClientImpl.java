@@ -144,6 +144,140 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
             }
             """;
 
+    private static final String TOOL_QUERY_STUDENT = "query_student";
+    private static final String TOOL_CREATE_STUDENT = "create_student";
+    private static final String TOOL_DELETE_STUDENT = "delete_student";
+    private static final String TOOL_UPDATE_STUDENT = "update_student";
+    private static final String TOOL_CREATE_USER = "create_user";
+
+    private static final String STATELESS_QUERY_USERS_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "account": { "type": "string" },
+                "display_name": { "type": "string" },
+                "name": { "type": "string" },
+                "student_no": { "type": "string" },
+                "college": { "type": "string" },
+                "grade": { "type": "string" },
+                "role_code": { "type": "string" },
+                "status": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String STATELESS_CREATE_USER_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "role_code": { "type": "string" },
+                "account": { "type": "string" },
+                "display_name": { "type": "string" },
+                "real_name": { "type": "string" },
+                "student_no": { "type": "string" },
+                "counselor_no": { "type": "string" },
+                "college": { "type": "string" },
+                "grade": { "type": "string" },
+                "phone": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String STATELESS_DELETE_USERS_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "account": { "type": "string" },
+                "name": { "type": "string" },
+                "student_no": { "type": "string" },
+                "college": { "type": "string" },
+                "grade": { "type": "string" },
+                "role_code": { "type": "string" },
+                "status": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String STATELESS_UPDATE_USERS_SCHEMA = """
+            {
+              "type": "object",
+              "properties": {
+                "target_account": { "type": "string" },
+                "target_display_name": { "type": "string" },
+                "target_name": { "type": "string" },
+                "target_student_no": { "type": "string" },
+                "target_college": { "type": "string" },
+                "target_grade": { "type": "string" },
+                "new_account": { "type": "string" },
+                "new_display_name": { "type": "string" },
+                "new_real_name": { "type": "string" },
+                "new_student_no": { "type": "string" },
+                "new_college": { "type": "string" },
+                "new_grade": { "type": "string" },
+                "new_status": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String QUERY_STUDENT_SCHEMA = """
+            {
+              "type": "object",
+              "description": "查询学生。所有参数都是平铺的 String 类型，没有就传 null，绝对不要套额外的 JSON 对象。",
+              "properties": {
+                "name": { "type": "string", "description": "学生姓名，可为空" },
+                "student_no": { "type": "string", "description": "学生学号，可为空" },
+                "college": { "type": "string", "description": "学生学院，可为空" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String CREATE_STUDENT_SCHEMA = """
+            {
+              "type": "object",
+              "description": "新增学生。所有参数都是平铺的 String 类型，没有就传 null，绝对不要套额外的 JSON 对象。",
+              "properties": {
+                "name": { "type": "string", "description": "学生姓名" },
+                "student_no": { "type": "string", "description": "学生学号" },
+                "college": { "type": "string", "description": "学院" },
+                "grade": { "type": "string", "description": "年级" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String DELETE_STUDENT_SCHEMA = """
+            {
+              "type": "object",
+              "description": "删除学生。所有参数都是平铺的 String 类型，没有就传 null，绝对不要套额外的 JSON 对象。",
+              "properties": {
+                "name": { "type": "string", "description": "学生姓名，可为空" },
+                "student_no": { "type": "string", "description": "学生学号，可为空" },
+                "account": { "type": "string", "description": "学生账号，可为空" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
+    private static final String UPDATE_STUDENT_SCHEMA = """
+            {
+              "type": "object",
+              "description": "修改学生信息。所有参数都是平铺的 String 类型，没有就传 null，绝对不要套额外的 JSON 对象。",
+              "properties": {
+                "target_name": { "type": "string", "description": "目标学生姓名，可为空" },
+                "target_student_no": { "type": "string", "description": "目标学生学号，可为空" },
+                "new_college": { "type": "string", "description": "新的学院，可为空" },
+                "new_grade": { "type": "string", "description": "新的年级，可为空" },
+                "new_name": { "type": "string", "description": "新的姓名，可为空" }
+              },
+              "additionalProperties": false
+            }
+            """;
+
     private final AdminOpsAiProperties properties;
     private final ObjectMapper objectMapper;
     private final OpenAiChatModel chatModel;
@@ -170,15 +304,15 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
             throw new BusinessException(ResultCode.BUSINESS_ERROR, "管理员指令不能为空");
         }
 
-        return parseConversation(List.of(new AdminOpsAiConversationMessage("user", renderInstructionPrompt(normalizedInstruction))));
+        return parseConversation(List.of(new AdminOpsAiConversationMessage("user", renderStatelessInstructionPrompt(normalizedInstruction))));
     }
 
     @Override
     public AdminOpsAiPlan parseConversation(List<AdminOpsAiConversationMessage> conversationHistory) {
-        AdminOpsAiChatResponse chatResponse = chatWithTools(conversationHistory);
-        if (shouldRetryForToolCall(chatResponse)) {
-            chatResponse = chatWithTools(buildToolRetryConversation(conversationHistory, chatResponse.content()));
-        }
+        String latestInstruction = extractLatestUserInstruction(conversationHistory);
+        AdminOpsAiChatResponse chatResponse = chatWithTools(List.of(
+                new AdminOpsAiConversationMessage("user", renderStatelessInstructionPrompt(latestInstruction))
+        ));
 
         if (chatResponse.toolCalls() == null || chatResponse.toolCalls().isEmpty()) {
             return new AdminOpsAiPlan(
@@ -191,7 +325,7 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
             );
         }
 
-        List<AdminOpsAiAction> actions = mapToolCalls(chatResponse.toolCalls());
+        List<AdminOpsAiAction> actions = mapStatelessToolCalls(chatResponse.toolCalls());
         List<AdminOpsAiConversationMessage> traceMessages = buildTraceMessages(chatResponse.toolCalls(), actions);
         if (actions.isEmpty()) {
             return new AdminOpsAiPlan(
@@ -273,7 +407,7 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
                 .maxTokens(properties.getMaxTokens())
                 .parallelToolCalls(Boolean.TRUE)
                 .internalToolExecutionEnabled(Boolean.FALSE)
-                .toolCallbacks(buildToolCallbacks())
+                .toolCallbacks(buildStatelessUserToolCallbacks())
                 .build();
 
         return OpenAiChatModel.builder()
@@ -281,6 +415,70 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
                 .defaultOptions(defaultOptions)
                 .observationRegistry(ObservationRegistry.NOOP)
                 .build();
+    }
+
+    private ToolCallback[] buildFlatStudentToolCallbacks() {
+        ToolCallback queryStudentTool = FunctionToolCallback
+                .builder(TOOL_QUERY_STUDENT, (JsonNode input) -> Map.of("状态", "仅注册工具定义，等待上层业务执行"))
+                .description("查询学生。参数只能是平铺字符串 name、student_no、college；没有值传 null；绝对不要嵌套对象。")
+                .inputType(JsonNode.class)
+                .inputSchema(QUERY_STUDENT_SCHEMA)
+                .build();
+
+        ToolCallback createStudentTool = FunctionToolCallback
+                .builder(TOOL_CREATE_STUDENT, (JsonNode input) -> Map.of("状态", "仅注册工具定义，等待上层业务执行"))
+                .description("新增学生。参数只能是平铺字符串 name、student_no、college、grade；没有值传 null；绝对不要嵌套对象。")
+                .inputType(JsonNode.class)
+                .inputSchema(CREATE_STUDENT_SCHEMA)
+                .build();
+
+        ToolCallback deleteStudentTool = FunctionToolCallback
+                .builder(TOOL_DELETE_STUDENT, (JsonNode input) -> Map.of("状态", "仅注册工具定义，等待上层业务执行"))
+                .description("删除学生。参数只能是平铺字符串 name、student_no、account；没有值传 null；绝对不要嵌套对象。")
+                .inputType(JsonNode.class)
+                .inputSchema(DELETE_STUDENT_SCHEMA)
+                .build();
+
+        ToolCallback updateStudentTool = FunctionToolCallback
+                .builder(TOOL_UPDATE_STUDENT, (JsonNode input) -> Map.of("状态", "仅注册工具定义，等待上层业务执行"))
+                .description("修改学生信息。参数只能是平铺字符串 target_name、target_student_no、new_college、new_grade、new_name；没有值传 null；绝对不要嵌套对象。")
+                .inputType(JsonNode.class)
+                .inputSchema(UPDATE_STUDENT_SCHEMA)
+                .build();
+
+        return new ToolCallback[]{queryStudentTool, createStudentTool, deleteStudentTool, updateStudentTool};
+    }
+
+    private ToolCallback[] buildStatelessUserToolCallbacks() {
+        ToolCallback queryUsersTool = FunctionToolCallback
+                .builder(TOOL_QUERY_USERS, (JsonNode input) -> Map.of("status", "registered"))
+                .description("查询用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。")
+                .inputType(JsonNode.class)
+                .inputSchema(STATELESS_QUERY_USERS_SCHEMA)
+                .build();
+
+        ToolCallback createUserTool = FunctionToolCallback
+                .builder(TOOL_CREATE_USER, (JsonNode input) -> Map.of("status", "registered"))
+                .description("新增用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。")
+                .inputType(JsonNode.class)
+                .inputSchema(STATELESS_CREATE_USER_SCHEMA)
+                .build();
+
+        ToolCallback updateUsersTool = FunctionToolCallback
+                .builder(TOOL_UPDATE_USERS, (JsonNode input) -> Map.of("status", "registered"))
+                .description("修改用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。")
+                .inputType(JsonNode.class)
+                .inputSchema(STATELESS_UPDATE_USERS_SCHEMA)
+                .build();
+
+        ToolCallback deleteUsersTool = FunctionToolCallback
+                .builder(TOOL_DELETE_USERS, (JsonNode input) -> Map.of("status", "registered"))
+                .description("删除用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。")
+                .inputType(JsonNode.class)
+                .inputSchema(STATELESS_DELETE_USERS_SCHEMA)
+                .build();
+
+        return new ToolCallback[]{queryUsersTool, createUserTool, updateUsersTool, deleteUsersTool};
     }
 
     private ToolCallback[] buildToolCallbacks() {
@@ -317,7 +515,7 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
 
     private List<Message> buildMessages(List<AdminOpsAiConversationMessage> conversationHistory) {
         List<Message> messages = new ArrayList<>();
-        messages.add(new SystemMessage(resolveSystemPrompt()));
+        messages.add(new SystemMessage(resolveStatelessSystemPrompt()));
         if (conversationHistory == null || conversationHistory.isEmpty()) {
             return messages;
         }
@@ -345,6 +543,178 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
             }
         }
         return messages;
+    }
+
+    private List<AdminOpsAiAction> mapFlatStudentToolCalls(List<AdminOpsAiToolCall> toolCalls) {
+        List<AdminOpsAiAction> actions = new ArrayList<>();
+        for (AdminOpsAiToolCall toolCall : toolCalls) {
+            JsonNode argumentsNode = parseArguments(toolCall.argumentsJson());
+            log.info("Admin AI raw tool call: tool={}, args={}", toolCall.name(), toolCall.argumentsJson());
+            switch (toolCall.name()) {
+                case TOOL_QUERY_STUDENT -> actions.add(mapQueryStudentAction(argumentsNode));
+                case TOOL_CREATE_STUDENT -> actions.add(mapCreateStudentAction(argumentsNode));
+                case TOOL_DELETE_STUDENT -> actions.add(mapDeleteStudentAction(argumentsNode));
+                case TOOL_UPDATE_STUDENT -> actions.add(mapUpdateStudentAction(argumentsNode));
+                default -> log.warn("管理员 AI 返回了未注册工具: {}", toolCall.name());
+            }
+        }
+        return actions.stream().filter(action -> action != null).toList();
+    }
+
+    private AdminOpsAiAction mapQueryStudentAction(JsonNode argumentsNode) {
+        String name = textValue(argumentsNode, "name");
+        return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_QUERY, null,
+                null, null, null, name, name, textValue(argumentsNode, "student_no", "studentNo"),
+                null, textValue(argumentsNode, "college"), null, null, null, null, null, RoleConstants.STUDENT);
+    }
+
+    private AdminOpsAiAction mapCreateStudentAction(JsonNode argumentsNode) {
+        String name = textValue(argumentsNode, "name");
+        return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_CREATE, null,
+                null, null, null, name, name, textValue(argumentsNode, "student_no", "studentNo"),
+                null, textValue(argumentsNode, "college"), textValue(argumentsNode, "grade"),
+                UserStatusConstants.ACTIVE, null, null, null, RoleConstants.STUDENT);
+    }
+
+    private AdminOpsAiAction mapDeleteStudentAction(JsonNode argumentsNode) {
+        String name = textValue(argumentsNode, "name");
+        return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_DELETE, null,
+                null, null, textValue(argumentsNode, "account"), name, name,
+                textValue(argumentsNode, "student_no", "studentNo"), null, null, null,
+                null, null, null, null, RoleConstants.STUDENT);
+    }
+
+    private AdminOpsAiAction mapUpdateStudentAction(JsonNode argumentsNode) {
+        String targetName = textValue(argumentsNode, "target_name", "targetName");
+        String targetStudentNo = textValue(argumentsNode, "target_student_no", "targetStudentNo");
+        String newCollege = textValue(argumentsNode, "new_college", "newCollege");
+        String newGrade = textValue(argumentsNode, "new_grade", "newGrade");
+        String newName = textValue(argumentsNode, "new_name", "newName");
+        if (StringUtils.hasText(newCollege)) {
+            return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_UPDATE, null,
+                    "college", newCollege, null, targetName, targetName, targetStudentNo, null,
+                    null, null, null, null, null, null, RoleConstants.STUDENT);
+        }
+        if (StringUtils.hasText(newGrade)) {
+            return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_UPDATE, null,
+                    "grade", newGrade, null, targetName, targetName, targetStudentNo, null,
+                    null, null, null, null, null, null, RoleConstants.STUDENT);
+        }
+        if (StringUtils.hasText(newName)) {
+            return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_UPDATE, null,
+                    "realName", newName, null, targetName, targetName, targetStudentNo, null,
+                    null, null, null, null, null, null, RoleConstants.STUDENT);
+        }
+        return new AdminOpsAiAction(AdminAiTaskConstants.TARGET_USER, AdminAiTaskConstants.OP_UPDATE, null,
+                null, null, null, targetName, targetName, targetStudentNo, null,
+                null, null, null, null, null, null, RoleConstants.STUDENT);
+    }
+
+    private List<AdminOpsAiAction> mapStatelessToolCalls(List<AdminOpsAiToolCall> toolCalls) {
+        List<AdminOpsAiAction> actions = new ArrayList<>();
+        for (AdminOpsAiToolCall toolCall : toolCalls) {
+            JsonNode argumentsNode = parseArguments(toolCall.argumentsJson());
+            log.info("Admin AI raw tool call: tool={}, args={}", toolCall.name(), toolCall.argumentsJson());
+            switch (toolCall.name()) {
+                case TOOL_QUERY_USERS -> actions.add(new AdminOpsAiAction(
+                        AdminAiTaskConstants.TARGET_USER,
+                        AdminAiTaskConstants.OP_QUERY,
+                        null,
+                        null,
+                        null,
+                        textValue(argumentsNode, "account"),
+                        textValue(argumentsNode, "display_name", "displayName"),
+                        textValue(argumentsNode, "name", "real_name", "realName"),
+                        textValue(argumentsNode, "student_no", "studentNo"),
+                        textValue(argumentsNode, "counselor_no", "counselorNo"),
+                        textValue(argumentsNode, "college"),
+                        textValue(argumentsNode, "grade"),
+                        normalizeStatusValue(textValue(argumentsNode, "status")),
+                        null,
+                        null,
+                        null,
+                        normalizeBusinessRole(textValue(argumentsNode, "role_code", "roleCode"))
+                ));
+                case TOOL_CREATE_USER -> actions.add(new AdminOpsAiAction(
+                        AdminAiTaskConstants.TARGET_USER,
+                        AdminAiTaskConstants.OP_CREATE,
+                        null,
+                        null,
+                        null,
+                        textValue(argumentsNode, "account"),
+                        textValue(argumentsNode, "display_name", "displayName"),
+                        textValue(argumentsNode, "real_name", "realName", "name"),
+                        textValue(argumentsNode, "student_no", "studentNo"),
+                        textValue(argumentsNode, "counselor_no", "counselorNo"),
+                        textValue(argumentsNode, "college"),
+                        textValue(argumentsNode, "grade"),
+                        normalizeStatusValue(firstText(textValue(argumentsNode, "status"), UserStatusConstants.ACTIVE)),
+                        null,
+                        null,
+                        null,
+                        normalizeBusinessRole(textValue(argumentsNode, "role_code", "roleCode"))
+                ));
+                case TOOL_DELETE_USERS -> actions.add(new AdminOpsAiAction(
+                        AdminAiTaskConstants.TARGET_USER,
+                        AdminAiTaskConstants.OP_DELETE,
+                        null,
+                        null,
+                        null,
+                        textValue(argumentsNode, "account"),
+                        null,
+                        textValue(argumentsNode, "name"),
+                        textValue(argumentsNode, "student_no", "studentNo"),
+                        null,
+                        textValue(argumentsNode, "college"),
+                        textValue(argumentsNode, "grade"),
+                        normalizeStatusValue(textValue(argumentsNode, "status")),
+                        null,
+                        null,
+                        null,
+                        normalizeBusinessRole(textValue(argumentsNode, "role_code", "roleCode"))
+                ));
+                case TOOL_UPDATE_USERS -> actions.addAll(mapStatelessUpdateActions(argumentsNode));
+                default -> log.warn("管理员 AI 返回了未注册工具: {}", toolCall.name());
+            }
+        }
+        return actions.stream().filter(action -> action != null).toList();
+    }
+
+    private List<AdminOpsAiAction> mapStatelessUpdateActions(JsonNode argumentsNode) {
+        List<AdminOpsAiAction> actions = new ArrayList<>();
+        addStatelessUpdateAction(actions, argumentsNode, "account", textValue(argumentsNode, "new_account", "newAccount"));
+        addStatelessUpdateAction(actions, argumentsNode, "displayName", textValue(argumentsNode, "new_display_name", "newDisplayName"));
+        addStatelessUpdateAction(actions, argumentsNode, "realName", textValue(argumentsNode, "new_real_name", "newRealName"));
+        addStatelessUpdateAction(actions, argumentsNode, "studentNo", textValue(argumentsNode, "new_student_no", "newStudentNo"));
+        addStatelessUpdateAction(actions, argumentsNode, "college", textValue(argumentsNode, "new_college", "newCollege"));
+        addStatelessUpdateAction(actions, argumentsNode, "grade", textValue(argumentsNode, "new_grade", "newGrade"));
+        addStatelessUpdateAction(actions, argumentsNode, "status", normalizeStatusValue(textValue(argumentsNode, "new_status", "newStatus")));
+        return actions;
+    }
+
+    private void addStatelessUpdateAction(List<AdminOpsAiAction> actions, JsonNode argumentsNode, String fieldName, String newValue) {
+        if (!StringUtils.hasText(newValue)) {
+            return;
+        }
+        actions.add(new AdminOpsAiAction(
+                AdminAiTaskConstants.TARGET_USER,
+                AdminAiTaskConstants.OP_UPDATE,
+                null,
+                fieldName,
+                newValue,
+                textValue(argumentsNode, "target_account", "targetAccount"),
+                textValue(argumentsNode, "target_display_name", "targetDisplayName"),
+                textValue(argumentsNode, "target_name", "targetName"),
+                textValue(argumentsNode, "target_student_no", "targetStudentNo"),
+                null,
+                textValue(argumentsNode, "target_college", "targetCollege"),
+                textValue(argumentsNode, "target_grade", "targetGrade"),
+                null,
+                null,
+                null,
+                null,
+                RoleConstants.STUDENT
+        ));
     }
 
     private List<AdminOpsAiAction> mapToolCalls(List<AdminOpsAiToolCall> toolCalls) {
@@ -822,6 +1192,37 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
                 {instruction}
                 """);
         return template.replace("{instruction}", instruction);
+    }
+
+    private String resolveStatelessSystemPrompt() {
+        return """
+                你是一个面向中国用户的后台管理助手。
+                你所有回复必须使用中文。
+                每次只解析当前这一条输入，不要参考历史对话，不要做上下文记忆。
+                你只能处理后台用户管理任务。
+                你只能使用四个工具：query_users、create_user、update_users、delete_users。
+                所有工具参数必须是平铺字段，禁止嵌套对象。
+                如果用户要新增、修改或删除，但缺少关键参数，请直接返回：
+                【缺少参数，请补充：参数1、参数2】
+                缺参数时不要调用工具。
+                """;
+    }
+
+    private String renderStatelessInstructionPrompt(String instruction) {
+        return "请只解析这一条后台管理指令：\n" + instruction;
+    }
+
+    private String extractLatestUserInstruction(List<AdminOpsAiConversationMessage> conversationHistory) {
+        if (conversationHistory == null || conversationHistory.isEmpty()) {
+            throw new BusinessException(ResultCode.BUSINESS_ERROR, "管理员指令不能为空");
+        }
+        for (int index = conversationHistory.size() - 1; index >= 0; index--) {
+            AdminOpsAiConversationMessage message = conversationHistory.get(index);
+            if (message != null && StringUtils.hasText(message.content())) {
+                return message.content().trim();
+            }
+        }
+        throw new BusinessException(ResultCode.BUSINESS_ERROR, "管理员指令不能为空");
     }
 
     private int resolveTimeoutSeconds() {

@@ -63,6 +63,10 @@ export function deleteAdminUserApi(userId: number): Promise<void> {
   return del<void>(`/admin/users/${userId}`)
 }
 
+export function deleteAdminUsersApi(userIds: number[]): Promise<void> {
+  return del<void>(`/admin/users/${userIds.join(',')}`)
+}
+
 export function enableUserApi(userId: number): Promise<void> {
   return post<void>(`/admin/users/${userId}/enable`)
 }

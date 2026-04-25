@@ -543,7 +543,7 @@ async function goLogin(): Promise<void> {
 
 .field-line {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.5rem;
 }
 
 .field-line span {
@@ -555,14 +555,15 @@ async function goLogin(): Promise<void> {
 .field-line input,
 .field-line select {
   width: 100%;
-  height: 44px;
+  height: 48px;
   border: 1px solid rgba(44, 48, 43, 0.1);
   border-radius: 12px;
   background: var(--bg-frame);
   color: var(--text-main);
   box-sizing: border-box;
-  padding: 0 0.95rem;
-  font: 600 0.92rem/1 'Manrope', sans-serif;
+  padding: 0 16px;
+  line-height: 48px;
+  font: 600 0.92rem/48px 'Manrope', sans-serif;
   outline: none;
   box-shadow: 0 14px 30px rgba(54, 66, 58, 0.035);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);

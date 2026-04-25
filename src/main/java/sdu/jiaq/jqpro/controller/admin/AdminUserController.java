@@ -2,9 +2,11 @@ package sdu.jiaq.jqpro.controller.admin;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
 import jakarta.validation.Valid;
+import java.util.Arrays;
+import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,10 +21,8 @@ import sdu.jiaq.jqpro.dto.adminuser.CreateCounselorRequest;
 import sdu.jiaq.jqpro.dto.adminuser.UpdateAdminUserRequest;
 import sdu.jiaq.jqpro.service.AdminUserService;
 
-import java.util.List;
-
 /**
- * Admin user management controller.
+ * 管理员用户管理控制器。
  */
 @RestController
 @RequestMapping("/api/admin/users")
@@ -76,9 +76,14 @@ public class AdminUserController {
         return Result.success("密码已重置为默认密码", null);
     }
 
-    @DeleteMapping("/{userId}")
-    public Result<Void> deleteUser(@PathVariable Long userId) {
-        adminUserService.deleteUser(userId);
+    @DeleteMapping("/{ids}")
+    public Result<Void> deleteUser(@PathVariable String ids) {
+        List<Long> userIds = Arrays.stream(ids.split(","))
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .map(Long::valueOf)
+                .toList();
+        adminUserService.deleteUsers(userIds);
         return Result.success("用户已删除", null);
     }
 }

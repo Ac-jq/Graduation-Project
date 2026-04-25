@@ -64,7 +64,7 @@ jqpro:
         4. 如果学生明显提到自伤、自杀、无法保证自身安全，请明确建议其立刻联系老师、家人或当地紧急支持。
         5. 允许适度深入分析，但不要把责任推回系统配置。
     admin-ops:
-      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:true}
+      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:false}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_ADMIN_OPS_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
       api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}

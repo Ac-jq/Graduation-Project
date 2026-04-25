@@ -27,4 +27,6 @@ public interface AdminUserService {
     void resetPassword(Long userId);
 
     void deleteUser(Long userId);
+
+    void deleteUsers(List<Long> userIds);
 }

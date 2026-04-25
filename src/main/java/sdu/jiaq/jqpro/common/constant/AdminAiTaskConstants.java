@@ -17,6 +17,7 @@ public final class AdminAiTaskConstants {
     public static final String WORKFLOW_QUERY_RESULT = "QUERY_RESULT";
     public static final String WORKFLOW_PENDING_DELETE = "PENDING_DELETE";
     public static final String WORKFLOW_PENDING_UPDATE = "PENDING_UPDATE";
+    public static final String WORKFLOW_NOT_FOUND = "NOT_FOUND";
     public static final String WORKFLOW_SUCCESS = "SUCCESS";
 
     public static final String AGENT_CLARIFYING = "CLARIFYING";

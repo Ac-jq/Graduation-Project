@@ -103,16 +103,13 @@ public class AdminUserServiceImpl implements AdminUserService {
         String normalizedKeyword = normalize(keyword);
         String normalizedGrade = normalize(grade);
         String normalizedCollege = normalize(college);
-        List<SysUser> users = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>().orderByDesc(SysUser::getCreatedAt, SysUser::getId));
-        Map<Long, StudentProfile> profileMap = studentProfileMapper.selectList(null).stream()
-                .collect(Collectors.toMap(StudentProfile::getUserId, Function.identity(), (left, right) -> left));
-        return users.stream()
-                .filter(user -> normalizedRole == null || normalizedRole.equalsIgnoreCase(user.getRoleCode()))
-                .filter(user -> normalizedStatus == null || normalizedStatus.equalsIgnoreCase(user.getStatus()))
-                .filter(user -> matchStudentProfileDimension(profileMap.get(user.getId()), normalizedGrade, normalizedCollege))
-                .filter(user -> matchKeyword(user, profileMap.get(user.getId()), normalizedKeyword))
-                .map(user -> buildUserSummary(user, profileMap.get(user.getId())))
-                .toList();
+        return sysUserMapper.selectAdminUserSummaries(
+                normalizedRole == null ? null : normalizedRole.toUpperCase(Locale.ROOT),
+                normalizedStatus == null ? null : normalizedStatus.toUpperCase(Locale.ROOT),
+                normalizedKeyword,
+                normalizedGrade,
+                normalizedCollege
+        );
     }
 
     @Override
@@ -264,6 +261,19 @@ public class AdminUserServiceImpl implements AdminUserService {
                 "Deleted user account " + user.getAccount(), null);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteUsers(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new BusinessException("至少需要选择一个用户");
+        }
+        for (Long userId : userIds) {
+            if (userId != null) {
+                deleteUser(userId);
+            }
+        }
+    }
+
     private AdminUserSummaryResponse updateUserStatus(Long userId, String status, String actionCode, String actionName) {
         SysUser user = getRequiredUser(userId);
         user.setStatus(status);
@@ -274,35 +284,6 @@ public class AdminUserServiceImpl implements AdminUserService {
         auditLogService.record(SecurityUtil.getCurrentUserId(), actionCode, actionName,
                 "Changed account " + user.getAccount() + " status to " + status, null);
         return buildUserSummary(user, profile);
-    }
-
-    private boolean matchKeyword(SysUser user, StudentProfile profile, String keyword) {
-        if (keyword == null) {
-            return true;
-        }
-        return contains(user.getAccount(), keyword)
-                || contains(user.getDisplayName(), keyword)
-                || contains(user.getRealName(), keyword)
-                || contains(user.getStudentNo(), keyword)
-                || contains(user.getCounselorNo(), keyword)
-                || contains(profile == null ? null : profile.getCollege(), keyword)
-                || contains(profile == null ? null : profile.getGrade(), keyword)
-                || contains(profile == null ? null : profile.getPhone(), keyword);
-    }
-
-    private boolean matchStudentProfileDimension(StudentProfile profile, String grade, String college) {
-        if (grade == null && college == null) {
-            return true;
-        }
-        if (profile == null) {
-            return false;
-        }
-        return (grade == null || grade.equalsIgnoreCase(normalizeGrade(profile.getGrade())))
-                && (college == null || college.equalsIgnoreCase(normalize(profile.getCollege())));
-    }
-
-    private boolean contains(String source, String keyword) {
-        return source != null && source.toLowerCase(Locale.ROOT).contains(keyword);
     }
 
     private String normalize(String value) {

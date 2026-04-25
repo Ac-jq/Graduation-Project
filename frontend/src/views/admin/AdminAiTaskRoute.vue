@@ -1,6 +1,6 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElButton, ElDialog, ElMessage } from 'element-plus'
+import { ElButton, ElDialog, ElMessage, ElMessageBox } from 'element-plus'
 import {
   cancelAdminAiTaskApi,
   confirmAdminAiTaskApi,
@@ -8,11 +8,12 @@ import {
   fetchAdminAiTasksApi,
   parseAdminAiTaskApi
 } from '@/api/admin-ai-task'
+import { deleteAdminUsersApi, disableUserApi, enableUserApi, updateAdminUserApi } from '@/api/user'
 import type {
-  AdminAiConversationMessage,
   AdminAiTaskDetail,
   AdminAiTaskItem,
-  AdminAiTaskSummary
+  AdminAiTaskSummary,
+  UpdateAdminUserRequest
 } from '@/api/types'
 import { toErrorMessage } from '@/views/shared/page-logic'
 
@@ -23,6 +24,7 @@ type WorkflowStatus =
   | 'PENDING_UPDATE'
   | 'SUCCESS'
   | 'CANCELED'
+  | 'NOT_FOUND'
   | ''
 
 interface QuickEditOption {
@@ -38,7 +40,7 @@ const tasks = ref<AdminAiTaskSummary[]>([])
 const currentTask = ref<AdminAiTaskDetail | null>(null)
 const detailDialogVisible = ref(false)
 const selectedItemIds = ref<number[]>([])
-const followUpInput = ref('')
+const selectedQueryUserIds = ref<number[]>([])
 const currentPage = ref(1)
 const pageSize = 10
 
@@ -71,7 +73,7 @@ const activeFilters = reactive({
 })
 
 const examples = [
-  '增加一个学生',
+  '查询姓名为庄文轩的学生信息',
   '查询人工智能学院 2026 级学生',
   '删除学号 20269999 的学生',
   '把学号 20269999 的学生年级改成 2025'
@@ -87,6 +89,7 @@ const taskTypeOptions = [
 const statusOptions = [
   { value: 'NEED_CLARIFICATION', label: '待补充' },
   { value: 'QUERY_RESULT', label: '查询结果' },
+  { value: 'NOT_FOUND', label: '未查找到' },
   { value: 'PENDING_DELETE', label: '待确认删除' },
   { value: 'PENDING_UPDATE', label: '待确认修改' },
   { value: 'SUCCESS', label: '已执行' },
@@ -115,13 +118,12 @@ const currentWorkflowStatus = computed<WorkflowStatus>(() => {
   return (task.workflowStatus as WorkflowStatus) || ''
 })
 
-const isQueryResultTask = computed(() => currentWorkflowStatus.value === 'QUERY_RESULT')
+const isQueryResultTask = computed(() => currentWorkflowStatus.value === 'QUERY_RESULT' || currentWorkflowStatus.value === 'NOT_FOUND')
 const isPendingDeleteTask = computed(() => currentWorkflowStatus.value === 'PENDING_DELETE')
 const isPendingUpdateTask = computed(() => currentWorkflowStatus.value === 'PENDING_UPDATE')
 const isNeedClarificationTask = computed(() => currentWorkflowStatus.value === 'NEED_CLARIFICATION')
 const isSuccessTask = computed(() => currentWorkflowStatus.value === 'SUCCESS')
 
-const conversationMessages = computed(() => currentTask.value?.conversation ?? [])
 const queryResultItems = computed(() => (isQueryResultTask.value ? currentTask.value?.items ?? [] : []))
 const deletePreviewItems = computed(() => (isPendingDeleteTask.value ? currentTask.value?.items ?? [] : []))
 const updatePreviewItems = computed(() => (isPendingUpdateTask.value ? currentTask.value?.items ?? [] : []))
@@ -157,13 +159,20 @@ const quickEditFieldOptions = computed<QuickEditOption[]>(() => {
   })
 })
 
+const allQuerySelected = computed(() => {
+  const targetIds = queryResultItems.value
+    .map((item) => item.targetId)
+    .filter((value): value is number => typeof value === 'number')
+  return targetIds.length > 0 && targetIds.every((id) => selectedQueryUserIds.value.includes(id))
+})
+
 const pendingUpdateSummary = computed(() => {
   if (!updatePreviewItems.value.length) {
     return '请确认以下字段变更后再执行。'
   }
   if (updatePreviewItems.value.length === 1) {
     const item = updatePreviewItems.value[0]
-    return `确认将 ${targetName(item)} 的${resolveFieldLabel(item.fieldName)}从 ${formatValue(item.oldValue)} 修改为 ${formatValue(item.newValue)} 吗？`
+    return `确认将 ${targetName(item)} 的 ${resolveFieldLabel(item.fieldName)} 从 ${formatValue(item.oldValue)} 修改为 ${formatValue(item.newValue)} 吗？`
   }
   return `本次将修改 ${updatePreviewItems.value.length} 项字段，请逐项复核后确认执行。`
 })
@@ -229,13 +238,22 @@ function formatValue(value: string | null | undefined): string {
   if (!value || !value.trim()) {
     return '--'
   }
-  if (value === 'ACTIVE') {
+  const upperValue = value.toUpperCase()
+  if (upperValue === 'ACTIVE') {
     return '启用'
   }
-  if (value === 'DISABLED') {
+  if (upperValue === 'DISABLED') {
     return '禁用'
   }
   return value
+}
+
+function normalizeStatusInput(value: string): 'ACTIVE' | 'DISABLED' {
+  const normalized = value.trim().toUpperCase()
+  if (normalized === 'ACTIVE' || value.trim() === '启用' || value.trim() === '正常') {
+    return 'ACTIVE'
+  }
+  return 'DISABLED'
 }
 
 function resolveTaskType(type: string | null | undefined): string {
@@ -260,6 +278,8 @@ function resolveTaskStatus(task: AdminAiTaskSummary | AdminAiTaskDetail): string
       return '待补充'
     case 'QUERY_RESULT':
       return '查询结果'
+    case 'NOT_FOUND':
+      return '未查找到'
     case 'PENDING_DELETE':
       return '待确认删除'
     case 'PENDING_UPDATE':
@@ -280,6 +300,8 @@ function resolveStatusClass(task: AdminAiTaskSummary | AdminAiTaskDetail): strin
       return 'is-info'
     case 'QUERY_RESULT':
       return 'is-neutral'
+    case 'NOT_FOUND':
+      return 'is-muted'
     case 'PENDING_DELETE':
       return 'is-danger'
     case 'PENDING_UPDATE':
@@ -348,22 +370,14 @@ function resolveItemExecuteStatus(status: string | null | undefined): string {
   }
 }
 
-function resolveConversationRole(message: AdminAiConversationMessage): string {
-  return message.role === 'assistant' ? 'AI 运维助手' : '管理员'
-}
-
 function resolveOpenActionLabel(task: AdminAiTaskSummary | AdminAiTaskDetail): string {
   if (resolveFilterStatus(task) === 'NEED_CLARIFICATION') {
-    return '继续补充'
+    return '查看提示'
   }
   if (resolveFilterStatus(task) === 'PENDING_DELETE' || resolveFilterStatus(task) === 'PENDING_UPDATE') {
     return '查看并确认'
   }
   return '查看详情'
-}
-
-function canReply(task: AdminAiTaskSummary | AdminAiTaskDetail): boolean {
-  return resolveFilterStatus(task) === 'NEED_CLARIFICATION' && task.confirmStatus === 'PENDING'
 }
 
 function canConfirm(task: AdminAiTaskSummary | AdminAiTaskDetail): boolean {
@@ -404,16 +418,6 @@ function targetExtra(item: AdminAiTaskItem): string {
   return parts.join(' / ')
 }
 
-function resolveTargetRole(item: AdminAiTaskItem): string {
-  if (item.studentNo) {
-    return '学生'
-  }
-  if (item.counselorNo) {
-    return '咨询师'
-  }
-  return '用户'
-}
-
 function buildIdentityText(item: AdminAiTaskItem): string {
   if (item.studentNo) {
     return `学号 ${item.studentNo}`
@@ -427,15 +431,8 @@ function buildIdentityText(item: AdminAiTaskItem): string {
   return `编号 ${item.targetId ?? item.itemId}`
 }
 
-function buildDeleteInstruction(item: AdminAiTaskItem): string {
-  return `删除${buildIdentityText(item)}的${resolveTargetRole(item)}`
-}
-
-function buildUpdateInstruction(item: AdminAiTaskItem, fieldName: string, newValue: string): string {
-  return `把${buildIdentityText(item)}的${resolveTargetRole(item)}${resolveFieldLabel(fieldName)}改成 ${newValue}`
-}
-
 function syncSelection(): void {
+  selectedQueryUserIds.value = []
   if (!currentTask.value) {
     selectedItemIds.value = []
     return
@@ -455,6 +452,64 @@ function toggleItem(itemId: number): void {
   selectedItemIds.value = selectedItemIds.value.includes(itemId)
     ? selectedItemIds.value.filter((id) => id !== itemId)
     : [...selectedItemIds.value, itemId]
+}
+
+function toggleAllQueryRows(): void {
+  if (allQuerySelected.value) {
+    selectedQueryUserIds.value = []
+    return
+  }
+  selectedQueryUserIds.value = queryResultItems.value
+    .map((item) => item.targetId)
+    .filter((value): value is number => typeof value === 'number')
+}
+
+function toggleQueryRow(targetId: number): void {
+  selectedQueryUserIds.value = selectedQueryUserIds.value.includes(targetId)
+    ? selectedQueryUserIds.value.filter((id) => id !== targetId)
+    : [...selectedQueryUserIds.value, targetId]
+}
+
+function buildDirectUpdatePayload(item: AdminAiTaskItem, fieldName: string, newValue: string): UpdateAdminUserRequest {
+  const payload: UpdateAdminUserRequest = {
+    account: item.account || targetAccount(item),
+    displayName: item.displayName || item.realName || targetName(item),
+    realName: item.realName || null,
+    studentNo: item.studentNo || null,
+    counselorNo: item.counselorNo || null,
+    college: item.college || null,
+    grade: item.grade || null,
+    phone: null,
+    password: null
+  }
+
+  switch (fieldName) {
+    case 'account':
+      payload.account = newValue
+      break
+    case 'displayName':
+      payload.displayName = newValue
+      break
+    case 'realName':
+      payload.realName = newValue
+      break
+    case 'studentNo':
+      payload.studentNo = newValue
+      break
+    case 'counselorNo':
+      payload.counselorNo = newValue
+      break
+    case 'college':
+      payload.college = newValue
+      break
+    case 'grade':
+      payload.grade = newValue
+      break
+    default:
+      break
+  }
+
+  return payload
 }
 
 function applyFilters(): void {
@@ -501,47 +556,28 @@ async function loadTasks(): Promise<void> {
 async function parseInstruction(): Promise<void> {
   const instruction = form.instruction.trim()
   if (!instruction) {
-    ElMessage.warning('请输入管理员指令')
+    ElMessage.warning('请输入自然语言指令')
     return
   }
   processing.value = true
   errorMessage.value = ''
   try {
     const result = await parseAdminAiTaskApi({ instruction })
-    form.instruction = ''
+    await loadTasks()
+
+    if (!result.ready || result.task.workflowStatus === 'NEED_CLARIFICATION') {
+      currentTask.value = null
+      detailDialogVisible.value = false
+      await ElMessageBox.alert(result.message, '缺少参数', {
+        confirmButtonText: '继续补充'
+      })
+      return
+    }
+
     currentTask.value = result.task
-    followUpInput.value = ''
     detailDialogVisible.value = true
     syncSelection()
-    await loadTasks()
-    ElMessage.success(result.message)
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    processing.value = false
-  }
-}
-
-async function sendFollowUp(): Promise<void> {
-  if (!currentTask.value) {
-    return
-  }
-  const instruction = followUpInput.value.trim()
-  if (!instruction) {
-    ElMessage.warning('请输入补充信息')
-    return
-  }
-  processing.value = true
-  errorMessage.value = ''
-  try {
-    const result = await parseAdminAiTaskApi({
-      taskId: currentTask.value.taskId,
-      instruction
-    })
-    currentTask.value = result.task
-    followUpInput.value = ''
-    syncSelection()
-    await loadTasks()
+    form.instruction = ''
     ElMessage.success(result.message)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -555,7 +591,6 @@ async function openTaskDetail(taskId: number): Promise<void> {
   errorMessage.value = ''
   try {
     currentTask.value = await fetchAdminAiTaskDetailApi(taskId)
-    followUpInput.value = ''
     detailDialogVisible.value = true
     syncSelection()
   } catch (error) {
@@ -569,20 +604,77 @@ async function confirmCurrentTask(): Promise<void> {
   if (!currentTask.value) {
     return
   }
+
+  const deleteMode = isPendingDeleteTask.value
+  const updateMode = isPendingUpdateTask.value
   const selectedIds = selectedItemIds.value.length ? selectedItemIds.value : [...actionableItemIds.value]
-  if ((isPendingDeleteTask.value || isPendingUpdateTask.value) && selectedIds.length === 0) {
-    ElMessage.warning('请至少选择一条待执行明细')
+
+  if ((deleteMode || updateMode) && selectedIds.length === 0) {
+    ElMessage.warning('请至少勾选一项后再执行')
     return
   }
+
   processing.value = true
   errorMessage.value = ''
   try {
-    currentTask.value = await confirmAdminAiTaskApi(currentTask.value.taskId, {
-      selectedItemIds: selectedIds
-    })
+    if (deleteMode) {
+      const deleteIds = deletePreviewItems.value
+        .filter((item) => selectedIds.includes(item.itemId))
+        .map((item) => item.targetId)
+        .filter((value): value is number => typeof value === 'number')
+
+      if (!deleteIds.length) {
+        ElMessage.warning('当前没有可删除的用户')
+        return
+      }
+
+      await deleteAdminUsersApi(deleteIds)
+      currentTask.value = {
+        ...currentTask.value,
+        workflowStatus: 'SUCCESS',
+        confirmStatus: 'CONFIRMED',
+        executeStatus: 'EXECUTED',
+        items: currentTask.value.items.map((item) =>
+          selectedIds.includes(item.itemId) ? { ...item, executeStatus: 'EXECUTED' } : item
+        )
+      }
+    } else if (updateMode) {
+      const updateItems = updatePreviewItems.value.filter((item) => selectedIds.includes(item.itemId))
+      for (const item of updateItems) {
+        if (typeof item.targetId !== 'number' || !item.fieldName) {
+          continue
+        }
+        if (item.fieldName === 'status') {
+          const statusValue = normalizeStatusInput(String(item.newValue ?? ''))
+          if (statusValue === 'ACTIVE') {
+            await enableUserApi(item.targetId)
+          } else {
+            await disableUserApi(item.targetId)
+          }
+        } else {
+          const payload = buildDirectUpdatePayload(item, item.fieldName, String(item.newValue ?? ''))
+          await updateAdminUserApi(item.targetId, payload)
+        }
+      }
+
+      currentTask.value = {
+        ...currentTask.value,
+        workflowStatus: 'SUCCESS',
+        confirmStatus: 'CONFIRMED',
+        executeStatus: 'EXECUTED',
+        items: currentTask.value.items.map((item) =>
+          selectedIds.includes(item.itemId) ? { ...item, executeStatus: 'EXECUTED' } : item
+        )
+      }
+    } else {
+      currentTask.value = await confirmAdminAiTaskApi(currentTask.value.taskId, {
+        selectedItemIds: selectedIds
+      })
+    }
+
     await loadTasks()
     syncSelection()
-    ElMessage.success(isPendingDeleteTask.value ? '删除任务已执行' : '修改任务已执行')
+    ElMessage.success(deleteMode ? '已完成删除' : '已完成修改')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -609,15 +701,25 @@ async function cancelCurrentTask(): Promise<void> {
 }
 
 async function startDeleteFromQuery(item: AdminAiTaskItem): Promise<void> {
+  if (typeof item.targetId !== 'number') {
+    return
+  }
+  if (!window.confirm(`确认删除 ${targetName(item)} 吗？`)) {
+    return
+  }
   processing.value = true
   errorMessage.value = ''
   try {
-    const result = await parseAdminAiTaskApi({
-      instruction: buildDeleteInstruction(item)
-    })
-    currentTask.value = result.task
+    await deleteAdminUsersApi([item.targetId])
+    if (currentTask.value) {
+      currentTask.value = {
+        ...currentTask.value,
+        items: currentTask.value.items.filter((entry) => entry.itemId !== item.itemId)
+      }
+    }
     syncSelection()
-    ElMessage.success(result.message)
+    await loadTasks()
+    ElMessage.success('删除成功')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -643,23 +745,66 @@ async function submitQuickEdit(): Promise<void> {
   if (!quickEditTarget.value) {
     return
   }
+
   const fieldName = quickEditForm.fieldName.trim()
   const newValue = quickEditForm.newValue.trim()
   if (!fieldName || !newValue) {
-    ElMessage.warning('请先选择字段并填写新值')
+    ElMessage.warning('请选择字段并填写新的值')
     return
   }
+
   processing.value = true
   errorMessage.value = ''
   try {
-    const result = await parseAdminAiTaskApi({
-      instruction: buildUpdateInstruction(quickEditTarget.value, fieldName, newValue)
-    })
-    currentTask.value = result.task
-    syncSelection()
+    if (typeof quickEditTarget.value.targetId !== 'number') {
+      return
+    }
+    if (fieldName === 'status') {
+      const statusValue = normalizeStatusInput(newValue)
+      if (statusValue === 'ACTIVE') {
+        await enableUserApi(quickEditTarget.value.targetId)
+      } else {
+        await disableUserApi(quickEditTarget.value.targetId)
+      }
+    } else {
+      const payload = buildDirectUpdatePayload(quickEditTarget.value, fieldName, newValue)
+      await updateAdminUserApi(quickEditTarget.value.targetId, payload)
+    }
+
     closeQuickEdit()
     await loadTasks()
-    ElMessage.success(result.message)
+    ElMessage.success('保存成功')
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    processing.value = false
+  }
+}
+
+async function deleteSelectedQueryUsers(): Promise<void> {
+  if (!selectedQueryUserIds.value.length) {
+    ElMessage.warning('请先勾选要删除的用户')
+    return
+  }
+  if (!window.confirm(`确认删除已勾选的 ${selectedQueryUserIds.value.length} 名用户吗？`)) {
+    return
+  }
+
+  processing.value = true
+  errorMessage.value = ''
+  try {
+    await deleteAdminUsersApi(selectedQueryUserIds.value)
+    if (currentTask.value) {
+      currentTask.value = {
+        ...currentTask.value,
+        items: currentTask.value.items.filter(
+          (item) => typeof item.targetId !== 'number' || !selectedQueryUserIds.value.includes(item.targetId)
+        )
+      }
+    }
+    selectedQueryUserIds.value = []
+    await loadTasks()
+    ElMessage.success('批量删除成功')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -689,9 +834,9 @@ onMounted(() => {
     <div class="admin-ai-shell">
       <header class="admin-ai-header">
         <div class="header-copy">
-          <span class="eyebrow">Admin Agent Workflow</span>
+          <span class="eyebrow">Admin Operations</span>
           <h1>AI 运维助手</h1>
-          <p>从自然语言指令进入多轮追问、结果预览与人工确认。当前页面已按任务状态动态分流，不再把查询、删除、修改混在一张通用表里。</p>
+          <p>当前页面已回归单次解析模式。管理员一次性输入完整指令，系统只做当前这一句的解析；查询结果、删除预览和修改预览统一在弹窗中展示，后续编辑与删除直接走后台接口，不再依赖多轮上下文。</p>
         </div>
       </header>
 
@@ -703,7 +848,7 @@ onMounted(() => {
           <textarea
             v-model="form.instruction"
             rows="3"
-            placeholder="例如：删除软件学院 2025 级学生；把学号 20269999 的学生年级改成 2025"
+            placeholder="例如：查询姓名为庄文轩的学生信息；删除学号 20269999 的学生；把学号 20269999 的学生年级改成 2025"
             @keydown.enter.ctrl.prevent="parseInstruction"
           />
           <div class="example-list" aria-label="常用中文指令示例">
@@ -720,7 +865,7 @@ onMounted(() => {
         </label>
 
         <button class="primary-btn" type="button" :disabled="processing" @click="parseInstruction">
-          {{ processing ? '生成中...' : '生成执行清单' }}
+          {{ processing ? '解析中...' : '生成执行结果' }}
         </button>
       </section>
 
@@ -845,67 +990,53 @@ onMounted(() => {
             </div>
           </section>
 
-          <section class="conversation-panel" v-if="conversationMessages.length">
+          <section v-if="isNeedClarificationTask" class="workflow-panel">
             <div class="panel-heading">
-              <h3>多轮对话</h3>
-              <p>后端返回的上下文消息会完整展示在这里，便于继续追问或复核。</p>
-            </div>
-            <div class="conversation-list">
-              <div
-                v-for="(message, index) in conversationMessages"
-                :key="`${message.createdAt}-${index}`"
-                class="conversation-item"
-                :class="message.role === 'assistant' ? 'is-assistant' : 'is-user'"
-              >
-                <div class="conversation-meta">
-                  <strong>{{ resolveConversationRole(message) }}</strong>
-                  <span>{{ formatDate(message.createdAt) }}</span>
-                </div>
-                <p>{{ message.content }}</p>
-              </div>
-            </div>
-          </section>
-
-          <section v-if="isNeedClarificationTask" class="followup-panel">
-            <div class="panel-heading">
-              <h3>继续补充</h3>
-              <p>{{ currentTask.pendingPrompt || '请继续补充缺失信息。' }}</p>
-            </div>
-            <label class="followup-field">
-              <span>补充输入</span>
-              <textarea
-                v-model="followUpInput"
-                rows="3"
-                placeholder="继续输入姓名、学号、学院、年级或筛选范围"
-                @keydown.enter.ctrl.prevent="sendFollowUp"
-              />
-            </label>
-            <div class="followup-actions">
-              <span>建议使用完整自然语言，例如：学号是 20269999，学院是人工智能学院。</span>
-              <button class="primary-btn" type="button" :disabled="processing" @click="sendFollowUp">
-                {{ processing ? '发送中...' : '发送补充信息' }}
-              </button>
+              <h3>缺少参数</h3>
+              <p>{{ currentTask.pendingPrompt || currentTask.failureReason || '请回到顶部输入框补充完整条件后重新提交。系统不会清空你原来的输入内容。' }}</p>
             </div>
           </section>
 
           <section v-else-if="isQueryResultTask" class="workflow-panel">
-            <div class="panel-heading">
-              <h3>查询结果</h3>
-              <p>此状态仅展示结果，不直接落库。你可以基于任意一行继续发起修改或删除预览。</p>
+            <div class="panel-heading panel-heading--split">
+              <div>
+                <h3>{{ queryResultItems.length ? '查询结果' : '未查找到匹配用户' }}</h3>
+                <p>{{ queryResultItems.length ? '以下是本次命中的学生结果。你可以直接在这里编辑或删除。' : '数据库中未查找到符合该条件的学生。' }}</p>
+              </div>
+              <button class="filter-btn" type="button" :disabled="processing || !selectedQueryUserIds.length" @click="deleteSelectedQueryUsers">
+                批量删除
+              </button>
             </div>
             <div class="detail-table-wrap">
               <table class="detail-table">
                 <thead>
                   <tr>
+                    <th class="check-col">
+                      <label class="check-label">
+                        <input type="checkbox" :checked="allQuerySelected" @change="toggleAllQueryRows">
+                        <span>全选</span>
+                      </label>
+                    </th>
                     <th>账号</th>
                     <th>姓名</th>
                     <th>补充信息</th>
-                    <th>当前状态</th>
+                    <th>结果摘要</th>
                     <th class="operation-col">操作</th>
                   </tr>
                 </thead>
                 <tbody>
+                  <tr v-if="!queryResultItems.length">
+                    <td colspan="6" class="empty-cell">数据库中未查找到符合该条件的学生</td>
+                  </tr>
                   <tr v-for="item in queryResultItems" :key="item.itemId">
+                    <td>
+                      <input
+                        v-if="typeof item.targetId === 'number'"
+                        type="checkbox"
+                        :checked="selectedQueryUserIds.includes(item.targetId)"
+                        @change="toggleQueryRow(item.targetId)"
+                      >
+                    </td>
                     <td>{{ targetAccount(item) }}</td>
                     <td>{{ targetName(item) }}</td>
                     <td>{{ targetExtra(item) || '--' }}</td>
@@ -924,7 +1055,7 @@ onMounted(() => {
             <div class="panel-heading panel-heading--split">
               <div>
                 <h3>删除预览</h3>
-                <p>后端已经先做了查询预览。只有勾选后的记录才会真正执行删除。</p>
+                <p>系统已先完成命中查询。只有勾选后的记录才会真正执行删除。</p>
               </div>
               <button class="filter-btn" type="button" @click="toggleAll">
                 {{ allSelected ? '取消全选' : '全选' }}
@@ -982,7 +1113,7 @@ onMounted(() => {
             </div>
             <div class="update-highlight">
               <span v-for="item in updatePreviewItems" :key="item.itemId" class="update-chip">
-                {{ targetName(item) }} · {{ resolveFieldLabel(item.fieldName) }}：{{ formatValue(item.oldValue) }} → {{ formatValue(item.newValue) }}
+                {{ targetName(item) }} / {{ resolveFieldLabel(item.fieldName) }}：{{ formatValue(item.oldValue) }} → {{ formatValue(item.newValue) }}
               </span>
             </div>
             <div class="detail-table-wrap">
@@ -1016,7 +1147,7 @@ onMounted(() => {
           <section v-else-if="isSuccessTask" class="workflow-panel">
             <div class="panel-heading">
               <h3>执行结果</h3>
-              <p>当前任务已经完成执行，以下是落库后的结果明细。</p>
+              <p>当前任务已经执行完成，以下是落库后的结果明细。</p>
             </div>
             <div class="detail-table-wrap">
               <table class="detail-table">
@@ -1051,7 +1182,7 @@ onMounted(() => {
           <div class="dialog-footer">
             <span v-if="isPendingDeleteTask">当前勾选 {{ selectedItemIds.length }} 项</span>
             <span v-else-if="isPendingUpdateTask">当前将执行 {{ actionableItemIds.length }} 项修改</span>
-            <span v-else-if="isNeedClarificationTask">当前任务处于待补充阶段</span>
+            <span v-else-if="isNeedClarificationTask">当前任务缺少必要参数</span>
             <span v-else></span>
 
             <div class="dialog-actions">
@@ -1112,7 +1243,7 @@ onMounted(() => {
         <template #footer>
           <div class="dialog-actions">
             <ElButton @click="closeQuickEdit">取消</ElButton>
-            <ElButton type="primary" :loading="processing" @click="submitQuickEdit">生成修改预览</ElButton>
+            <ElButton type="primary" :loading="processing" @click="submitQuickEdit">保存修改</ElButton>
           </div>
         </template>
       </el-dialog>
