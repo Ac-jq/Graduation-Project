@@ -104,8 +104,8 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private static final Pattern ACCOUNT_PATTERN = Pattern.compile("(?:account|账号|帐号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern STUDENT_NO_PATTERN = Pattern.compile("(?:studentNo|student no|学号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern COUNSELOR_NO_PATTERN = Pattern.compile("(?:counselorNo|counselor no|工号)\\s*[:：=]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern DISPLAY_NAME_PATTERN = Pattern.compile("(?:displayName|display name|\u663e\u793a\u540d|\u540d\u5b57|\u540d\u4e3a|\u53eb|named)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
-    private static final Pattern REAL_NAME_PATTERN = Pattern.compile("(?:realName|real name|\u771f\u5b9e\u59d3\u540d|\u59d3\u540d)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DISPLAY_NAME_PATTERN = Pattern.compile("(?:displayName|display name|\u663e\u793a\u540d|\u540d\u5b57|\u540d\u4e3a|\u53eb|named)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u540c\u5b66|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|[，,。；;、]|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern REAL_NAME_PATTERN = Pattern.compile("(?:realName|real name|\u771f\u5b9e\u59d3\u540d|\u59d3\u540d)\\s*(?:[:\uFF1A=]|\u4e3a|\u662f)?\\s*['\"]?([\\p{L}\\p{N}_\\-\\s]{2,40}?)(?:\u7684(?:\u5b66\u751f|\u540c\u5b66|\u8001\u5e08|\u54a8\u8be2\u5e08|\u7528\u6237)?(?:\u4fe1\u606f|\u8d44\u6599|\u8bb0\u5f55)?|[，,。；;、]|\\s|$)['\"]?", Pattern.CASE_INSENSITIVE);
     private static final Pattern RESOURCE_ID_PATTERN = Pattern.compile("(?:resource|资源|id)\\s*[:：=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern QUOTED_VALUE_PATTERN = Pattern.compile("[\"“”']([^\"“”']+)[\"“”']");
     private static final Pattern GRADE_PATTERN = Pattern.compile("(?:grade|\\u5e74\\u7ea7)\\s*[:：]?\\s*(20\\d{2}|\\d{2})|(?:^|\\D)(20\\d{2}|\\d{2})\\s*\\u7ea7", Pattern.CASE_INSENSITIVE);
@@ -735,7 +735,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (containsAny(lowered, "update", "change", "modify", "set", "修改", "更改", "改成", "改为", "变更", "启用", "禁用")) {
             return AdminAiTaskConstants.OP_UPDATE;
         }
-        if (containsAny(lowered, "create", "add", "new", "新增", "创建", "添加")) {
+        if (containsAny(lowered, "create", "add", "new", "新增", "创建", "添加", "增加")) {
             return AdminAiTaskConstants.OP_CREATE;
         }
         if (containsAny(lowered, "query", "find", "list", "show", "查询", "查看", "列出")) {
@@ -814,7 +814,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (containsAny(lowered, "inactive", "未登录") && containsAny(lowered, "student", "学生") && containsAny(lowered, "disable", "禁用", "停用")) {
             return parseInactiveStudentTask(instruction);
         }
-        if (containsAny(lowered, "create", "add", "new", "新建", "新增", "创建")) {
+        if (containsAny(lowered, "create", "add", "new", "新建", "新增", "创建", "增加")) {
             return parseCreateUserByRules(instruction);
         }
         if (containsAny(lowered, "delete", "remove", "删除", "移除")) {
@@ -854,24 +854,104 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private ParsedTask parseCreateUserByRules(String instruction) {
         UserMutationDraft draft = new UserMutationDraft();
         draft.fillMissingFromInstruction(instruction);
+        if (!StringUtils.hasText(draft.studentNo)) {
+            draft.studentNo = extractByPattern(
+                    Pattern.compile("(?:studentNo|student no|\\u5b66\\u53f7)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
+        if (!StringUtils.hasText(draft.counselorNo)) {
+            draft.counselorNo = extractByPattern(
+                    Pattern.compile("(?:counselorNo|counselor no|\\u5de5\\u53f7)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
         return parseCreateUserFromActions(List.of(draft.toCreateAction()), null, instruction);
     }
 
     private ParsedTask parseQueryUserByRules(String instruction) {
+        String explicitName = extractByPattern(
+                Pattern.compile("(?:\\u59d3\\u540d|\\u771f\\u5b9e\\u59d3\\u540d)(?:\\u4e3a|\\u662f|[:\\uFF1A=])\\s*([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40}?)(?:\\u7684(?:\\u5b66\\u751f\\u4fe1\\u606f|\\u5b66\\u751f\\u8d44\\u6599|\\u5b66\\u751f\\u8bb0\\u5f55|\\u5b66\\u751f|\\u540c\\u5b66)?|[\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]|$)", Pattern.CASE_INSENSITIVE),
+                instruction
+        );
+        if (StringUtils.hasText(explicitName)
+                && !StringUtils.hasText(extractAccount(instruction))
+                && !StringUtils.hasText(extractStudentNo(instruction))
+                && !StringUtils.hasText(extractCounselorNo(instruction))) {
+            List<SysUser> users = findStudentsByNameKeyword(explicitName);
+            if (!users.isEmpty()) {
+                List<AdminAiTaskItem> items = users.stream().map(this::buildQueryItem).toList();
+                return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                        "已整理查询结果，共匹配 " + users.size() + " 名用户", items);
+            }
+        }
         UserFilter filter = new UserFilter();
         filter.fillMissingFromInstruction(instruction);
+        if (!StringUtils.hasText(filter.realName)) {
+            filter.realName = extractByPattern(
+                    Pattern.compile("(?:\\u771f\\u5b9e\\u59d3\\u540d|\\u59d3\\u540d)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
+        if (!StringUtils.hasText(filter.displayName)) {
+            filter.displayName = extractByPattern(
+                    Pattern.compile("(?:\\u663e\\u793a\\u540d|\\u540d\\u5b57|\\u540d\\u4e3a|\\u53eb)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
         return parseQueryUserAgent(List.of(filter.toAction(AdminAiTaskConstants.OP_QUERY, FIELD_SNAPSHOT, null)), null, instruction);
     }
 
     private ParsedTask parseDeleteUserByRules(String instruction) {
+        String explicitName = extractByPattern(
+                Pattern.compile("(?:\\u59d3\\u540d|\\u771f\\u5b9e\\u59d3\\u540d)(?:\\u4e3a|\\u662f|[:\\uFF1A=])\\s*([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40}?)(?:\\u7684(?:\\u5b66\\u751f\\u4fe1\\u606f|\\u5b66\\u751f\\u8d44\\u6599|\\u5b66\\u751f\\u8bb0\\u5f55|\\u5b66\\u751f|\\u540c\\u5b66)?|[\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]|$)", Pattern.CASE_INSENSITIVE),
+                instruction
+        );
+        if (StringUtils.hasText(explicitName)
+                && !StringUtils.hasText(extractAccount(instruction))
+                && !StringUtils.hasText(extractStudentNo(instruction))
+                && !StringUtils.hasText(extractCounselorNo(instruction))) {
+            List<SysUser> users = findStudentsByNameKeyword(explicitName);
+            if (!users.isEmpty()) {
+                List<AdminAiTaskItem> items = users.stream()
+                        .map(user -> buildUserItem(user, AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, buildUserSnapshot(user), "DELETE"))
+                        .toList();
+                return ParsedTask.ready(AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                        "已生成删除预览，共影响 " + users.size() + " 名用户", items);
+            }
+        }
         UserFilter filter = new UserFilter();
         filter.fillMissingFromInstruction(instruction);
+        if (!StringUtils.hasText(filter.realName)) {
+            filter.realName = extractByPattern(
+                    Pattern.compile("(?:\\u771f\\u5b9e\\u59d3\\u540d|\\u59d3\\u540d)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
+        if (!StringUtils.hasText(filter.displayName)) {
+            filter.displayName = extractByPattern(
+                    Pattern.compile("(?:\\u663e\\u793a\\u540d|\\u540d\\u5b57|\\u540d\\u4e3a|\\u53eb)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
         return parseDeleteUserAgent(List.of(filter.toAction(AdminAiTaskConstants.OP_DELETE, FIELD_SNAPSHOT, "DELETE")), null, instruction);
     }
 
     private ParsedTask parseUpdateUserByRules(String instruction) {
         UserFilter filter = new UserFilter();
         filter.fillMissingFromInstruction(instruction);
+        if (!StringUtils.hasText(filter.realName)) {
+            filter.realName = extractByPattern(
+                    Pattern.compile("(?:\\u771f\\u5b9e\\u59d3\\u540d|\\u59d3\\u540d)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
+        if (!StringUtils.hasText(filter.displayName)) {
+            filter.displayName = extractByPattern(
+                    Pattern.compile("(?:\\u663e\\u793a\\u540d|\\u540d\\u5b57|\\u540d\\u4e3a|\\u53eb)\\s*(?:[:\\uFF1A=]|\\u4e3a|\\u662f)?\\s*['\"]?([^\\uFF0C,\\u3002\\uFF1B;\\u3001\\s]{2,40})", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
         Map<String, String> fieldUpdates = new LinkedHashMap<>();
         inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
         List<AdminOpsAiAction> actions = new ArrayList<>();
@@ -942,6 +1022,18 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             draft.merge(action);
         }
         draft.fillMissingFromInstruction(instruction);
+        if (!StringUtils.hasText(draft.studentNo)) {
+            draft.studentNo = extractByPattern(
+                    Pattern.compile("(?:studentNo|student no|学号)\\s*(?:[:：=]|为|是)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
+        if (!StringUtils.hasText(draft.counselorNo)) {
+            draft.counselorNo = extractByPattern(
+                    Pattern.compile("(?:counselorNo|counselor no|工号)\\s*(?:[:：=]|为|是)?\\s*([A-Za-z0-9_\\-]+)", Pattern.CASE_INSENSITIVE),
+                    instruction
+            );
+        }
         String roleCode = normalizeUserRole(draft.roleCode);
         if (!isSupportedUserRole(roleCode)) {
             return ParsedTask.needMoreInfo("仅支持创建学生或老师账号");
@@ -1422,6 +1514,21 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 .toList();
     }
 
+    private List<SysUser> findStudentsByNameKeyword(String nameKeyword) {
+        String normalizedKeyword = normalizeText(nameKeyword);
+        if (!StringUtils.hasText(normalizedKeyword)) {
+            return List.of();
+        }
+        return sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                        .eq(SysUser::getRoleCode, RoleConstants.STUDENT)
+                        .and(wrapper -> wrapper.like(SysUser::getRealName, normalizedKeyword)
+                                .or()
+                                .like(SysUser::getDisplayName, normalizedKeyword)))
+                .stream()
+                .sorted(Comparator.comparing(SysUser::getId))
+                .toList();
+    }
+
     private List<SysUser> findUsersByScope(UserFilter filter, boolean exactName) {
         return findUsers(filter, exactName);
     }
@@ -1604,8 +1711,20 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     private String extractCounselorNo(String instruction) {
         return firstText(extractByPattern(Pattern.compile("(?:counselorNo|counselor no|工号)\\s*[:：]?\\s*([\\w-]+)", Pattern.CASE_INSENSITIVE), instruction), extractByPattern(COUNSELOR_NO_PATTERN, instruction));
     }
-    private String extractDisplayName(String instruction) { String value = extractByPattern(DISPLAY_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
-    private String extractRealName(String instruction) { String value = extractByPattern(REAL_NAME_PATTERN, instruction); return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null; }
+    private String extractDisplayName(String instruction) {
+        String value = firstText(
+                extractByPattern(Pattern.compile("(?:显示名|名字|名为|叫)\\s*(?:[:：=]|为|是)?\\s*['\"]?([^，,。；;、\\s]{2,40})", Pattern.CASE_INSENSITIVE), instruction),
+                extractByPattern(DISPLAY_NAME_PATTERN, instruction)
+        );
+        return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null;
+    }
+    private String extractRealName(String instruction) {
+        String value = firstText(
+                extractByPattern(Pattern.compile("(?:真实姓名|姓名)\\s*(?:[:：=]|为|是)?\\s*['\"]?([^，,。；;、\\s]{2,40})", Pattern.CASE_INSENSITIVE), instruction),
+                extractByPattern(REAL_NAME_PATTERN, instruction)
+        );
+        return StringUtils.hasText(value) ? value.replaceAll("\\s+", " ").trim() : null;
+    }
     private String extractQuotedValue(String instruction) { Matcher matcher = QUOTED_VALUE_PATTERN.matcher(instruction); return matcher.find() ? normalizeText(matcher.group(1)) : null; }
     private String extractCollege(String instruction) {
         String normalized = normalizeText(instruction);

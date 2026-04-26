@@ -607,7 +607,9 @@ async function confirmCurrentTask(): Promise<void> {
 
   const deleteMode = isPendingDeleteTask.value
   const updateMode = isPendingUpdateTask.value
-  const selectedIds = selectedItemIds.value.length ? selectedItemIds.value : [...actionableItemIds.value]
+  const selectedIds = (deleteMode || updateMode)
+    ? [...selectedItemIds.value]
+    : (selectedItemIds.value.length ? selectedItemIds.value : [...actionableItemIds.value])
 
   if ((deleteMode || updateMode) && selectedIds.length === 0) {
     ElMessage.warning('请至少勾选一项后再执行')

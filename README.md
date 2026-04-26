@@ -1,107 +1,157 @@
 # JQPro
 
-高校心理健康自助与咨询协同平台后端项目。
+高校心理健康平台项目。
 
-当前仓库已经收口为纯后端交付状态，包含以下业务闭环：
-- 认证与用户：登录、登出、改密、当前用户、学生档案、管理员用户管理
-- 测评与报告：量表列表、答题草稿、提交、AI 解读、学生报告、咨询师查看学生报告
-- AI 与咨询：学生 AI 会话、咨询师查看学生 AI 会话、匿名预约、通知中心、私密聊天室 HTTP + WebSocket
-- 资源与治理：资源库、收藏、管理员资源治理、管理员量表管理、统计分析、管理员 AI 助手、审计日志
-- 安全与合规：AI/聊天室消息密文存储、权限隔离、聊天室自动封存、关键动作审计
-- 验收与交付：数据导入脚本、分阶段验收脚本、全量回归脚本、完整接口文档
+## 启动前准备
 
-## 技术栈
+启动前请先确认本机环境满足以下条件：
 
-- Java 17+
-- Spring Boot 3.2.12
-- MyBatis-Plus
+- JDK 17
 - MySQL 8.0
-- Redis 7+
-- WebSocket
-- Spring AI
-- Sa-Token
+- Redis
+- Node.js 18+ 与 npm
 
-## 目录说明
+## Redis 简单使用
 
-- `src/main/java`：后端业务代码
-- `src/main/resources`：配置、SQL 初始化脚本、模板与静态资源
-- `scripts`：数据导入与自动化验收脚本
-- `spec/01_Requirements`：任务书与 PRD
-- `spec/02_Proposals`：阶段任务、测试数据、纯后端验收指南
-- `spec/03_Design/backend`：后端设计与 PRD 核对清单
-- `spec/04_api`：完整后端接口文档
+本项目默认连接本机 Redis：
+
+- 地址：`127.0.0.1:6379`
+
+常用启动与查看方式如下。
+
+Windows 如果你已经安装 Redis，可直接进入 Redis 安装目录执行：
+
+```powershell
+redis-server.exe
+```
+
+新开一个终端查看 Redis 是否正常：
+
+```powershell
+redis-cli.exe
+ping
+```
+
+如果返回 `PONG`，说明 Redis 已正常启动。
+
+查看当前库里有多少个 key：
+
+```powershell
+dbsize
+```
+
+查看常用信息：
+
+```powershell
+info server
+info clients
+info memory
+```
+
+查看某个 key 是否存在：
+
+```powershell
+exists 你的key
+```
+
+列出部分 key 进行简单检查：
+
+```powershell
+keys *
+```
+
+说明：
+
+- `keys *` 只建议本地答辩演示时临时查看
+- 正式环境不建议频繁使用 `keys *`
+
+## 本地依赖配置
+
+后端默认使用以下本地配置，已经写在 [application.yml](E:/Store/SDJZU/毕设/JQPro/src/main/resources/application.yml) 中，不依赖额外启动脚本或环境变量：
+
+- MySQL：`127.0.0.1:3306/jqpro`
+- 用户名：`root`
+- 密码：`123456`
+- Redis：`127.0.0.1:6379`
+- 后端端口：`8080`
+
+前端默认使用以下本地配置：
+
+- 开发端口：`5173`
+- 代理目标：`http://127.0.0.1:8080`
+
+对应文件：
+
+- [vite.config.ts](E:/Store/SDJZU/毕设/JQPro/frontend/vite.config.ts)
+- [.env.development](E:/Store/SDJZU/毕设/JQPro/frontend/.env.development)
+
+## 后端启动方式
+
+后端按答辩要求，直接在 IDEA 中启动：
+
+1. 用 IDEA 打开项目根目录 `E:\Store\SDJZU\毕设\JQPro`
+2. 确认 `Project SDK` 和 `Run SDK` 都是 `JDK 17`
+3. 找到 [JqProApplication.java](E:/Store/SDJZU/毕设/JQPro/src/main/java/sdu/jiaq/jqpro/JqProApplication.java)
+4. 点击类左侧或右上角绿色三角直接运行
+
+我已经处理了两个容易导致 IDEA 启动报环境错误的点：
+
+- 去掉了运行配置里写死的 `JDK21` 路径
+- 把 Lombok 注解处理改成了走项目 classpath，不再依赖固定本地 Maven 仓库路径
+
+如果 IDEA 首次打开后还有 Lombok 报红，请确认：
+
+1. 已安装 Lombok 插件
+2. `Settings -> Build, Execution, Deployment -> Compiler -> Annotation Processors`
+   中注解处理已启用
+
+后端启动成功后访问：
+
+- [http://127.0.0.1:8080](http://127.0.0.1:8080)
+
+## 前端启动方式
+
+前端不要用 IDEA 运行配置，直接在命令行启动即可。
+
+进入目录：
+
+```powershell
+cd E:\Store\SDJZU\毕设\JQPro\frontend
+```
+
+首次安装依赖：
+
+```powershell
+npm install
+```
+
+启动开发服务：
+
+```powershell
+npm run dev
+```
+
+前端启动成功后访问：
+
+- [http://127.0.0.1:5173](http://127.0.0.1:5173)
 
 ## 默认账号
 
-- 学生：`20230001 / Jqpro@123`
-- 咨询师：`teacher01 / Jqpro@123`
 - 管理员：`admin / Jqpro@123`
-- 隔离学生：`20230002 / Jqpro@123`
+- 咨询师：`teacher01 / Jqpro@123`
 
-## 环境要求
+## 启动自检
 
-- JDK 17+，当前仓库默认使用 `E:\environment\JDK21\jdk-21.0.2\bin\java.exe`
-- MySQL 8.0
-- Redis 7+
-- Node.js 与 npm
-- 本机 `mysql.exe` 默认路径：`D:\DownLoad\mysql-8.0.33-winx64\bin\mysql.exe`
+建议答辩前按下面顺序自检一次：
 
-## 启动方式
+1. 先启动 MySQL 和 Redis
+2. 在 IDEA 中启动后端 `JqProApplication`
+3. 进入 `frontend` 目录执行 `npm run dev`
+4. 打开前端页面登录测试
 
-### 1. IDEA 运行后端
+## 目录说明
 
-在 IDEA 右上角运行配置中选择 `JQPro Backend`，点击运行。
-
-该配置已固定使用：
-
-```text
-E:\environment\JDK21\jdk-21.0.2
-```
-
-后端基础地址：`http://127.0.0.1:8080`
-
-### 2. IDEA 运行前端
-
-在 IDEA 右上角运行配置中选择 `JQPro Frontend`，点击运行。
-
-前端开发地址：`http://127.0.0.1:5173`
-
-### 3. 可选：导入验收数据
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\import-acceptance-data.ps1
-```
-
-## 自动化验收
-
-### 分阶段脚本
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\phase1-auth-profile.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\phase1-assessment-report.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\phase2-aichat-appointment.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\phase3-resource-governance.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\phase4-6-closure.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\phase7-security-regression.ps1
-```
-
-### 全量回归
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\full-acceptance.ps1
-```
-
-## 文档入口
-
-- 后端 PRD 核对清单：`spec/03_Design/backend/prd-backend-checklist.md`
-- 纯后端验收指南：`spec/02_Proposals/纯后端_测试验收指南.md`
-- 接口文档总览：`spec/04_api/README.md`
-- 脚本说明：`scripts/README.md`
-
-## 当前状态
-
-当前仓库已达到：
-- 纯后端可运行
-- 纯后端可回归
-- 纯后端可验收
-- 纯后端可答辩展示与交付
+- [src/main/java](E:/Store/SDJZU/毕设/JQPro/src/main/java)：后端源码
+- [src/main/resources](E:/Store/SDJZU/毕设/JQPro/src/main/resources)：配置与 SQL
+- [frontend](E:/Store/SDJZU/毕设/JQPro/frontend)：前端项目
+- [scripts](E:/Store/SDJZU/毕设/JQPro/scripts)：历史脚本，当前手动启动不依赖这些脚本
