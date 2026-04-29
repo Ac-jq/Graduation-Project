@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.AppointmentConstants;
 import sdu.jiaq.jqpro.common.constant.ChatConstants;
 import sdu.jiaq.jqpro.common.constant.RoleConstants;
+import sdu.jiaq.jqpro.common.util.AvatarUrlUtil;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
 import sdu.jiaq.jqpro.common.util.ChatCryptoUtil;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
@@ -203,7 +204,7 @@ public class ConsultChatServiceImpl implements ConsultChatService {
                 .senderUserId(message.getSenderUserId())
                 .senderType(message.getSenderType())
                 .senderDisplayName(resolveSenderDisplayName(sender))
-                .senderAvatarUrl(avatarUrl)
+                .senderAvatarUrl(AvatarUrlUtil.toPublicUrl(avatarUrl))
                 .content(ChatCryptoUtil.decrypt(message.getContentCipherText()))
                 .createdAt(message.getCreatedAt())
                 .build();

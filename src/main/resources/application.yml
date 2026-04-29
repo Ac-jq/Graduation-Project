@@ -18,7 +18,9 @@ spring:
       database: 0
   ai:
     openai:
-      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
+      # 旧方案曾在配置文件内提供默认 API Key。
+      # 当前答辩版改为仅从系统环境变量读取，便于演示“应用读取系统环境变量”的方式。
+      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
   jackson:
     default-property-inclusion: non_null
@@ -47,7 +49,7 @@ jqpro:
       enabled: ${JQPRO_AI_CHAT_ENABLED:${JQPRO_AI_INTERPRETATION_ENABLED:true}}
       base-url: ${JQPRO_AI_CHAT_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_CHAT_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
-      api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
+      api-key: ${JQPRO_AI_CHAT_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
       model: ${JQPRO_AI_CHAT_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
       auth-header-name: ${JQPRO_AI_CHAT_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
       auth-prefix: ${JQPRO_AI_CHAT_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
@@ -64,10 +66,10 @@ jqpro:
         4. 如果学生明显提到自伤、自杀、无法保证自身安全，请明确建议其立刻联系老师、家人或当地紧急支持。
         5. 允许适度深入分析，但不要把责任推回系统配置。
     admin-ops:
-      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:false}
+      enabled: ${JQPRO_AI_ADMIN_OPS_ENABLED:true}
       base-url: ${JQPRO_AI_ADMIN_OPS_BASE_URL:${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}}
       path: ${JQPRO_AI_ADMIN_OPS_PATH:${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}}
-      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}}
+      api-key: ${JQPRO_AI_ADMIN_OPS_API_KEY:${JQPRO_AI_INTERPRETATION_API_KEY:}}
       model: ${JQPRO_AI_ADMIN_OPS_MODEL:${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}}
       auth-header-name: ${JQPRO_AI_ADMIN_OPS_AUTH_HEADER_NAME:${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}}
       auth-prefix: ${JQPRO_AI_ADMIN_OPS_AUTH_PREFIX:${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }}
@@ -98,7 +100,7 @@ jqpro:
       enabled: ${JQPRO_AI_INTERPRETATION_ENABLED:true}
       base-url: ${JQPRO_AI_INTERPRETATION_BASE_URL:https://api.deepseek.com}
       path: ${JQPRO_AI_INTERPRETATION_PATH:/v1/chat/completions}
-      api-key: ${JQPRO_AI_INTERPRETATION_API_KEY:sk-f3d59cf6e3da4282ad29f2bae4fea256}
+      api-key: ${JQPRO_AI_INTERPRETATION_API_KEY:}
       model: ${JQPRO_AI_INTERPRETATION_MODEL:deepseek-chat}
       auth-header-name: ${JQPRO_AI_INTERPRETATION_AUTH_HEADER_NAME:Authorization}
       auth-prefix: ${JQPRO_AI_INTERPRETATION_AUTH_PREFIX:Bearer }

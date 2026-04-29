@@ -162,12 +162,12 @@ async function goLogin(): Promise<void> {
 
         <div class="step-rail" aria-label="注册步骤">
           <button
-            v-for="item in stepMeta"
-            :key="item.step"
-            type="button"
-            class="step-dot"
-            :class="{ 'is-active': currentStep === item.step, 'is-done': currentStep > item.step }"
-            :aria-current="currentStep === item.step ? 'step' : undefined"
+              v-for="item in stepMeta"
+              :key="item.step"
+              type="button"
+              class="step-dot"
+              :class="{ 'is-active': currentStep === item.step, 'is-done': currentStep > item.step }"
+              :aria-current="currentStep === item.step ? 'step' : undefined"
           >
             <span>{{ item.step }}</span>
             <strong>{{ item.label }}</strong>
@@ -189,22 +189,22 @@ async function goLogin(): Promise<void> {
               <label class="field-line">
                 <span>账号 / 用户名</span>
                 <input
-                  v-model="registerForm.account"
-                  type="text"
-                  autocomplete="username"
-                  placeholder="例如 20220353"
-                  :disabled="submitting"
+                    v-model="registerForm.account"
+                    type="text"
+                    autocomplete="username"
+                    placeholder="例如 20220353"
+                    :disabled="submitting"
                 >
               </label>
 
               <label class="field-line">
                 <span>密码</span>
                 <input
-                  v-model="registerForm.password"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder="至少 6 位安全密码"
-                  :disabled="submitting"
+                    v-model="registerForm.password"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder="至少 6 位安全密码"
+                    :disabled="submitting"
                 >
               </label>
             </form>
@@ -231,13 +231,13 @@ async function goLogin(): Promise<void> {
                 <span class="field-caption">性别</span>
                 <div class="choice-grid choice-grid--two">
                   <button
-                    v-for="gender in genderOptions"
-                    :key="gender"
-                    type="button"
-                    class="choice-pill"
-                    :class="{ 'is-selected': registerForm.gender === gender }"
-                    :disabled="submitting"
-                    @click="chooseOption('gender', gender)"
+                      v-for="gender in genderOptions"
+                      :key="gender"
+                      type="button"
+                      class="choice-pill"
+                      :class="{ 'is-selected': registerForm.gender === gender }"
+                      :disabled="submitting"
+                      @click="chooseOption('gender', gender)"
                   >
                     {{ gender }}
                   </button>
@@ -248,13 +248,13 @@ async function goLogin(): Promise<void> {
                 <span class="field-caption">年级</span>
                 <div class="choice-grid">
                   <button
-                    v-for="grade in gradeOptions"
-                    :key="grade"
-                    type="button"
-                    class="choice-pill"
-                    :class="{ 'is-selected': registerForm.grade === grade }"
-                    :disabled="submitting"
-                    @click="chooseOption('grade', grade)"
+                      v-for="grade in gradeOptions"
+                      :key="grade"
+                      type="button"
+                      class="choice-pill"
+                      :class="{ 'is-selected': registerForm.grade === grade }"
+                      :disabled="submitting"
+                      @click="chooseOption('grade', grade)"
                   >
                     {{ grade }}
                   </button>
@@ -349,9 +349,9 @@ async function goLogin(): Promise<void> {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 18% 24%, rgba(176, 198, 178, 0.42), transparent 32%),
-    radial-gradient(circle at 82% 72%, rgba(231, 208, 183, 0.38), transparent 30%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(106, 122, 107, 0.04));
+      radial-gradient(circle at 18% 24%, rgba(176, 198, 178, 0.42), transparent 32%),
+      radial-gradient(circle at 82% 72%, rgba(231, 208, 183, 0.38), transparent 30%),
+      linear-gradient(145deg, rgba(255, 255, 255, 0.22), rgba(106, 122, 107, 0.04));
   animation: auroraDrift 10s ease-in-out infinite alternate;
 }
 
@@ -535,15 +535,19 @@ async function goLogin(): Promise<void> {
   font-size: 0.92rem;
 }
 
+/* ★ 修改点：将 grid 改成了 flex 列排版，避免因 min-height 自动拉伸间距 ★ */
 .wizard-form {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 1.45rem;
   min-height: 320px;
 }
 
+/* ★ 修改点：使用 flex 并缩小了 gap 间距 ★ */
 .field-line {
-  display: grid;
-  gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .field-line span {
@@ -588,8 +592,10 @@ async function goLogin(): Promise<void> {
   font-weight: 500;
 }
 
+/* ★ 修改点：保持与上方一致，使用 flex 防止拉伸 ★ */
 .choice-block {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.8rem;
 }
 

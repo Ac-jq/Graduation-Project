@@ -290,6 +290,7 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
 
         LocalDateTime now = LocalDateTime.now();
         task.setAgentStatus(AdminAiTaskConstants.AGENT_RESULT);
+        task.setWorkflowStatus(AdminAiTaskConstants.WORKFLOW_SUCCESS);
         task.setConfirmStatus(AdminAiTaskConstants.CONFIRM_CONFIRMED);
         task.setExecuteStatus(AdminAiTaskConstants.EXECUTE_EXECUTED);
         task.setPendingPrompt(null);
@@ -662,26 +663,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
     }
 
     private ParsedTask parseInstruction(String instruction) {
-        ParsedTask explicitIdentifierTask = parseExplicitIdentifierQuery(instruction);
-        if (explicitIdentifierTask != null) {
-            return explicitIdentifierTask;
-        }
         if (adminOpsAiClient.isEnabled()) {
             try {
                 ParsedTask task = parseByAi(instruction);
                 if (task != null) {
-                    if (AdminAiTaskConstants.PARSE_READY.equals(task.parseStatus) && shouldPreferRuleParser(instruction)) {
-                        ParsedTask ruleTask = parseByRules(instruction);
-                        if (AdminAiTaskConstants.PARSE_READY.equals(ruleTask.parseStatus)) {
-                            return ruleTask;
-                        }
-                    }
-                    if (AdminAiTaskConstants.PARSE_NEED_MORE_INFO.equals(task.parseStatus)) {
-                        ParsedTask ruleTask = parseByRules(instruction);
-                        if (AdminAiTaskConstants.PARSE_READY.equals(ruleTask.parseStatus)) {
-                            return ruleTask;
-                        }
-                    }
                     return task;
                 }
             } catch (BusinessException exception) {
@@ -689,6 +674,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             } catch (Exception exception) {
                 log.warn("Admin AI parse fallback", exception);
             }
+        }
+        ParsedTask explicitIdentifierTask = parseExplicitIdentifierQuery(instruction);
+        if (explicitIdentifierTask != null) {
+            return explicitIdentifierTask;
         }
         return parseByRules(instruction);
     }
@@ -1123,16 +1112,10 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             mergeFieldUpdate(fieldUpdates, action.fieldName(), action.newValue());
             mergeFieldUpdate(fieldUpdates, FIELD_STATUS, action.status());
         }
-        Set<String> explicitTargetFields = collectTargetFields(filter);
-        filter.fillMissingFromInstruction(instruction);
-        clearSupplementalUpdateTargetConflicts(filter, fieldUpdates, explicitTargetFields);
         filter.roleCode = normalizeUserRole(filter.roleCode);
         filter.status = null;
-        if (fieldUpdates.isEmpty()) {
-            inferDirectFieldUpdates(instruction, fieldUpdates);
-        }
-        if (fieldUpdates.isEmpty()) {
-            inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
+        if (!hasAnyUserFilter(filter)) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "缺少修改目标，请补充账号、姓名、学号或工号"));
         }
         if (fieldUpdates.isEmpty()) {
             return ParsedTask.needMoreInfo(firstText(summaryText, "请继续补充要修改的字段和新值"));
@@ -1163,9 +1146,11 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         for (AdminOpsAiAction action : actions) {
             filter.merge(action);
         }
-        filter.fillMissingFromInstruction(instruction);
-        filter.roleCode = normalizeUserRole(filter.roleCode);
-        List<SysUser> users = findUsersByScope(filter, false);
+        filter.roleCode = normalizeUserRole(firstText(filter.roleCode, resolveRoleFromInstruction(instruction)));
+        if (!hasAnyUserFilter(filter)) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "缺少查询条件，请补充账号、姓名、学号、工号、学院或年级"));
+        }
+        List<SysUser> users = findUsersByScope(filter, shouldUseExactName(filter));
         if (users.isEmpty()) {
             return ParsedTask.needMoreInfo("没有找到匹配的用户，请补充账号、姓名、学号、工号、学院或年级");
         }
@@ -1182,10 +1167,12 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         for (AdminOpsAiAction action : actions) {
             filter.merge(action);
         }
-        filter.fillMissingFromInstruction(instruction);
         filter.roleCode = normalizeUserRole(filter.roleCode);
         filter.status = normalizeUserStatus(filter.status);
-        List<SysUser> users = findUsersByScope(filter, false);
+        if (!hasAnyUserFilter(filter)) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "缺少删除条件，请补充账号、姓名、学号、工号、学院或年级"));
+        }
+        List<SysUser> users = findUsersByScope(filter, shouldUseExactName(filter));
         if (users.isEmpty()) {
             return ParsedTask.needMoreInfo("没有找到可删除的目标，请补充账号、学号、工号、姓名、学院或年级");
         }
@@ -1207,22 +1194,16 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
             mergeFieldUpdate(fieldUpdates, action.fieldName(), action.newValue());
             mergeFieldUpdate(fieldUpdates, FIELD_STATUS, action.status());
         }
-        Set<String> explicitTargetFields = collectTargetFields(filter);
-        filter.fillMissingFromInstruction(instruction);
-        clearSupplementalUpdateTargetConflicts(filter, fieldUpdates, explicitTargetFields);
         filter.roleCode = normalizeUserRole(filter.roleCode);
         filter.status = null;
-        if (fieldUpdates.isEmpty()) {
-            inferDirectFieldUpdates(instruction, fieldUpdates);
-        }
-        if (fieldUpdates.isEmpty()) {
-            inferFieldUpdatesFromInstruction(instruction, fieldUpdates);
+        if (!hasAnyUserFilter(filter)) {
+            return ParsedTask.needMoreInfo(firstText(summaryText, "缺少修改目标，请补充账号、姓名、学号或工号"));
         }
         clearUpdateTargetConflictsForStrongIdentifier(filter, fieldUpdates);
         if (fieldUpdates.isEmpty()) {
             return ParsedTask.needMoreInfo(firstText(summaryText, "请继续补充要修改的字段和新值"));
         }
-        List<SysUser> users = findUsersByScope(filter, false);
+        List<SysUser> users = findUsersByScope(filter, shouldUseExactName(filter));
         if (users.isEmpty()) {
             return buildNotFoundTask(firstText(summaryText, "数据库中未查找到符合该条件的学生"));
         }
@@ -1535,9 +1516,6 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
 
     private List<SysUser> findUsers(UserFilter filter, boolean exactName) {
         String roleCode = normalizeUserRole(filter.roleCode);
-        if (!StringUtils.hasText(roleCode)) {
-            roleCode = RoleConstants.STUDENT;
-        }
         String status = normalizeUserStatus(filter.status);
         String keyword = firstText(filter.account, filter.studentNo, filter.displayName, filter.realName);
         logUserQuerySql(roleCode, status, keyword, filter.grade, filter.college);
@@ -1571,7 +1549,6 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
                 .filter(Objects::nonNull)
                 .filter(candidate -> matchesUserFilter(candidate, filter, exactName))
                 .map(UserCandidate::user)
-                .filter(user -> RoleConstants.STUDENT.equals(user.getRoleCode()))
                 .sorted(Comparator.comparing(SysUser::getId))
                 .toList();
     }
@@ -1767,6 +1744,30 @@ public class AdminAiTaskServiceImpl implements AdminAiTaskService {
         if (StringUtils.hasText(filter.status)) fields.add(FIELD_STATUS);
         if (StringUtils.hasText(filter.roleCode)) fields.add(FIELD_ROLE_CODE);
         return fields;
+    }
+    private boolean hasAnyUserFilter(UserFilter filter) {
+        return StringUtils.hasText(filter.account)
+                || StringUtils.hasText(filter.displayName)
+                || StringUtils.hasText(filter.realName)
+                || StringUtils.hasText(filter.studentNo)
+                || StringUtils.hasText(filter.counselorNo)
+                || StringUtils.hasText(filter.college)
+                || StringUtils.hasText(filter.grade)
+                || StringUtils.hasText(filter.status)
+                || StringUtils.hasText(filter.roleCode);
+    }
+    private boolean shouldUseExactName(UserFilter filter) {
+        boolean hasStrongIdentifier = StringUtils.hasText(filter.account)
+                || StringUtils.hasText(filter.studentNo)
+                || StringUtils.hasText(filter.counselorNo);
+        if (hasStrongIdentifier) {
+            return false;
+        }
+        boolean hasName = StringUtils.hasText(filter.realName) || StringUtils.hasText(filter.displayName);
+        boolean hasBroadScope = StringUtils.hasText(filter.college)
+                || StringUtils.hasText(filter.grade)
+                || StringUtils.hasText(filter.status);
+        return hasName && !hasBroadScope;
     }
     private void clearSupplementalUpdateTargetConflicts(UserFilter filter, Map<String, String> fieldUpdates, Set<String> explicitTargetFields) {
         boolean hasStrongIdentifier = StringUtils.hasText(filter.account)

@@ -192,7 +192,9 @@ public class DataInitializationRunner implements CommandLineRunner {
             profile = new StudentProfile();
             profile.setUserId(studentUser.getId());
         }
-        profile.setAvatarUrl("http://127.0.0.1:8080/assets/avatars/presets/avatar-01.jpg");
+        if (profile.getAvatarUrl() == null || profile.getAvatarUrl().isBlank()) {
+            profile.setAvatarUrl("http://127.0.0.1:8080/assets/avatars/presets/avatar-01.jpg");
+        }
         profile.setCollege("软件学院");
         profile.setGrade("2023级");
         profile.setGender("男");

@@ -8,6 +8,7 @@ import sdu.jiaq.jqpro.common.constant.ChatConstants;
 import sdu.jiaq.jqpro.common.constant.RoleConstants;
 import sdu.jiaq.jqpro.common.constant.UserStatusConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
+import sdu.jiaq.jqpro.common.util.AvatarUrlUtil;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentActionRequest;
 import sdu.jiaq.jqpro.dto.appointment.AppointmentCounselorOptionResponse;
@@ -87,7 +88,7 @@ public class AppointmentServiceImpl implements AppointmentService {
                         .counselorUserId(counselor.getId())
                         .counselorName(counselor.getDisplayName())
                         .counselorNo(counselor.getCounselorNo())
-                        .avatarUrl(counselor.getAvatarUrl())
+                        .avatarUrl(AvatarUrlUtil.toPublicUrl(counselor.getAvatarUrl()))
                         .build())
                 .toList();
     }

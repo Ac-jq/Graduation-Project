@@ -31,6 +31,8 @@ import java.util.List;
 @Service
 public class AuthServiceImpl implements AuthService {
 
+    private static final String BACKEND_ORIGIN = "http://127.0.0.1:8080";
+
     private final SysUserMapper sysUserMapper;
     private final StudentProfileMapper studentProfileMapper;
     private final AuditLogService auditLogService;
@@ -68,7 +70,7 @@ public class AuthServiceImpl implements AuthService {
                 .account(sysUser.getAccount())
                 .roleCode(sysUser.getRoleCode())
                 .displayName(sysUser.getDisplayName())
-                .avatarUrl(sysUser.getAvatarUrl())
+                .avatarUrl(resolvePublicAvatarUrl(sysUser))
                 .roles(List.of(sysUser.getRoleCode()))
                 .build();
     }
@@ -160,7 +162,7 @@ public class AuthServiceImpl implements AuthService {
                 .roleCode(sysUser.getRoleCode())
                 .realName(sysUser.getRealName())
                 .displayName(sysUser.getDisplayName())
-                .avatarUrl(sysUser.getAvatarUrl())
+                .avatarUrl(resolvePublicAvatarUrl(sysUser))
                 .studentNo(sysUser.getStudentNo())
                 .counselorNo(sysUser.getCounselorNo())
                 .roles(List.of(sysUser.getRoleCode()))
@@ -181,5 +183,26 @@ public class AuthServiceImpl implements AuthService {
             return value;
         }
         throw new BusinessException("性别仅支持男或女");
+    }
+    private String resolvePublicAvatarUrl(SysUser sysUser) {
+        String avatarUrl = sysUser.getAvatarUrl();
+        if (RoleConstants.STUDENT.equals(sysUser.getRoleCode())) {
+            StudentProfile profile = studentProfileMapper.selectOne(new LambdaQueryWrapper<StudentProfile>()
+                    .eq(StudentProfile::getUserId, sysUser.getId())
+                    .last("limit 1"));
+            if (profile != null && profile.getAvatarUrl() != null && !profile.getAvatarUrl().isBlank()) {
+                avatarUrl = profile.getAvatarUrl();
+            }
+        }
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            return avatarUrl;
+        }
+        if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) {
+            return avatarUrl;
+        }
+        if (avatarUrl.startsWith("/")) {
+            return BACKEND_ORIGIN + avatarUrl;
+        }
+        return BACKEND_ORIGIN + "/" + avatarUrl;
     }
 }

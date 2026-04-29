@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import sdu.jiaq.jqpro.common.constant.RoleConstants;
 import sdu.jiaq.jqpro.common.exception.BusinessException;
+import sdu.jiaq.jqpro.common.util.AvatarUrlUtil;
 import sdu.jiaq.jqpro.common.util.SecurityUtil;
 import sdu.jiaq.jqpro.dto.counselor.CounselorProfileResponse;
 import sdu.jiaq.jqpro.dto.counselor.UpdateCounselorProfileRequest;
@@ -61,7 +62,7 @@ public class CounselorProfileServiceImpl implements CounselorProfileService {
                 .displayName(counselor.getDisplayName())
                 .counselorNo(counselor.getCounselorNo())
                 .roleCode(counselor.getRoleCode())
-                .avatarUrl(counselor.getAvatarUrl())
+                .avatarUrl(AvatarUrlUtil.toPublicUrl(counselor.getAvatarUrl()))
                 .build();
     }
 }

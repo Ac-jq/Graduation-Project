@@ -170,6 +170,18 @@ public class ReportServiceImpl implements ReportService {
             throw new BusinessException("报告关联数据缺失");
         }
 
+        List<ResourceSummaryResponse> recommendedResources =
+                reportRecommendationService.listSnapshotResources(report.getRecommendedResourceIds());
+        if (recommendedResources.isEmpty()) {
+            String detailedAssessmentContext = buildDetailedAssessmentContext(scale, report);
+            String fallbackSnapshot = reportRecommendationService.buildRecommendedResourceIdSnapshot(
+                    scale,
+                    report,
+                    detailedAssessmentContext
+            );
+            recommendedResources = reportRecommendationService.listSnapshotResources(fallbackSnapshot);
+        }
+
         return ReportDetailResponse.builder()
                 .reportId(report.getId())
                 .sessionId(report.getSessionId())
@@ -184,7 +196,7 @@ public class ReportServiceImpl implements ReportService {
                 .aiInterpretation(report.getAiInterpretation())
                 .recommendationNote(buildRecommendationNote(report.getLevelCode()))
                 .recommendAppointment("HIGH".equals(report.getLevelCode()) || "MEDIUM".equals(report.getLevelCode()))
-                .recommendedResources(reportRecommendationService.listSnapshotResources(report.getRecommendedResourceIds()))
+                .recommendedResources(recommendedResources)
                 .noticeText(AssessmentNoticeConstants.NON_DIAGNOSTIC_NOTICE)
                 .createdAt(report.getCreatedAt())
                 .build();

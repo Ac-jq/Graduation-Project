@@ -15,7 +15,7 @@ export interface ConsultChatMessage {
   senderDisplayName?: string | null
   senderAvatarUrl?: string | null
   content: string
-  createdAt: string
+  createdAt: string | number[] | null
 }
 
 export interface ConsultChatSendPayload {

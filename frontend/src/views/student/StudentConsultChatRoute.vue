@@ -8,6 +8,7 @@ import { toErrorMessage, toNumberParam } from '@/views/shared/page-logic'
 
 const route = useRoute()
 const router = useRouter()
+const backendOrigin = import.meta.env.VITE_API_BASE_URL ?? `${window.location.protocol}//${window.location.hostname}:8080`
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -27,119 +28,131 @@ const canSend = computed(() => {
   if (!chatSession.value) {
     return false
   }
-
   return !chatSession.value.sealed
-    && chatSession.value.status !== 'ARCHIVED'
-    && chatSession.value.status !== 'CLOSED'
-    && socketState.value === 'connected'
-    && peerOnline.value
+      && chatSession.value.status !== 'ARCHIVED'
+      && chatSession.value.status !== 'CLOSED'
+      && socketState.value === 'connected'
+      && peerOnline.value
 })
 const socketStateLabel = computed(() => {
   switch (socketState.value) {
     case 'connecting':
       return '正在连接'
     case 'connected':
-      return '已连接'
+      return '连接正常'
     case 'closed':
-      return '已断开'
+      return '连接已断开'
     default:
-      return '未连接'
+      return '等待连接'
   }
 })
-const roomAvailabilityText = computed(() => {
+const roomStatusLabel = computed(() => {
   if (!chatSession.value) {
     return '正在读取会话状态'
   }
   if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
-    return '已结束聊天'
+    return '本次聊天室已结束'
   }
   if (chatSession.value.status === 'ARCHIVED') {
-    return '聊天室已归档'
+    return '本次聊天室已归档'
   }
   if (socketState.value !== 'connected') {
-    return '正在建立连接'
+    return '正在建立实时通道'
   }
-  return peerOnline.value ? '双方已上线，可以开始聊天' : '你已进入聊天室，正在等待对方上线'
+  return peerOnline.value ? '咨询师已上线，可以开始交流' : '你已进入聊天室，正在等待咨询师上线'
 })
-const composerDescription = computed(() => {
+const composerHint = computed(() => {
   if (!chatSession.value) {
-    return '正在加载聊天室信息。'
+    return '正在加载聊天室信息，请稍候。'
   }
   if (chatSession.value.sealed || chatSession.value.status === 'CLOSED') {
-    return '聊天室已经结束，当前只能查看历史记录。'
+    return '本次预约沟通已经结束，当前页面仅保留历史记录查看。'
   }
   if (chatSession.value.status === 'ARCHIVED') {
-    return '聊天室已经归档，当前不能继续发送消息。'
+    return '聊天室已归档，当前无法继续发送消息。'
   }
   if (socketState.value !== 'connected') {
-    return '正在连接聊天室，请稍候。'
+    return '正在连接实时通道，请稍候。'
   }
   if (!peerOnline.value) {
-    return '你已经进入聊天室，系统会在对方上线后自动开放输入。'
+    return '系统会在咨询师进入后自动开放输入区，无需刷新页面。'
   }
-  return '对方已经上线，你可以继续和咨询师交流。'
+  return '可以从最近最具体的一件事说起，系统会保留你们本次预约后的沟通记录。'
 })
 
 function parseChatDate(value: string | Date | number[] | null | undefined): Date | null {
-  if (!value) return null
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (!value) {
+    return null
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
   if (Array.isArray(value)) {
     const [year, month, day, hour = 0, minute = 0, second = 0, nano = 0] = value
-    const parsed = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1000000))
+    const parsed = new Date(year, month - 1, day, hour, minute, second, Math.floor(nano / 1_000_000))
     return Number.isNaN(parsed.getTime()) ? null : parsed
   }
   const parsed = new Date(String(value).trim().replace(' ', 'T'))
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
+function normalizeMessage(message: ConsultChatMessage): ConsultChatMessage {
+  const parsedDate = parseChatDate(message.createdAt)
+  return {
+    ...message,
+    createdAt: (parsedDate ?? new Date()).toISOString()
+  }
+}
+
 function formatDate(value: string | Date | number[] | null | undefined): string {
-  const date = parseChatDate(value)
-  if (!date) return '暂无记录'
+  const parsedDate = parseChatDate(value)
+  const safeDate = parsedDate ?? new Date()
   return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit'
-  }).format(date)
-}
-
-function resolveSenderLabel(senderType: string): string {
-  switch (senderType) {
-    case 'STUDENT':
-      return '我'
-    case 'COUNSELOR':
-      return '咨询老师'
-    case 'SYSTEM':
-      return '系统'
-    default:
-      return senderType
-  }
+  }).format(safeDate)
 }
 
 function resolveSenderName(message: ConsultChatMessage): string {
   if (message.senderDisplayName?.trim()) {
     return message.senderDisplayName.trim()
   }
-  return resolveSenderLabel(message.senderType)
+  if (message.senderType === 'COUNSELOR') {
+    return '咨询师'
+  }
+  if (message.senderType === 'SYSTEM') {
+    return '系统消息'
+  }
+  return '我'
 }
 
 function resolveSenderInitial(message: ConsultChatMessage): string {
-  return resolveSenderName(message).slice(0, 1) || (message.senderType === 'COUNSELOR' ? '师' : '我')
+  return resolveSenderName(message).slice(0, 1) || (message.senderType === 'COUNSELOR' ? '咨' : '我')
 }
 
-function goBack(): void {
-  router.back()
+function resolveAvatarSrc(avatarUrl: string | null | undefined): string {
+  if (!avatarUrl) {
+    return ''
+  }
+  if (avatarUrl.startsWith('http://') || avatarUrl.startsWith('https://')) {
+    return avatarUrl
+  }
+  if (avatarUrl.startsWith('/')) {
+    return `${backendOrigin}${avatarUrl}`
+  }
+  return avatarUrl
 }
 
-function resolveMessageClass(senderType: string): string {
+function resolveBubbleClass(senderType: string): string {
   if (senderType === 'STUDENT') {
-    return 'chat-bubble chat-bubble--self'
+    return 'message-card message-card--self'
   }
   if (senderType === 'COUNSELOR') {
-    return 'chat-bubble chat-bubble--peer'
+    return 'message-card message-card--peer'
   }
-  return 'chat-bubble chat-bubble--system'
+  return 'message-card message-card--system'
 }
 
 async function scrollToLatestMessage(): Promise<void> {
@@ -164,14 +177,12 @@ function disconnectSocket(): void {
 function applySocketPayload(payload: ConsultChatSocketPayload): void {
   if (payload.type === 'CONNECTED') {
     peerOnline.value = (payload.onlineCount ?? 0) > 1
-    if (payload.tip) {
-      errorMessage.value = ''
-    }
+    errorMessage.value = ''
     return
   }
 
   if (payload.type === 'MESSAGE' && payload.message) {
-    messages.value = [...messages.value, payload.message]
+    messages.value = [...messages.value, normalizeMessage(payload.message)]
     void scrollToLatestMessage()
     return
   }
@@ -195,9 +206,6 @@ function applySocketPayload(payload: ConsultChatSocketPayload): void {
       }
       peerOnline.value = false
       composeForm.content = ''
-    }
-    if (payload.tip) {
-      errorMessage.value = ''
     }
     return
   }
@@ -243,7 +251,7 @@ function connectSocket(): void {
   }
 
   socket.onerror = () => {
-    errorMessage.value = '实时连接出现异常，请稍后重试。'
+    errorMessage.value = '实时通道连接异常，请稍后重试。'
     socketState.value = 'closed'
     peerOnline.value = false
   }
@@ -268,7 +276,7 @@ async function loadChatContext(): Promise<void> {
       fetchConsultChatMessagesApi(appointmentId.value)
     ])
     chatSession.value = session
-    messages.value = history
+    messages.value = history.map(normalizeMessage)
     connectSocket()
     await scrollToLatestMessage()
   } catch (error) {
@@ -288,18 +296,22 @@ function sendMessage(): void {
   composeForm.content = ''
 }
 
+function goBack(): void {
+  void router.push({ name: 'student-appointments' })
+}
+
 watch(
-  () => route.params.appointmentId,
-  () => {
-    void loadChatContext()
-  }
+    () => route.params.appointmentId,
+    () => {
+      void loadChatContext()
+    }
 )
 
 watch(
-  () => messages.value.length,
-  async () => {
-    await scrollToLatestMessage()
-  }
+    () => messages.value.length,
+    async () => {
+      await scrollToLatestMessage()
+    }
 )
 
 onMounted(() => {
@@ -313,177 +325,137 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="healing-chat-page">
-    <div class="healing-chat-shell">
-      <nav class="back-nav">
-        <button class="back-link" type="button" @click="goBack">
-          <span class="arrow">←</span> 返回上一页
-        </button>
-      </nav>
+    <div class="app-window">
+      <aside class="app-sidebar">
+        <nav class="sidebar-nav">
+          <button class="nav-link" type="button" @click="goBack">
+            <span class="nav-link__arrow">←</span>
+            返回预约记录
+          </button>
+        </nav>
 
-      <header class="healing-chat-hero">
-        <div class="healing-chat-copy">
-          <p class="healing-chat-eyebrow">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M19.8 4.4c-4.9.3-8.9 2.1-11.2 5.1-1.8 2.4-2.2 5.2-1.3 7.7 2.7.7 5.5.1 7.8-1.8 2.9-2.4 4.5-6.4 4.7-11Z" />
-              <path d="M4.5 19.5c2.3-3.7 5.2-6.3 8.6-7.8" />
-            </svg>
-            学生私密交流空间
+        <header class="sidebar-hero">
+          <p class="overline">学生预约沟通</p>
+          <h1 class="hero-title">一间安静的<br/>聊天室。</h1>
+          <p class="hero-summary">
+            把想说的话留在这里。对方上线后会立刻切换到可聊天状态，无需手动刷新页面。
           </p>
-          <h1 class="healing-chat-title">把想说的话，轻轻放在这里。</h1>
-          <p class="healing-chat-summary">
-            这里不是任务面板，也不是冷冰冰的工单窗口。它更像一间被安静留白包裹的谈话室，
-            你可以在这里继续预约后的交流，让问题慢一点展开，让情绪有地方落下。
-          </p>
-        </div>
+        </header>
 
-        <div v-if="chatSession" class="healing-chat-hero-card">
-          <p class="hero-card__label">本次会话</p>
-          <div class="hero-card__row">
-            <span>预约编号</span>
-            <strong>#{{ chatSession.appointmentId }}</strong>
-          </div>
-          <div class="hero-card__row">
-            <span>当前状态</span>
-            <strong>{{ roomAvailabilityText }}</strong>
-          </div>
-          <div class="hero-card__row">
-            <span>实时连接</span>
-            <strong>{{ socketStateLabel }}</strong>
-          </div>
-        </div>
-      </header>
-
-      <p v-if="errorMessage" class="healing-chat-alert">{{ errorMessage }}</p>
-
-      <section v-if="loading" class="healing-chat-status">
-        <div class="status-orb"></div>
-        <h2>正在进入谈话室</h2>
-        <p>会话资料、历史消息与实时连接正在同步。</p>
-      </section>
-
-      <section v-else-if="chatSession" class="healing-chat-workspace">
-        <aside class="healing-chat-sidebar">
-          <section class="floating-panel floating-panel--mesh">
-            <p class="panel-eyebrow">交流概览</p>
-            <h2 class="panel-title">这是一段预约后的继续对话。</h2>
-            <p class="panel-body">
-              你不需要一次把所有话都说完。可以从此刻最明显的情绪、最绕不过去的困扰，
-              或者最想被理解的一件小事开始。
+        <div v-if="chatSession && !loading" class="sidebar-info">
+          <section class="info-group highlight-group">
+            <p class="overline">交流建议</p>
+            <p class="body-text">
+              不用一次说完整，先从最具体的感受开始。比如最近最明显的睡眠变化、最反复出现的一件事、最难压下来的想法。
             </p>
           </section>
 
-          <section class="floating-panel">
-            <div class="metric-grid">
-              <article class="metric-card">
-                <span>开放时间</span>
-                <strong>{{ formatDate(chatSession.openTime) }}</strong>
-              </article>
-              <article class="metric-card">
-                <span>结束时间</span>
-                <strong>{{ formatDate(chatSession.closeTime) }}</strong>
-              </article>
-              <article class="metric-card">
-                <span>消息数量</span>
-                <strong>{{ messageCount }}</strong>
-              </article>
-              <article class="metric-card">
-                <span>对方状态</span>
-                <strong>{{ peerOnline ? '已上线' : '等待加入' }}</strong>
-              </article>
+          <section class="info-group">
+            <p class="overline">会话概览</p>
+            <div class="info-row">
+              <span>预约编号</span>
+              <strong>#{{ chatSession.appointmentId }}</strong>
+            </div>
+            <div class="info-row">
+              <span>开放时间</span>
+              <strong>{{ formatDate(chatSession.openTime) }}</strong>
+            </div>
+            <div class="info-row">
+              <span>咨询师</span>
+              <strong>{{ peerOnline ? '已上线' : '离线中' }}</strong>
+            </div>
+            <div class="info-row">
+              <span>消息数量</span>
+              <strong>{{ messageCount }}</strong>
             </div>
           </section>
+        </div>
+      </aside>
 
-          <section class="floating-panel">
-            <p class="panel-eyebrow">交流提醒</p>
-            <ul class="gentle-list">
-              <li>尽量描述具体情境，而不是只说“我很难受”。</li>
-              <li>如果暂时不知道怎么表达，可以先说身体感受、睡眠变化或最近反复出现的念头。</li>
-              <li>当对方暂时离线时，系统会自动切换为等待状态，不需要手动刷新页面。</li>
-            </ul>
-          </section>
-        </aside>
+      <section class="app-main">
+        <p v-if="errorMessage" class="alert-banner">{{ errorMessage }}</p>
 
-        <section class="healing-chat-main">
-          <section class="floating-panel floating-panel--conversation">
-            <header class="conversation-header">
-              <div>
-                <p class="panel-eyebrow">正在交流</p>
-                <h2 class="conversation-title">安静地说，也可以慢慢说。</h2>
-              </div>
-              <div class="conversation-status" :class="`conversation-status--${socketState}`">
-                {{ socketStateLabel }}
-              </div>
-            </header>
+        <div v-if="loading" class="state-container">
+          <div class="placeholder-orb"></div>
+          <h2>正在进入聊天室</h2>
+          <p>会话信息、历史消息和实时通道正在同步...</p>
+        </div>
 
-            <div ref="messageViewportRef" class="message-viewport">
-              <div v-if="messages.length" class="message-stream">
-                <article
+        <div v-else-if="chatSession" class="chat-workspace">
+          <header class="chat-header">
+            <div class="header-titles">
+              <h2 class="header-title">当前交流空间</h2>
+              <p class="header-subtitle">{{ roomStatusLabel }}</p>
+            </div>
+            <div class="status-pill" :class="`status-pill--${socketState}`">
+              <span class="status-dot"></span>
+              {{ socketStateLabel }}
+            </div>
+          </header>
+
+          <div ref="messageViewportRef" class="message-viewport">
+            <div v-if="messages.length" class="message-stream">
+              <article
                   v-for="message in messages"
                   :key="message.messageId"
-                  :class="resolveMessageClass(message.senderType)"
-                >
-                  <div class="chat-bubble__profile">
-                    <img
-                      v-if="message.senderAvatarUrl"
-                      class="chat-avatar"
-                      :src="message.senderAvatarUrl"
-                      :alt="resolveSenderName(message)"
-                    >
-                    <span v-else class="chat-avatar chat-avatar--placeholder">
-                      {{ resolveSenderInitial(message) }}
-                    </span>
-                    <div class="chat-bubble__meta">
-                      <span>{{ resolveSenderName(message) }}</span>
-                      <time>{{ formatDate(message.createdAt) }}</time>
-                    </div>
-                  </div>
-                  <p class="chat-bubble__content">{{ message.content }}</p>
-                </article>
-              </div>
-
-              <div v-else class="empty-conversation">
-                <p class="panel-eyebrow">还没有历史消息</p>
-                <h3>第一句话，不需要很完整。</h3>
-                <p>可以从“我最近睡得不好”或“我对明天有点害怕”这样的一句话开始。</p>
-              </div>
-            </div>
-          </section>
-
-          <section class="floating-panel floating-panel--composer" :class="{ 'floating-panel--disabled': !canSend }">
-            <div class="composer-copy">
-              <p class="panel-eyebrow">发送新消息</p>
-              <h2 class="composer-title">把此刻最真实的一句话写下来。</h2>
-              <p class="composer-description">
-                {{ composerDescription }}
-              </p>
-            </div>
-
-            <textarea
-              v-model="composeForm.content"
-              :disabled="!canSend"
-              class="composer-input"
-              placeholder="例如：我最近总在夜里反复想同一件事，白天很难集中注意力。"
-              @keydown.enter.exact.prevent="sendMessage"
-            />
-
-            <div class="composer-actions">
-              <button
-                class="composer-submit"
-                type="button"
-                :disabled="!canSend || !composeForm.content.trim()"
-                @click="sendMessage"
+                  :class="resolveBubbleClass(message.senderType)"
               >
-                发送这句话
-              </button>
-              <p class="composer-hint">按 Enter 发送，Shift + Enter 可换行。</p>
+                <div class="message-card__meta">
+                  <img
+                      v-if="resolveAvatarSrc(message.senderAvatarUrl)"
+                      class="message-avatar"
+                      :src="resolveAvatarSrc(message.senderAvatarUrl)"
+                      :alt="resolveSenderName(message)"
+                  >
+                  <span v-else class="message-avatar message-avatar--placeholder">
+                    {{ resolveSenderInitial(message) }}
+                  </span>
+                  <div class="message-card__meta-text">
+                    <span>{{ resolveSenderName(message) }}</span>
+                    <time>{{ formatDate(message.createdAt) }}</time>
+                  </div>
+                </div>
+                <p class="message-card__content">{{ message.content }}</p>
+              </article>
             </div>
-          </section>
-        </section>
-      </section>
 
-      <section v-else class="healing-chat-status">
-        <h2>没有找到对应的谈话室</h2>
-        <p>请先确认预约是否已经进入可交流状态，再重新打开此页面。</p>
+            <div v-else class="empty-stream">
+              <p class="overline">暂无历史消息</p>
+              <h3>第一句话，不需要很完整。</h3>
+              <p>可以先从“我最近总是睡不着”或“我今天特别想找人说说话”开始。</p>
+            </div>
+          </div>
+
+          <div class="composer-area" :class="{ 'composer-area--disabled': !canSend }">
+            <div class="composer-hints">
+              <h3 class="composer-hints__title">写下此刻最真实的一句话</h3>
+              <p class="composer-hints__text">{{ composerHint }}</p>
+            </div>
+
+            <div class="composer-input-wrapper">
+              <textarea
+                  v-model="composeForm.content"
+                  class="composer-input"
+                  :disabled="!canSend"
+                  placeholder="例如：我最近总在夜里反复想同一件事..."
+                  @keydown.enter.exact.prevent="sendMessage"
+              />
+              <button
+                  class="submit-btn"
+                  type="button"
+                  :disabled="!canSend || !composeForm.content.trim()"
+                  @click="sendMessage"
+              >
+                发送 ↵
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-else class="state-container">
+          <h2>没有找到对应的聊天室</h2>
+          <p>请先确认预约已经进入可沟通状态，再重新打开本页面。</p>
+        </div>
       </section>
     </div>
   </main>
@@ -493,537 +465,523 @@ onBeforeUnmount(() => {
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;600;700&display=swap');
 
 .healing-chat-page {
-  --chat-bg: #ffffff;
-  --chat-ink: #1e2821;
-  --chat-muted: #667268;
-  --chat-soft: rgba(42, 54, 46, 0.055);
-  --chat-panel: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(250, 253, 251, 0.9));
-  --chat-shadow: 0 28px 72px rgba(54, 66, 58, 0.055);
-  --chat-highlight: #5f856e;
-  --chat-sage: #b9d8c4;
-  --chat-sand: #d8b79d;
-  min-height: 100vh;
-  padding: clamp(2rem, 4vw, 4rem);
-  background:
-    radial-gradient(circle at top left, rgba(185, 216, 196, 0.22), transparent 24%),
-    radial-gradient(circle at 85% 18%, rgba(226, 244, 234, 0.42), transparent 20%),
-    linear-gradient(180deg, #ffffff, #fbfdfc),
-    var(--chat-bg);
-  color: var(--chat-ink);
-  box-sizing: border-box;
-}
+  --page-bg: #eef2ef;
+  --ink: #1e2821;
+  --muted: #667268;
+  --border: rgba(44, 48, 43, 0.08);
+  --primary: #5b7e69;
 
-.healing-chat-shell {
-  max-width: 1420px;
-  margin: 0 auto;
-  display: grid;
-  gap: 1.65rem;
-}
-
-.back-nav {
+  height: 100vh;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5vh 3vw;
+  box-sizing: border-box;
+  background: var(--page-bg);
+  color: var(--ink);
+  overflow: hidden; /* 防止整个页面滚动 */
 }
 
-.back-link {
+/* 核心窗口布局 */
+.app-window {
+  display: flex;
+  width: 100%;
+  max-width: 1360px;
+  height: 100%;
+  max-height: 900px;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 32px 80px rgba(54, 66, 58, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+}
+
+/* ================= 左侧边栏 ================= */
+.app-sidebar {
+  width: 340px;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #f8faf8, #f0f4f1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.app-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+.app-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+
+.sidebar-nav {
+  margin-bottom: 2.5rem;
+}
+
+.nav-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border: none;
-  background: transparent;
-  color: #5c6b60;
-  padding: 0;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 0.98rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
 }
 
-.back-link:hover {
-  color: #1e2821;
+.nav-link:hover {
+  color: var(--ink);
   transform: translateX(-4px);
 }
 
-.healing-chat-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  gap: 2rem;
-  align-items: end;
+.nav-link__arrow {
+  font-family: 'Manrope', sans-serif;
 }
 
-.healing-chat-copy {
-  padding: clamp(1rem, 2vw, 1.75rem) 0;
-}
-
-.healing-chat-eyebrow,
-.panel-eyebrow,
-.hero-card__label,
-.metric-card span,
-.chat-bubble__meta span,
-.chat-bubble__meta time,
-.composer-hint {
+.overline {
   margin: 0;
-  color: var(--chat-muted);
+  color: var(--muted);
   font-family: 'Manrope', sans-serif;
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.healing-chat-eyebrow {
+.sidebar-hero {
+  margin-bottom: 2.5rem;
+}
+
+.hero-title {
+  margin: 0.8rem 0 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 2.2rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hero-summary {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.96rem;
+  line-height: 1.8;
+}
+
+.sidebar-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8rem;
+  margin-top: auto;
+}
+
+.info-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.highlight-group {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.body-text {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.94rem;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.info-row strong {
+  color: var(--ink);
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 600;
+}
+
+/* ================= 右侧主工作区 ================= */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0; /* 防止子元素撑破 flex 容器 */
+}
+
+.chat-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 顶部状态栏 */
+.chat-header {
+  flex-shrink: 0;
+  padding: 1.5rem 2.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.header-title {
+  margin: 0;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.header-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.9rem;
+}
+
+.status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-}
-
-.healing-chat-eyebrow svg {
-  width: 1rem;
-  height: 1rem;
-  fill: #7fa78c;
-}
-
-.healing-chat-title {
-  margin: 1rem 0 0;
-  color: var(--chat-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: clamp(2.7rem, 5vw, 5rem);
-  font-weight: 600;
-  line-height: 1.04;
-  letter-spacing: 0.02em;
-}
-
-.healing-chat-summary {
-  max-width: 46rem;
-  margin: 1.4rem 0 0;
-  color: var(--chat-muted);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.06rem;
-  line-height: 1.95;
-}
-
-.healing-chat-hero-card,
-.floating-panel,
-.healing-chat-status {
-  background: var(--chat-panel);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(42, 54, 46, 0.035);
-  border-radius: 28px;
-  box-shadow: var(--chat-shadow);
-}
-
-.healing-chat-hero-card {
-  padding: 2rem;
-  display: grid;
-  gap: 1rem;
-}
-
-.hero-card__row {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: baseline;
-  color: var(--chat-muted);
-  font-family: 'Manrope', sans-serif;
-  font-size: 0.98rem;
-}
-
-.hero-card__row strong {
-  color: var(--chat-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.08rem;
-  font-weight: 600;
-  text-align: right;
-}
-
-.healing-chat-alert {
-  margin: 0;
-  padding: 1rem 1.3rem;
-  border-radius: 18px;
-  background: rgba(164, 92, 92, 0.1);
-  color: #835252;
-  font-family: 'Manrope', sans-serif;
-  font-size: 0.94rem;
-  line-height: 1.7;
-}
-
-.healing-chat-status {
-  padding: 3rem;
-  text-align: center;
-}
-
-.healing-chat-status h2 {
-  margin: 1rem 0 0;
-  color: var(--chat-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: clamp(1.8rem, 3vw, 2.5rem);
-  font-weight: 600;
-}
-
-.healing-chat-status p {
-  margin: 0.9rem auto 0;
-  max-width: 34rem;
-  color: var(--chat-muted);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1rem;
-  line-height: 1.9;
-}
-
-.status-orb {
-  width: 5rem;
-  height: 5rem;
-  margin: 0 auto;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
   border-radius: 999px;
-  background:
-    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.9), transparent 30%),
-    linear-gradient(145deg, rgba(145, 166, 147, 0.85), rgba(216, 183, 157, 0.9));
-  box-shadow: 0 24px 48px rgba(116, 136, 122, 0.2);
-}
-
-.healing-chat-workspace {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.72fr) minmax(0, 1.28fr);
-  gap: 2rem;
-  align-items: start;
-}
-
-.healing-chat-sidebar,
-.healing-chat-main {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.floating-panel {
-  padding: 2rem;
-}
-
-.floating-panel--mesh {
-  background:
-    radial-gradient(circle at 18% 25%, rgba(146, 170, 156, 0.42), transparent 34%),
-    radial-gradient(circle at 85% 18%, rgba(220, 181, 151, 0.42), transparent 28%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(248, 246, 242, 0.82));
-}
-
-.panel-title,
-.conversation-title,
-.composer-title,
-.empty-conversation h3 {
-  margin: 0.85rem 0 0;
-  color: var(--chat-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: clamp(1.55rem, 2.6vw, 2.3rem);
-  font-weight: 600;
-  line-height: 1.28;
-}
-
-.panel-body,
-.gentle-list,
-.composer-description,
-.empty-conversation p {
-  margin: 1rem 0 0;
-  color: var(--chat-muted);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 0.98rem;
-  line-height: 1.9;
-}
-
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.metric-card {
-  padding: 1.2rem;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.46);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.metric-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 24px 40px rgba(54, 66, 58, 0.08);
-}
-
-.metric-card strong {
-  display: block;
-  margin-top: 0.55rem;
-  color: var(--chat-ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1.04rem;
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-.gentle-list {
-  padding-left: 1.2rem;
-}
-
-.gentle-list li + li {
-  margin-top: 0.7rem;
-}
-
-.floating-panel--conversation,
-.floating-panel--composer {
-  padding: 2.1rem;
-}
-
-.conversation-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.conversation-status {
-  min-width: 7.5rem;
-  padding: 0.8rem 1rem;
-  border-radius: 999px;
-  text-align: center;
   font-family: 'Manrope', sans-serif;
-  font-size: 0.84rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: 0.05em;
 }
 
-.conversation-status--idle,
-.conversation-status--closed {
-  background: rgba(120, 127, 122, 0.12);
-  color: #617066;
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.conversation-status--connecting {
-  background: rgba(216, 183, 157, 0.18);
-  color: #8a6854;
-}
+.status-pill--idle, .status-pill--closed { background: #f0f2f0; color: #7a827b; }
+.status-pill--connecting { background: #fff5eb; color: #a87e5b; }
+.status-pill--connected { background: #eff6f1; color: var(--primary); }
 
-.conversation-status--connected {
-  background: rgba(145, 166, 147, 0.18);
-  color: #48604f;
-}
-
+/* 消息流区域 (弹性撑满、独立滚动) */
 .message-viewport {
-  max-height: 58vh;
-  margin-top: 1.8rem;
+  flex: 1;
   overflow-y: auto;
-  padding-right: 0.45rem;
+  padding: 2.5rem;
+  scroll-behavior: smooth;
 }
 
-.message-viewport::-webkit-scrollbar {
-  width: 8px;
-}
-
+.message-viewport::-webkit-scrollbar { width: 6px; }
 .message-viewport::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 999px;
-  background: rgba(95, 133, 110, 0.18);
 }
 
 .message-stream {
-  display: grid;
-  gap: 1rem;
-}
-
-.chat-bubble {
-  max-width: min(82%, 40rem);
-  padding: 1.25rem 1.35rem;
-  border-radius: 28px;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.chat-bubble:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 24px 42px rgba(54, 66, 58, 0.08);
-}
-
-.chat-bubble--self {
-  margin-left: auto;
-  background: linear-gradient(145deg, rgba(91, 126, 105, 0.94), rgba(118, 155, 130, 0.86));
-  color: #f8f6f2;
-}
-
-.chat-bubble--peer {
-  margin-right: auto;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(247, 252, 249, 0.96));
-  color: var(--chat-ink);
-  box-shadow: inset 0 0 0 1px rgba(95, 133, 110, 0.055);
-}
-
-.chat-bubble--system {
-  margin: 0 auto;
-  background: rgba(216, 183, 157, 0.16);
-  color: #6f5b4f;
-}
-
-.chat-bubble__meta {
   display: flex;
   flex-direction: column;
-  gap: 0.22rem;
+  gap: 1.5rem;
 }
 
-.chat-bubble__profile {
+.empty-stream {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty-stream h3 {
+  margin: 1rem 0 0.5rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.4rem;
+  color: var(--ink);
+}
+
+/* 消息气泡样式 (保留原汁原味) */
+.message-card {
+  max-width: 80%;
+  padding: 1.2rem 1.4rem;
+  border-radius: 20px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-card--self {
+  align-self: flex-end;
+  background: linear-gradient(145deg, rgba(91, 126, 105, 1), rgba(118, 155, 130, 0.95));
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.message-card--peer {
+  align-self: flex-start;
+  background: #f8faf8;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.message-card--system {
+  align-self: center;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+  max-width: 60%;
+}
+
+.message-card__meta {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
 }
 
-.chat-avatar {
-  width: 2.35rem;
-  height: 2.35rem;
-  border-radius: 999px;
+.message-card__meta-text {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.message-card__meta-text span {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.message-card__meta-text time {
+  font-family: 'Manrope', sans-serif;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.message-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
   object-fit: cover;
-  flex: 0 0 auto;
-  box-shadow: 0 12px 26px rgba(54, 66, 58, 0.08);
 }
 
-.chat-avatar--placeholder {
+.message-avatar--placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(145deg, #edf8f1, #ffffff);
-  color: #5f856e;
+  background: rgba(255, 255, 255, 0.2);
   font-family: 'Noto Serif SC', serif;
   font-weight: 700;
+  font-size: 0.9rem;
 }
 
-.chat-bubble--self .chat-bubble__meta span,
-.chat-bubble--self .chat-bubble__meta time {
-  color: rgba(248, 246, 242, 0.8);
+.message-card--peer .message-avatar--placeholder {
+  background: #e9eee9;
+  color: var(--primary);
 }
 
-.chat-bubble__content {
-  margin: 0.75rem 0 0;
+.message-card__content {
+  margin: 0;
   font-family: 'Noto Serif SC', serif;
-  font-size: 1rem;
-  line-height: 1.9;
+  font-size: 1.05rem;
+  line-height: 1.8;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.empty-conversation {
-  min-height: 16rem;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  padding: 2rem;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.42);
+/* 底部输入区 */
+.composer-area {
+  flex-shrink: 0;
+  padding: 1.5rem 2.5rem 2.5rem;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  transition: opacity 0.3s;
 }
 
-.composer-copy {
-  max-width: 42rem;
+.composer-area--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.composer-hints {
+  margin-bottom: 1rem;
+}
+
+.composer-hints__title {
+  margin: 0 0 0.25rem;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.composer-hints__text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-family: 'Noto Serif SC', serif;
+}
+
+.composer-input-wrapper {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
 }
 
 .composer-input {
-  width: 100%;
-  min-height: 10rem;
-  margin-top: 1.6rem;
-  padding: 1.35rem 1.45rem;
-  box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 24px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(248, 246, 242, 0.82));
-  color: var(--chat-ink);
+  flex: 1;
+  min-height: 3rem;
+  max-height: 8rem;
+  padding: 0.8rem 1.2rem;
+  border: 1px solid rgba(44, 48, 43, 0.15);
+  border-radius: 16px;
+  background: #fcfcfc;
   font-family: 'Noto Serif SC', serif;
   font-size: 1rem;
-  line-height: 1.9;
-  resize: vertical;
+  line-height: 1.6;
+  resize: none;
   outline: none;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s ease;
 }
 
 .composer-input:focus {
-  transform: translateY(-4px);
-  box-shadow: 0 28px 52px rgba(54, 66, 58, 0.08);
+  border-color: var(--primary);
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(91, 126, 105, 0.08);
 }
 
-.composer-input:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.composer-actions {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: center;
-  margin-top: 1.3rem;
-}
-
-.composer-submit {
-  min-height: 3.5rem;
-  padding: 0 1.7rem;
+.submit-btn {
+  height: 3.2rem;
+  padding: 0 1.5rem;
   border: none;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #34453a, #516656);
-  color: #f7f3ec;
+  border-radius: 16px;
+  background: var(--ink);
+  color: #fff;
   font-family: 'Manrope', sans-serif;
-  font-size: 0.9rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 28px 46px rgba(52, 69, 58, 0.18);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
 }
 
-.composer-submit:hover:not(:disabled) {
-  transform: translateY(-4px);
-  box-shadow: 0 34px 56px rgba(52, 69, 58, 0.22);
+.submit-btn:hover:not(:disabled) {
+  background: var(--primary);
+  transform: translateY(-2px);
 }
 
-.composer-submit:disabled {
+.submit-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  box-shadow: none;
 }
 
-.floating-panel--disabled {
-  opacity: 0.82;
+/* 异常与加载状态 */
+.alert-banner {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  margin: 0;
+  padding: 0.75rem 1.5rem;
+  background: #fee;
+  color: #c0392b;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  box-shadow: 0 12px 24px rgba(192, 57, 43, 0.15);
 }
 
-@media (max-width: 1080px) {
-  .healing-chat-hero,
-  .healing-chat-workspace {
-    grid-template-columns: 1fr;
-  }
-
-  .message-viewport {
-    max-height: none;
-  }
+.state-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem;
 }
 
-@media (max-width: 720px) {
+.placeholder-orb {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #e0e8e2, #f5f0eb);
+  margin-bottom: 1.5rem;
+  animation: pulse 2s infinite alternate;
+}
+
+@keyframes pulse {
+  from { transform: scale(0.95); opacity: 0.8; }
+  to { transform: scale(1.05); opacity: 1; }
+}
+
+.state-container h2 {
+  font-family: 'Noto Serif SC', serif;
+  margin: 0 0 0.5rem;
+}
+
+.state-container p {
+  color: var(--muted);
+  font-family: 'Noto Serif SC', serif;
+}
+
+/* 响应式设计：移动端降级为上下结构 */
+@media (max-width: 900px) {
   .healing-chat-page {
-    padding: 1rem;
+    padding: 0;
   }
 
-  .healing-chat-shell {
-    gap: 1rem;
-  }
-
-  .floating-panel,
-  .healing-chat-hero-card,
-  .healing-chat-status {
-    padding: 1.4rem;
-    border-radius: 22px;
-  }
-
-  .metric-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .conversation-header,
-  .composer-actions {
+  .app-window {
     flex-direction: column;
-    align-items: flex-start;
+    border-radius: 0;
+    max-height: none;
+    border: none;
   }
 
-  .composer-submit {
+  .app-sidebar {
     width: 100%;
+    height: auto;
+    max-height: 35vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 1.5rem;
   }
 
-  .chat-bubble {
-    max-width: 100%;
+  .sidebar-hero {
+    margin-bottom: 1.5rem;
+  }
+
+  .hero-title {
+    font-size: 1.8rem;
+  }
+
+  .chat-header, .composer-area, .message-viewport {
+    padding: 1.25rem;
+  }
+
+  .message-card {
+    max-width: 90%;
   }
 }
 </style>

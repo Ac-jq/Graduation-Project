@@ -160,7 +160,10 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
                 "student_no": { "type": "string" },
                 "college": { "type": "string" },
                 "grade": { "type": "string" },
-                "role_code": { "type": "string" },
+                "role_code": {
+                  "type": "string",
+                  "description": "角色代码。若原句里已明确出现学生、学号，则必须填写 STUDENT；若出现老师、咨询师、工号，则必须填写 COUNSELOR；若出现管理员，则必须填写 ADMIN。不要把 role_code 当作缺失参数继续追问用户。"
+                },
                 "status": { "type": "string" }
               },
               "additionalProperties": false
@@ -313,6 +316,40 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
         AdminOpsAiChatResponse chatResponse = chatWithTools(List.of(
                 new AdminOpsAiConversationMessage("user", renderStatelessInstructionPrompt(latestInstruction))
         ));
+        String expectedOperation = detectExpectedOperation(latestInstruction);
+        if (shouldRepromptForWriteOperation(expectedOperation, chatResponse.toolCalls())) {
+            chatResponse = chatWithTools(List.of(
+                    new AdminOpsAiConversationMessage("user", renderWriteOperationCorrectionPrompt(latestInstruction, expectedOperation))
+            ));
+        }
+        String inferredRoleCode = inferRoleCodeFromInstruction(latestInstruction);
+        if (shouldRepromptForImplicitRole(expectedOperation, inferredRoleCode, chatResponse)) {
+            chatResponse = chatWithTools(List.of(
+                    new AdminOpsAiConversationMessage("user", renderImplicitRolePrompt(latestInstruction, inferredRoleCode))
+            ));
+        }
+        if (shouldRepromptForExplicitToolCall(expectedOperation, chatResponse)) {
+            chatResponse = chatWithTools(List.of(
+                    new AdminOpsAiConversationMessage("user", renderExplicitToolCallPrompt(latestInstruction, expectedOperation))
+            ));
+        }
+        if (chatResponse.toolCalls() == null || chatResponse.toolCalls().isEmpty()) {
+            List<AdminOpsAiToolCall> synthesizedToolCalls = synthesizeToolCallsFromContent(expectedOperation, chatResponse.content());
+            if (!synthesizedToolCalls.isEmpty()) {
+                List<AdminOpsAiAction> actions = mapStatelessToolCalls(synthesizedToolCalls);
+                List<AdminOpsAiConversationMessage> traceMessages = buildTraceMessages(synthesizedToolCalls, actions);
+                if (!actions.isEmpty()) {
+                    return new AdminOpsAiPlan(
+                            AdminAiTaskConstants.TASK_TYPE_USER_CRUD,
+                            AdminAiTaskConstants.PARSE_READY,
+                            buildSummaryText(chatResponse.content(), actions),
+                            null,
+                            actions,
+                            traceMessages
+                    );
+                }
+            }
+        }
 
         if (chatResponse.toolCalls() == null || chatResponse.toolCalls().isEmpty()) {
             return new AdminOpsAiPlan(
@@ -346,6 +383,228 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
                 actions,
                 traceMessages
         );
+    }
+
+    private String detectExpectedOperation(String instruction) {
+        String lowered = instruction == null ? "" : instruction.toLowerCase(Locale.ROOT);
+        if (containsAny(lowered, "delete", "remove", "删除", "删掉", "移除")) {
+            return AdminAiTaskConstants.OP_DELETE;
+        }
+        if (containsAny(lowered, "update", "change", "modify", "set", "修改", "更改", "改成", "改为", "变更", "更新", "启用", "禁用")) {
+            return AdminAiTaskConstants.OP_UPDATE;
+        }
+        if (containsAny(lowered, "create", "add", "new", "新增", "创建", "添加", "增加")) {
+            return AdminAiTaskConstants.OP_CREATE;
+        }
+        if (containsAny(lowered, "query", "find", "list", "show", "查询", "查找", "查看", "列出")) {
+            return AdminAiTaskConstants.OP_QUERY;
+        }
+        return null;
+    }
+
+    private boolean shouldRepromptForWriteOperation(String expectedOperation, List<AdminOpsAiToolCall> toolCalls) {
+        if (!StringUtils.hasText(expectedOperation)
+                || AdminAiTaskConstants.OP_QUERY.equals(expectedOperation)
+                || toolCalls == null
+                || toolCalls.isEmpty()) {
+            return false;
+        }
+        boolean allQueryTools = toolCalls.stream()
+                .map(AdminOpsAiToolCall::name)
+                .filter(StringUtils::hasText)
+                .allMatch(TOOL_QUERY_USERS::equals);
+        return allQueryTools;
+    }
+
+    private String renderWriteOperationCorrectionPrompt(String instruction, String expectedOperation) {
+        String operationLabel = switch (expectedOperation) {
+            case AdminAiTaskConstants.OP_CREATE -> "新增";
+            case AdminAiTaskConstants.OP_DELETE -> "删除";
+            default -> "修改";
+        };
+        String toolName = switch (expectedOperation) {
+            case AdminAiTaskConstants.OP_CREATE -> TOOL_CREATE_USER;
+            case AdminAiTaskConstants.OP_DELETE -> TOOL_DELETE_USERS;
+            default -> TOOL_UPDATE_USERS;
+        };
+        return """
+                这条管理员指令的真实目标是“%s用户”，不是查询。
+                如果指令里的目标和新值已经足够，就必须直接调用 %s。
+                禁止改用 query_users 先查再说。
+                如果确实缺少关键参数，才允许返回缺参提示。
+                指令：
+                %s
+                """.formatted(operationLabel, toolName, instruction);
+    }
+
+    private String inferRoleCodeFromInstruction(String instruction) {
+        String normalized = normalizeText(instruction);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        String lower = normalized.toLowerCase(Locale.ROOT);
+        if (containsAny(lower, "student", "学生", "学号")) {
+            return RoleConstants.STUDENT;
+        }
+        if (containsAny(lower, "teacher", "counselor", "老师", "咨询师", "工号")) {
+            return RoleConstants.COUNSELOR;
+        }
+        if (containsAny(lower, "admin", "管理员")) {
+            return RoleConstants.ADMIN;
+        }
+        return null;
+    }
+
+    private boolean shouldRepromptForImplicitRole(String expectedOperation, String inferredRoleCode,
+                                                  AdminOpsAiChatResponse chatResponse) {
+        if (!AdminAiTaskConstants.OP_CREATE.equals(expectedOperation)
+                || !StringUtils.hasText(inferredRoleCode)
+                || chatResponse == null
+                || (chatResponse.toolCalls() != null && !chatResponse.toolCalls().isEmpty())) {
+            return false;
+        }
+        String content = normalizeText(chatResponse.content());
+        if (!StringUtils.hasText(content)) {
+            return true;
+        }
+        String lower = content.toLowerCase(Locale.ROOT);
+        return lower.contains("role_code")
+                || lower.contains("role code")
+                || content.contains("角色代码");
+    }
+
+    private String renderImplicitRolePrompt(String instruction, String inferredRoleCode) {
+        return """
+                这条新增用户指令里已经明确出现了用户身份，你必须直接补全 role_code 并调用 create_user。
+                角色映射规则如下：
+                - 学生 / 学号 -> STUDENT
+                - 老师 / 咨询师 / 工号 -> COUNSELOR
+                - 管理员 -> ADMIN
+                当前这条指令应当使用的 role_code 是：%s
+                不要继续追问 role_code，不要只返回解释文本，直接按扁平参数调用 create_user。
+                指令：
+                %s
+                """.formatted(inferredRoleCode, instruction);
+    }
+
+    private boolean shouldRepromptForExplicitToolCall(String expectedOperation, AdminOpsAiChatResponse chatResponse) {
+        if (!StringUtils.hasText(expectedOperation)
+                || AdminAiTaskConstants.OP_QUERY.equals(expectedOperation)
+                || chatResponse == null
+                || (chatResponse.toolCalls() != null && !chatResponse.toolCalls().isEmpty())) {
+            return false;
+        }
+        String content = normalizeText(chatResponse.content());
+        if (!StringUtils.hasText(content)) {
+            return false;
+        }
+        String toolName = switch (expectedOperation) {
+            case AdminAiTaskConstants.OP_CREATE -> TOOL_CREATE_USER;
+            case AdminAiTaskConstants.OP_DELETE -> TOOL_DELETE_USERS;
+            default -> TOOL_UPDATE_USERS;
+        };
+        return content.contains(toolName)
+                || content.contains("直接调用")
+                || content.contains("参数齐全")
+                || content.contains("信息是足够的");
+    }
+
+    private String renderExplicitToolCallPrompt(String instruction, String expectedOperation) {
+        String toolName = switch (expectedOperation) {
+            case AdminAiTaskConstants.OP_CREATE -> TOOL_CREATE_USER;
+            case AdminAiTaskConstants.OP_DELETE -> TOOL_DELETE_USERS;
+            default -> TOOL_UPDATE_USERS;
+        };
+        return """
+                你刚才已经判断这条指令参数足够，但你返回的是解释文本，不是工具调用。
+                现在禁止继续解释，必须直接输出一次 %s 的工具调用。
+                只有在真的缺少关键参数时，才允许返回缺参提示。
+                指令：
+                %s
+                """.formatted(toolName, instruction);
+    }
+
+    private List<AdminOpsAiToolCall> synthesizeToolCallsFromContent(String expectedOperation, String content) {
+        if (!StringUtils.hasText(expectedOperation) || !StringUtils.hasText(content)) {
+            return List.of();
+        }
+        return switch (expectedOperation) {
+            case AdminAiTaskConstants.OP_UPDATE -> synthesizeUpdateToolCallsFromContent(content);
+            default -> List.of();
+        };
+    }
+
+    private List<AdminOpsAiToolCall> synthesizeUpdateToolCallsFromContent(String content) {
+        String normalized = normalizeText(content);
+        if (!StringUtils.hasText(normalized) || !normalized.contains(TOOL_UPDATE_USERS)) {
+            return List.of();
+        }
+        String targetField = null;
+        String targetValue = null;
+        String newField = null;
+        String newValue = null;
+
+        java.util.regex.Matcher targetMatcher = java.util.regex.Pattern
+                .compile("(?:定位条件|查找条件)\\s*[:：]\\s*([a-zA-Z_]+)\\s*=\\s*[\"“”]?([^\"“”\\n]+)[\"“”]?")
+                .matcher(normalized);
+        if (targetMatcher.find()) {
+            targetField = targetMatcher.group(1);
+            targetValue = normalizeText(targetMatcher.group(2));
+        }
+        if (!StringUtils.hasText(targetField) || !StringUtils.hasText(targetValue)) {
+            java.util.regex.Matcher chineseTargetMatcher = java.util.regex.Pattern
+                    .compile("(?:定位条件|查找条件)\\s*[:：]\\s*(学号|账号|姓名|显示名|工号|学院|年级)\\s*(?:是|为)?\\s*([A-Za-z0-9_\\-\\u4e00-\\u9fa5]+)")
+                    .matcher(normalized);
+            if (chineseTargetMatcher.find()) {
+                targetField = mapChineseFieldName(chineseTargetMatcher.group(1));
+                targetValue = normalizeText(chineseTargetMatcher.group(2));
+            }
+        }
+
+        java.util.regex.Matcher updateMatcher = java.util.regex.Pattern
+                .compile("要修改的字段\\s*[:：]\\s*([a-zA-Z_]+)\\s*[→\\-=>]+\\s*[\"“”]?([^\"“”\\n]+)[\"“”]?")
+                .matcher(normalized);
+        if (updateMatcher.find()) {
+            newField = updateMatcher.group(1);
+            newValue = normalizeText(updateMatcher.group(2));
+        }
+        if (!StringUtils.hasText(newField) || !StringUtils.hasText(newValue)) {
+            java.util.regex.Matcher chineseUpdateMatcher = java.util.regex.Pattern
+                    .compile("修改内容\\s*[:：]\\s*(账号|姓名|显示名|学号|工号|学院|年级|状态)\\s*(?:改成|改为|修改为|设为)\\s*([A-Za-z0-9_\\-\\u4e00-\\u9fa5]+)")
+                    .matcher(normalized);
+            if (chineseUpdateMatcher.find()) {
+                newField = mapChineseFieldName(chineseUpdateMatcher.group(1));
+                newValue = normalizeText(chineseUpdateMatcher.group(2));
+            }
+        }
+
+        if (!StringUtils.hasText(targetField) || !StringUtils.hasText(targetValue)
+                || !StringUtils.hasText(newField) || !StringUtils.hasText(newValue)) {
+            return List.of();
+        }
+
+        var argumentsNode = objectMapper.createObjectNode();
+        argumentsNode.put("target_" + targetField, targetValue);
+        argumentsNode.put("new_" + newField, newValue);
+        return List.of(new AdminOpsAiToolCall("synthetic-update", TOOL_UPDATE_USERS, argumentsNode.toString()));
+    }
+
+    private String mapChineseFieldName(String fieldName) {
+        String normalized = normalizeText(fieldName);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        return switch (normalized) {
+            case "学号" -> "student_no";
+            case "账号" -> "account";
+            case "姓名" -> "name";
+            case "显示名" -> "display_name";
+            case "工号" -> "counselor_no";
+            case "学院" -> "college";
+            case "年级" -> "grade";
+            case "状态" -> "status";
+            default -> normalized;
+        };
     }
 
     @Override
@@ -459,7 +718,7 @@ public class AdminOpsAiClientImpl implements AdminOpsAiClient {
 
         ToolCallback createUserTool = FunctionToolCallback
                 .builder(TOOL_CREATE_USER, (JsonNode input) -> Map.of("status", "registered"))
-                .description("新增用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。")
+                .description("新增用户。所有参数必须平铺，缺值传 null，禁止嵌套 JSON。如果原句已经明确出现学生、学号、老师、咨询师、工号或管理员，就必须自动补全 role_code，不要继续追问 role_code。")
                 .inputType(JsonNode.class)
                 .inputSchema(STATELESS_CREATE_USER_SCHEMA)
                 .build();
