@@ -32,7 +32,9 @@ import sdu.jiaq.jqpro.service.StudentProfileService;
 public class StudentProfileServiceImpl implements StudentProfileService {
 
     private static final long MAX_AVATAR_SIZE = 5L * 1024 * 1024;
-    private static final Path AVATAR_UPLOAD_DIR = Paths.get(System.getProperty("user.dir"), ".local", "user-assets", "avatars");
+    private static final String BACKEND_ORIGIN = "http://127.0.0.1:8080";
+    private static final String AVATAR_PUBLIC_PREFIX = "/uploads/avatars/";
+    private static final Path AVATAR_UPLOAD_DIR = Paths.get(System.getProperty("user.dir"), "uploads", "avatars");
 
     private final StudentProfileMapper studentProfileMapper;
     private final SysUserMapper sysUserMapper;
@@ -57,7 +59,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
     public StudentProfileResponse updateCurrentStudentProfile(UpdateStudentProfileRequest request) {
         Long userId = SecurityUtil.getCurrentUserId();
         StudentProfile studentProfile = getRequiredProfile(userId);
-        studentProfile.setAvatarUrl(request.getAvatarUrl());
+        studentProfile.setAvatarUrl(normalizeAvatarUrlForStorage(request.getAvatarUrl()));
         studentProfile.setCollege(request.getCollege());
         studentProfile.setGrade(request.getGrade());
         studentProfile.setGender(request.getGender());
@@ -70,6 +72,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public AvatarUploadResponse uploadCurrentStudentAvatar(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请先选择头像图片");
@@ -94,8 +97,15 @@ public class StudentProfileServiceImpl implements StudentProfileService {
             throw new BusinessException("头像上传失败，请稍后重试");
         }
 
+        Long userId = SecurityUtil.getCurrentUserId();
+        String avatarUrl = AVATAR_PUBLIC_PREFIX + fileName;
+        StudentProfile studentProfile = getRequiredProfile(userId);
+        studentProfile.setAvatarUrl(avatarUrl);
+        studentProfileMapper.updateById(studentProfile);
+        auditLogService.record(userId, "PROFILE_AVATAR_UPLOAD", "上传学生头像", "avatarUrl=" + avatarUrl, "system");
+
         return AvatarUploadResponse.builder()
-                .avatarUrl("http://127.0.0.1:8080/user-assets/avatars/" + fileName)
+                .avatarUrl(toPublicAvatarUrl(avatarUrl))
                 .build();
     }
 
@@ -111,7 +121,7 @@ public class StudentProfileServiceImpl implements StudentProfileService {
                 .realName(sysUser.getRealName())
                 .displayName(sysUser.getDisplayName())
                 .studentNo(sysUser.getStudentNo())
-                .avatarUrl(studentProfile.getAvatarUrl())
+                .avatarUrl(toPublicAvatarUrl(studentProfile.getAvatarUrl()))
                 .college(studentProfile.getCollege())
                 .grade(studentProfile.getGrade())
                 .gender(studentProfile.getGender())
@@ -150,5 +160,30 @@ public class StudentProfileServiceImpl implements StudentProfileService {
             }
         }
         return ".jpg";
+    }
+
+    private String normalizeAvatarUrlForStorage(String avatarUrl) {
+        if (!StringUtils.hasText(avatarUrl)) {
+            return avatarUrl;
+        }
+        String trimmedAvatarUrl = avatarUrl.trim();
+        if (trimmedAvatarUrl.startsWith(BACKEND_ORIGIN)) {
+            return trimmedAvatarUrl.substring(BACKEND_ORIGIN.length());
+        }
+        return trimmedAvatarUrl;
+    }
+
+    private String toPublicAvatarUrl(String avatarUrl) {
+        if (!StringUtils.hasText(avatarUrl)) {
+            return avatarUrl;
+        }
+        String trimmedAvatarUrl = avatarUrl.trim();
+        if (trimmedAvatarUrl.startsWith("http://") || trimmedAvatarUrl.startsWith("https://")) {
+            return trimmedAvatarUrl;
+        }
+        if (trimmedAvatarUrl.startsWith("/")) {
+            return BACKEND_ORIGIN + trimmedAvatarUrl;
+        }
+        return BACKEND_ORIGIN + "/" + trimmedAvatarUrl;
     }
 }

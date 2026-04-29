@@ -37,8 +37,11 @@ public class SaTokenConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        Path avatarDir = Paths.get(System.getProperty("user.dir"), ".local", "user-assets");
+        Path legacyUserAssetDir = Paths.get(System.getProperty("user.dir"), ".local", "user-assets");
+        Path uploadRootDir = Paths.get(System.getProperty("user.dir"), "uploads");
         registry.addResourceHandler("/user-assets/**")
-                .addResourceLocations(avatarDir.toUri().toString());
+                .addResourceLocations(legacyUserAssetDir.toUri().toString());
+        registry.addResourceHandler("/uploads/**")
+                .addResourceLocations(uploadRootDir.toUri().toString());
     }
 }

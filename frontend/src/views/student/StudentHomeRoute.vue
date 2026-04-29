@@ -76,7 +76,7 @@ async function loadDashboard(): Promise<void> {
 }
 
 async function openScaleArchive(): Promise<void> {
-  await router.push({ name: 'student-scales' })
+  await router.push({ name: 'student-reports' })
 }
 
 async function openAppointmentCenter(): Promise<void> {
