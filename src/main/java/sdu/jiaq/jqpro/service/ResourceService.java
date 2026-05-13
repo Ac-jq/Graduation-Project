@@ -52,4 +52,10 @@ public interface ResourceService {
     ResourceCategoryResponse updateCategory(Long categoryId, UpsertResourceCategoryRequest request);
 
     ResourceTagResponse createTag(UpsertResourceTagRequest request);
+
+    ResourceCategoryResponse deleteCategory(Long categoryId);
+
+    ResourceTagResponse updateTag(Long tagId, UpsertResourceTagRequest request);
+
+    ResourceTagResponse deleteTag(Long tagId);
 }

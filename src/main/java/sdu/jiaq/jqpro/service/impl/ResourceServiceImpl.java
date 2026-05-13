@@ -232,7 +232,7 @@ public class ResourceServiceImpl implements ResourceService {
         favorite.setStudentUserId(studentUserId);
         resourceFavoriteMapper.insert(favorite);
 
-        auditLogService.record(studentUserId, "RESOURCE_FAVORITE_ADD", "资源收藏", "收藏资源#" + resourceId, null);
+        auditLogService.record(studentUserId, "RESOURCE_FAVORITE_ADD", "璧勬簮鏀惰棌", "鏀惰棌璧勬簮#" + resourceId, null);
     }
 
     @Override
@@ -247,7 +247,7 @@ public class ResourceServiceImpl implements ResourceService {
         }
 
         favorites.forEach(item -> resourceFavoriteMapper.deleteById(item.getId()));
-        auditLogService.record(studentUserId, "RESOURCE_FAVORITE_REMOVE", "取消收藏", "取消收藏资源#" + resourceId, null);
+        auditLogService.record(studentUserId, "RESOURCE_FAVORITE_REMOVE", "鍙栨秷鏀惰棌", "鍙栨秷鏀惰棌璧勬簮#" + resourceId, null);
     }
 
     @Override
@@ -305,10 +305,10 @@ public class ResourceServiceImpl implements ResourceService {
     @Override
     public ResourceUploadResponse uploadAdminResourceAsset(MultipartFile file, boolean coverOnly) {
         if (file == null || file.isEmpty()) {
-            throw new BusinessException("请先选择要上传的文件");
+            throw new BusinessException("璇峰厛閫夋嫨瑕佷笂浼犵殑鏂囦欢");
         }
         if (file.getSize() > MAX_RESOURCE_UPLOAD_SIZE) {
-            throw new BusinessException("上传文件不能超过 200MB");
+            throw new BusinessException("涓婁紶鏂囦欢涓嶈兘瓒呰繃 200MB");
         }
 
         String contentType = file.getContentType();
@@ -326,7 +326,7 @@ public class ResourceServiceImpl implements ResourceService {
             Path targetPath = targetDir.resolve(fileName);
             Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException exception) {
-            throw new BusinessException("资源文件上传失败，请稍后重试");
+            throw new BusinessException("璧勬簮鏂囦欢涓婁紶澶辫触锛岃绋嶅悗閲嶈瘯");
         }
 
         ResourceUploadResponse response = new ResourceUploadResponse();
@@ -348,7 +348,7 @@ public class ResourceServiceImpl implements ResourceService {
         mentalResourceMapper.insert(resource);
         syncTagRelations(resource.getId(), request.getTagIds());
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CREATE", "创建资源", "创建资源#" + resource.getId(), null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CREATE", "鍒涘缓璧勬簮", "鍒涘缓璧勬簮#" + resource.getId(), null);
         return buildSummaryResponses(List.of(getRequiredResource(resource.getId())), null).get(0);
     }
 
@@ -362,7 +362,7 @@ public class ResourceServiceImpl implements ResourceService {
         mentalResourceMapper.updateById(resource);
         syncTagRelations(resourceId, request.getTagIds());
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_UPDATE", "编辑资源", "编辑资源#" + resourceId, null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_UPDATE", "缂栬緫璧勬簮", "缂栬緫璧勬簮#" + resourceId, null);
         return buildSummaryResponses(List.of(getRequiredResource(resourceId)), null).get(0);
     }
 
@@ -374,7 +374,7 @@ public class ResourceServiceImpl implements ResourceService {
         resource.setPublishedAt(LocalDateTime.now());
         mentalResourceMapper.updateById(resource);
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_PUBLISH", "发布资源", "发布资源#" + resourceId, null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_PUBLISH", "鍙戝竷璧勬簮", "鍙戝竷璧勬簮#" + resourceId, null);
         return buildSummaryResponses(List.of(resource), null).get(0);
     }
 
@@ -385,7 +385,7 @@ public class ResourceServiceImpl implements ResourceService {
         resource.setStatus(ResourceConstants.RESOURCE_OFFLINE);
         mentalResourceMapper.updateById(resource);
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_OFFLINE", "下线资源", "下线资源#" + resourceId, null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_OFFLINE", "涓嬬嚎璧勬簮", "涓嬬嚎璧勬簮#" + resourceId, null);
         return buildSummaryResponses(List.of(resource), null).get(0);
     }
 
@@ -401,7 +401,7 @@ public class ResourceServiceImpl implements ResourceService {
         category.setStatus(hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase() : ResourceConstants.CATEGORY_ACTIVE);
         resourceCategoryMapper.insert(category);
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CATEGORY_CREATE", "创建资源分类", "创建分类#" + category.getId(), null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CATEGORY_CREATE", "鍒涘缓璧勬簮鍒嗙被", "鍒涘缓鍒嗙被#" + category.getId(), null);
         return toCategoryResponse(category);
     }
 
@@ -421,7 +421,7 @@ public class ResourceServiceImpl implements ResourceService {
         }
         resourceCategoryMapper.updateById(category);
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CATEGORY_UPDATE", "编辑资源分类", "编辑分类#" + categoryId, null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CATEGORY_UPDATE", "缂栬緫璧勬簮鍒嗙被", "缂栬緫鍒嗙被#" + categoryId, null);
         return toCategoryResponse(category);
     }
 
@@ -435,7 +435,47 @@ public class ResourceServiceImpl implements ResourceService {
         tag.setDescription(blankToNull(request.getDescription()));
         resourceTagMapper.insert(tag);
 
-        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_TAG_CREATE", "创建资源标签", "创建标签#" + tag.getId(), null);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_TAG_CREATE", "鍒涘缓璧勬簮鏍囩", "鍒涘缓鏍囩#" + tag.getId(), null);
+        return toTagResponse(tag);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ResourceCategoryResponse deleteCategory(Long categoryId) {
+        ResourceCategory category = getRequiredCategory(categoryId);
+        Long resourceCount = mentalResourceMapper.selectCount(new LambdaQueryWrapper<MentalResource>()
+                .eq(MentalResource::getCategoryId, categoryId));
+        if (resourceCount != null && resourceCount > 0) {
+            throw new BusinessException("该分类下仍有资源，无法删除");
+        }
+        resourceCategoryMapper.deleteById(categoryId);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_CATEGORY_DELETE", "删除资源分类", "删除分类#" + categoryId, null);
+        return toCategoryResponse(category);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ResourceTagResponse updateTag(Long tagId, UpsertResourceTagRequest request) {
+        ResourceTag tag = getRequiredTag(tagId);
+        ensureTagNameUnique(request.getName(), tagId);
+        tag.setName(request.getName().trim());
+        tag.setDescription(blankToNull(request.getDescription()));
+        resourceTagMapper.updateById(tag);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_TAG_UPDATE", "编辑资源标签", "编辑标签#" + tagId, null);
+        return toTagResponse(tag);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ResourceTagResponse deleteTag(Long tagId) {
+        ResourceTag tag = getRequiredTag(tagId);
+        Long relationCount = resourceTagRelationMapper.selectCount(new LambdaQueryWrapper<ResourceTagRelation>()
+                .eq(ResourceTagRelation::getTagId, tagId));
+        if (relationCount != null && relationCount > 0) {
+            throw new BusinessException("该标签已被资源使用，无法删除");
+        }
+        resourceTagMapper.deleteById(tagId);
+        auditLogService.record(SecurityUtil.getCurrentUserId(), "ADMIN_RESOURCE_TAG_DELETE", "删除资源标签", "删除标签#" + tagId, null);
         return toTagResponse(tag);
     }
 
@@ -624,6 +664,23 @@ public class ResourceServiceImpl implements ResourceService {
             throw new BusinessException("资源不存在");
         }
         return resource;
+    }
+
+    private void ensureTagNameUnique(String name, Long excludeId) {
+        List<ResourceTag> tags = resourceTagMapper.selectList(new LambdaQueryWrapper<ResourceTag>()
+                .eq(ResourceTag::getName, name.trim()));
+        boolean conflict = tags.stream().anyMatch(item -> !Objects.equals(item.getId(), excludeId));
+        if (conflict) {
+            throw new BusinessException("资源标签名称已存在");
+        }
+    }
+
+    private ResourceTag getRequiredTag(Long tagId) {
+        ResourceTag tag = resourceTagMapper.selectById(tagId);
+        if (tag == null) {
+            throw new BusinessException("资源标签不存在");
+        }
+        return tag;
     }
 
     private ResourceCategoryResponse toCategoryResponse(ResourceCategory category) {

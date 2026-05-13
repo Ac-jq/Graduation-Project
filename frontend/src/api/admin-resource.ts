@@ -1,4 +1,4 @@
-import { get, post, put } from './http'
+import { del, get, post, put } from './http'
 import type {
   AdminResourceCategory,
   AdminResourceListItem,
@@ -53,10 +53,22 @@ export function updateAdminResourceCategoryApi(categoryId: number, payload: Crea
   return put<AdminResourceCategory>(`/admin/resource-categories/${categoryId}`, payload)
 }
 
+export function deleteAdminResourceCategoryApi(categoryId: number): Promise<AdminResourceCategory> {
+  return del<AdminResourceCategory>(`/admin/resource-categories/${categoryId}`)
+}
+
 export function fetchAdminResourceTagsApi(): Promise<AdminResourceTag[]> {
   return get<AdminResourceTag[]>('/admin/resource-tags')
 }
 
 export function createAdminResourceTagApi(payload: CreateResourceTagRequest): Promise<AdminResourceTag> {
   return post<AdminResourceTag>('/admin/resource-tags', payload)
+}
+
+export function updateAdminResourceTagApi(tagId: number, payload: CreateResourceTagRequest): Promise<AdminResourceTag> {
+  return put<AdminResourceTag>(`/admin/resource-tags/${tagId}`, payload)
+}
+
+export function deleteAdminResourceTagApi(tagId: number): Promise<AdminResourceTag> {
+  return del<AdminResourceTag>(`/admin/resource-tags/${tagId}`)
 }

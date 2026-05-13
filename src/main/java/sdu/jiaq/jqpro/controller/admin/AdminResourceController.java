@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -88,6 +89,11 @@ public class AdminResourceController {
         return Result.success("资源分类更新成功", resourceService.updateCategory(categoryId, request));
     }
 
+    @DeleteMapping("/resource-categories/{categoryId}")
+    public Result<ResourceCategoryResponse> deleteCategory(@PathVariable("categoryId") Long categoryId) {
+        return Result.success("璧勬簮鍒嗙被鍒犻櫎鎴愬姛", resourceService.deleteCategory(categoryId));
+    }
+
     @GetMapping("/resource-tags")
     public Result<List<ResourceTagResponse>> listTags() {
         return Result.success(resourceService.listAdminTags());
@@ -96,5 +102,15 @@ public class AdminResourceController {
     @PostMapping("/resource-tags")
     public Result<ResourceTagResponse> createTag(@Valid @RequestBody UpsertResourceTagRequest request) {
         return Result.success("资源标签创建成功", resourceService.createTag(request));
+    }
+    @PutMapping("/resource-tags/{tagId}")
+    public Result<ResourceTagResponse> updateTag(@PathVariable("tagId") Long tagId,
+                                                 @Valid @RequestBody UpsertResourceTagRequest request) {
+        return Result.success("璧勬簮鏍囩鏇存柊鎴愬姛", resourceService.updateTag(tagId, request));
+    }
+
+    @DeleteMapping("/resource-tags/{tagId}")
+    public Result<ResourceTagResponse> deleteTag(@PathVariable("tagId") Long tagId) {
+        return Result.success("璧勬簮鏍囩鍒犻櫎鎴愬姛", resourceService.deleteTag(tagId));
     }
 }

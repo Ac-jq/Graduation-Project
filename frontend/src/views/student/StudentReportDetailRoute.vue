@@ -132,27 +132,32 @@ onMounted(() => {
           </div>
         </header>
 
-        <section class="editorial-columns">
-          <div class="column-block">
+        <section class="editorial-stack">
+          <div class="column-block column-block--primary">
             <h3 class="column-heading">深度解读</h3>
-            <p class="column-text ai-interpretation-scroll">
+            <div class="column-text interpretation-content">
               {{ reportDetail.aiInterpretation || '本次评估显示数据较为稳定，系统未生成额外的异常预警解释。请结合自身实际感受进行判断。' }}
-            </p>
+            </div>
           </div>
 
-          <div class="column-block">
-            <h3 class="column-heading">后续建议</h3>
-            <p class="column-text">
-              {{ reportDetail.recommendationNote || '保持当前的作息与规律，适度关注自我情绪变化即可。' }}
-            </p>
-            <button
-                v-if="reportDetail.recommendAppointment"
-                class="action-btn action-btn--primary"
-                type="button"
-                @click="router.push({ name: 'student-appointment-slots' })"
-            >
-              前往预约心理咨询 <span class="arrow">→</span>
-            </button>
+          <div class="column-block column-block--secondary">
+            <div class="secondary-header">
+              <h4 class="secondary-heading">后续建议</h4>
+              <div class="heading-line"></div>
+            </div>
+            <div class="secondary-content">
+              <p class="secondary-text">
+                {{ reportDetail.recommendationNote || '保持当前的作息与规律，适度关注自我情绪变化即可。' }}
+              </p>
+              <button
+                  v-if="reportDetail.recommendAppointment"
+                  class="action-btn action-btn--primary"
+                  type="button"
+                  @click="router.push({ name: 'student-appointment-slots' })"
+              >
+                前往预约心理咨询 <span class="arrow">→</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -246,7 +251,7 @@ onMounted(() => {
 
 /* 卷宗排版区 */
 .dossier-paper {
-  background: transparent; /* 去除卡片底色 */
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 4rem;
@@ -299,7 +304,7 @@ onMounted(() => {
   max-width: 90%;
 }
 
-/* 数据仪表盘（融入排版，不使用框） */
+/* 数据仪表盘 */
 .dossier-dashboard {
   display: flex;
   gap: 4rem;
@@ -352,16 +357,75 @@ onMounted(() => {
 .level-pill--medium { background: rgba(193, 150, 83, 0.15); color: #9e7330; }
 .level-pill--high { background: rgba(176, 115, 115, 0.15); color: #8c4a4a; }
 
-/* 杂志分栏排版 */
-.editorial-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+/* ★ 杂志排版布局优化：单列堆叠布局 ★ */
+.editorial-stack {
+  display: flex;
+  flex-direction: column;
   gap: 5rem;
 }
 
 .column-block {
   display: flex;
   flex-direction: column;
+}
+
+/* 深度解读：突出显示 */
+.column-block--primary .column-heading {
+  font-size: 1.8rem;
+  margin-bottom: 2rem;
+}
+
+.column-block--primary .interpretation-content {
+  font-size: 1.2rem;
+  line-height: 2;
+  color: #2a362e;
+  text-align: justify;
+  background: rgba(130, 150, 138, 0.03);
+  padding: 2.5rem;
+  border-radius: 12px;
+  border-left: 4px solid #2a362e;
+}
+
+/* 后续建议：弱化展示 */
+.column-block--secondary {
+  background: #f6f5f0;
+  padding: 2.5rem;
+  border-radius: 12px;
+  margin-top: -1rem;
+}
+
+.secondary-header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.secondary-heading {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #8a9c90;
+  white-space: nowrap;
+  margin: 0;
+}
+
+.heading-line {
+  flex-grow: 1;
+  height: 1px;
+  background: rgba(138, 156, 144, 0.2);
+}
+
+.secondary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.secondary-text {
+  font-size: 1rem;
+  color: #5c6b60;
+  margin: 0;
 }
 
 .column-heading {
@@ -371,80 +435,9 @@ onMounted(() => {
   color: #1e2821;
   margin: 0 0 1.5rem 0;
   position: relative;
-  padding-left: 1rem;
 }
 
-.column-heading::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 10%;
-  height: 80%;
-  width: 3px;
-  background: #2a362e;
-}
-
-.column-text {
-  font-size: 1.05rem;
-  line-height: 1.85;
-  color: #4a5c51;
-  margin: 0 0 2rem 0;
-}
-
-.ai-interpretation-scroll {
-  max-height: 350px;
-  overflow-y: auto;
-  padding-right: 0.75rem;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(130, 150, 138, 0.42) rgba(130, 150, 138, 0.08);
-}
-
-.ai-interpretation-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.ai-interpretation-scroll::-webkit-scrollbar-track {
-  background: rgba(130, 150, 138, 0.08);
-  border-radius: 999px;
-}
-
-.ai-interpretation-scroll::-webkit-scrollbar-thumb {
-  background: rgba(130, 150, 138, 0.38);
-  border-radius: 999px;
-}
-
-.ai-interpretation-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(92, 107, 96, 0.5);
-}
-
-.action-btn {
-  align-self: flex-start;
-  padding: 1rem 2rem;
-  border-radius: 100px;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.3s ease;
-}
-
-.action-btn--primary {
-  background: #2a362e;
-  border: none;
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
-}
-
-.action-btn--primary:hover {
-  background: #1c2620;
-  transform: translateY(-2px);
-  box-shadow: 0 16px 32px rgba(42, 54, 46, 0.25);
-}
-
-/* 附录推荐资源（极简目录排版） */
+/* 附录推荐资源 */
 .resource-appendix {
   display: flex;
   flex-direction: column;
@@ -590,8 +583,30 @@ onMounted(() => {
   border-radius: 100px;
 }
 
-.footer-actions .ghost-btn:hover {
-  background: rgba(42, 54, 46, 0.05);
+.action-btn {
+  align-self: flex-start;
+  padding: 0.9rem 1.8rem;
+  border-radius: 100px;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+}
+
+.action-btn--primary {
+  background: #2a362e;
+  border: none;
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(42, 54, 46, 0.15);
+}
+
+.action-btn--primary:hover {
+  background: #1c2620;
+  transform: translateY(-2px);
 }
 
 /* 状态样式 */
@@ -632,10 +647,6 @@ onMounted(() => {
   transition: transform 0.3s ease;
 }
 
-.dossier-nav .ghost-btn:hover .arrow {
-  transform: translateX(-4px);
-}
-
 .action-btn:hover .arrow,
 .appendix-item:hover .item-action .arrow {
   transform: translateX(4px);
@@ -643,26 +654,18 @@ onMounted(() => {
 
 /* 响应式 */
 @media (max-width: 900px) {
-  .dossier-dashboard {
-    gap: 2rem;
+  .editorial-stack {
+    gap: 3.5rem;
   }
 
-  .editorial-columns {
-    grid-template-columns: 1fr;
-    gap: 3.5rem;
+  .column-block--primary .interpretation-content {
+    padding: 1.5rem;
+    font-size: 1.1rem;
   }
 
   .appendix-item {
     grid-template-columns: 100px minmax(0, 1fr) 20px;
     gap: 1rem;
-    padding: 1.5rem 0;
-  }
-
-  .item-summary {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
   }
 }
 </style>
